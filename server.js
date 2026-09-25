@@ -125,7 +125,7 @@ function submissionRoutes(name) {
 ['volunteers', 'members', 'contactMessages', 'newsletter'].forEach(submissionRoutes);
 
 app.get('/', (req, res) => {
-  res.send('Nisha Seva Foundation API is running. Admin panel: /admin');
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
