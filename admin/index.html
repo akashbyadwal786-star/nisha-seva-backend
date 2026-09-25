@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nisha Seva Foundation Admin</title>
+<style>
+body{font-family:Arial;margin:0;background:#f4f7fb;color:#172033}header{background:#123b6d;color:white;padding:16px 22px;display:flex;justify-content:space-between}.wrap{max-width:1100px;margin:25px auto;padding:0 15px}.card{background:white;padding:20px;border-radius:14px;margin-bottom:18px;box-shadow:0 4px 18px #0001}.tabs{display:flex;gap:7px;flex-wrap:wrap}.tabs button{padding:10px;border:0;border-radius:8px;cursor:pointer}.active{background:#123b6d;color:white}.primary{background:#1769e0;color:white}.danger{background:#d9363e;color:white}.muted{background:#e9eef6}.item{border:1px solid #ddd;border-radius:10px;padding:12px;margin:10px 0}.row{display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap}input,textarea{width:100%;padding:10px;border:1px solid #ccd4df;border-radius:8px;box-sizing:border-box}.modal{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center;padding:20px}.modalbox{background:white;max-width:700px;width:100%;padding:20px;border-radius:14px}.err{background:#ffe8e8;padding:10px;margin:10px 0}.small{color:#687386;font-size:13px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const API=location.origin;
+const tabs=[["programs","Programs"],["events","Events"],["gallery","Gallery"],["documents","Documents"],["donors","Donors"],["volunteers","Volunteers"],["members","Members"],["contactMessages","Messages"],["newsletter","Newsletter"]];
+let token=localStorage.getItem("nisha_token")||"", current="programs";
+
+async function api(path,opt={}){
+ opt.headers={"Content-Type":"application/json",...(opt.headers||{})};
+ if(token)opt.headers.Authorization="Bearer "+token;
+ const r=await fetch(API+path,opt),t=await r.text();
+ let d={};try{d=t?JSON.parse(t):{}}catch{d={error:t}}
+ if(!r.ok)throw Error(d.error||"HTTP "+r.status);return d;
+}
+function esc(x){return String(x??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function login(){
+ app.innerHTML='<div class="wrap"><div class="card" style="max-width:400px;margin:70px auto"><h2>🌿 Nisha Seva Foundation</h2><p>Admin Login</p><input id="user" placeholder="Username"><br><br><input id="pass" type="password" placeholder="Password"><br><br><button class="primary" onclick="doLogin()">Login</button><div id="msg"></div></div></div>';
+}
+async function doLogin(){
+ try{let d=await api("/api/admin/login",{method:"POST",body:JSON.stringify({username:user.value,password:pass.value})});token=d.token;localStorage.setItem("nisha_token",token);render();}
+ catch(e){msg.innerHTML='<div class="err">'+esc(e.message)+'</div>';}
+}
+async function logout(){try{await api("/api/admin/logout",{method:"POST"})}catch{}localStorage.removeItem("nisha_token");token="";login();}
+async function render(){
+ if(!token)return login();
+ app.innerHTML='<header><div><b>🌿 Nisha Seva Foundation</b><br><small>Admin Panel</small></div><button class="muted" onclick="logout()">Logout</button></header><div class="wrap"><div class="tabs">'+tabs.map(x=>'<button class="'+(x[0]==current?'active':'')+'" onclick="current=\''+x[0]+'\';render()">'+x[1]+'</button>').join("")+'</div><div class="card" id="content">Loading...</div></div>';
+ try{let d=await api("/api/"+current);let a=Array.isArray(d)?d:[];content.innerHTML='<div class="row"><div><h2>'+esc(tabs.find(x=>x[0]==current)[1])+'</h2><span class="small">'+a.length+' record(s)</span></div>'+((["programs","events","gallery","documents","donors"].includes(current))?'<button class="primary" onclick="editor()">+ Add</button>':'')+'</div>'+ (a.length?a.map(card).join(""):'<p>No records yet.</p>');}
+ catch(e){content.innerHTML='<div class="err">'+esc(e.message)+'</div>';}
+}
+function card(x){let title=x.title||x.name||x.subject||x.email||("Record #"+x.id);return '<div class="item"><div class="row"><b>'+esc(title)+'</b><div><button class="muted" onclick=\'editor('+JSON.stringify(x).replace(/'/g,"&#39;")+')\'>Edit</button> <button class="danger" onclick="del('+x.id+')">Delete</button></div></div><div class="small">ID: '+x.id+'</div><pre>'+esc(JSON.stringify(x,null,2))+'</pre></div>';}
+function editor(x){
+ x=x||{title:"",description:""};
+ document.body.insertAdjacentHTML("beforeend",'<div class="modal" id="modal"><div class="modalbox"><h2>Record</h2><textarea id="json" rows="18">'+esc(JSON.stringify(x,null,2))+'</textarea><div id="em"></div><br><div class="row"><button class="muted" onclick="modal.remove()">Cancel</button><button class="primary" onclick="save('+((x.id===undefined)?'null':x.id)+')">Save</button></div></div></div>');
+}
+async function save(id){
+ try{let o=JSON.parse(json.value);delete o.id;await api(id===null?"/api/"+current:"/api/"+current+"/"+id,{method:id===null?"POST":"PUT",body:JSON.stringify(o)});modal.remove();render();}
+ catch(e){em.innerHTML='<div class="err">'+esc(e.message)+'</div>';}
+}
+async function del(id){if(!confirm("Delete this record?"))return;try{await api("/api/"+current+"/"+id,{method:"DELETE"});render()}catch(e){alert(e.message)}}
+render();
+</script>
+</body>
+</html>
