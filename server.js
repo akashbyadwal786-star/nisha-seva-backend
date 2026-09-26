@@ -420,7 +420,9 @@ app.get('/', (req, res) => {
     path.join(__dirname, 'index.html')
   );
 });
-
+app.get('/logo.jpeg', (req, res) => {
+  res.sendFile(path.join(__dirname, 'logo.jpeg'));
+});
 
 /* ---------- Start Server ---------- */
 app.listen(PORT, () => {
