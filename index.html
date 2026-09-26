@@ -243,7 +243,9 @@
       <a href="#contactform">Contact</a>
     </nav>
     <div style="display:flex; align-items:center; gap:10px;">
-      <a href="#donate" class="donate-btn">Donate Now</a>
+      <button type="button" class="donate-btn" onclick="openDonatePopup()">
+  Donate Now
+</button>
       <button class="burger" id="burgerBtn" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
     </div>
   </div>
@@ -990,6 +992,133 @@ if (memberForm) {
 
 loadDynamicContent();
 
+</script>
+  <!-- Donation QR Popup -->
+<div id="donatePopup" class="donate-popup">
+
+  <div class="donate-box">
+
+    <button class="donate-close" onclick="closeDonatePopup()">
+      &times;
+    </button>
+
+    <h2>❤️ Support Nisha Seva Foundation</h2>
+
+    <p class="donate-text">
+      आपका छोटा सा सहयोग जरूरतमंद लोगों के जीवन में बड़ा बदलाव ला सकता है।
+    </p>
+
+    <h3>Scan & Donate</h3>
+
+    <img
+      src="donation-qr.jpg"
+      alt="Nisha Seva Foundation Donation QR Code"
+      class="donation-qr"
+    >
+
+    <p class="donate-note">
+      किसी भी UPI / Banking App से QR Code scan करके donation करें।
+    </p>
+
+    <button class="donate-close-btn" onclick="closeDonatePopup()">
+      Close
+    </button>
+
+  </div>
+
+</div>
+
+<style>
+.donate-popup{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.75);
+  z-index:99999;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.donate-popup.show{
+  display:flex;
+}
+
+.donate-box{
+  position:relative;
+  width:min(430px,100%);
+  max-height:90vh;
+  overflow:auto;
+  background:#fff;
+  border-radius:20px;
+  padding:28px 22px;
+  text-align:center;
+  box-shadow:0 20px 60px rgba(0,0,0,.35);
+}
+
+.donate-box h2{
+  margin:0 35px 10px;
+}
+
+.donate-text{
+  color:#555;
+  line-height:1.6;
+}
+
+.donate-box h3{
+  margin:18px 0 12px;
+}
+
+.donation-qr{
+  width:min(300px,85vw);
+  max-width:100%;
+  display:block;
+  margin:10px auto 15px;
+  border-radius:10px;
+}
+
+.donate-note{
+  font-size:.9rem;
+  color:#666;
+  line-height:1.5;
+}
+
+.donate-close{
+  position:absolute;
+  right:12px;
+  top:8px;
+  border:0;
+  background:transparent;
+  font-size:32px;
+  cursor:pointer;
+}
+
+.donate-close-btn{
+  border:0;
+  padding:11px 25px;
+  border-radius:999px;
+  cursor:pointer;
+  background:#222;
+  color:#fff;
+  font-weight:700;
+  margin-top:8px;
+}
+</style>
+
+<script>
+function openDonatePopup(){
+  document.getElementById('donatePopup').classList.add('show');
+}
+
+function closeDonatePopup(){
+  document.getElementById('donatePopup').classList.remove('show');
+}
+
+document.getElementById('donatePopup').addEventListener('click', function(e){
+  if(e.target === this){
+    closeDonatePopup();
+  }
+});
 </script>
 </body>
 </html>
