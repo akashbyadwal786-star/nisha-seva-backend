@@ -6,8 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
-
-const { readDB, writeDB, nextId } = require('./db');
+const { readDB, writeDB, nextId, pool } = require('./db');
 
 const app = express();
 
@@ -270,32 +269,43 @@ function crudRoutes(name) {
 
 /* ---------- Public Submission Routes ---------- */
 
+const submissionTables = {
+  volunteers: 'volunteers',
+  members: 'members',
+  contactMessages: 'contact_messages',
+  newsletter: 'newsletter'
+};
+
 function submissionRoutes(name) {
+
+  const table = submissionTables[name];
+
+  // Safety check
+  if (!table) {
+    console.error(`Unknown submission collection: ${name}`);
+    return;
+  }
 
   // Public form submission
   app.post(`/api/${name}`, async (req, res) => {
     try {
-      const db = await readDB();
 
-      if (!Array.isArray(db[name])) {
-        db[name] = [];
-      }
+      const result = await pool.query(
+        `INSERT INTO ${table} (data)
+         VALUES ($1::jsonb)
+         RETURNING id, data, created_at`,
+        [JSON.stringify(req.body || {})]
+      );
 
-      const item = {
-        id: nextId(db[name]),
-        submittedAt: new Date().toISOString(),
-        ...req.body
-      };
-
-      db[name].push(item);
-
-      await writeDB(db);
+      const row = result.rows[0];
 
       res.status(201).json({
-        ok: true
+        ok: true,
+        id: row.id
       });
 
     } catch (error) {
+
       console.error(`POST /api/${name}`, error);
 
       res.status(500).json({
@@ -304,6 +314,68 @@ function submissionRoutes(name) {
     }
   });
 
+
+  // Admin read
+  app.get(`/api/${name}`, requireAdmin, async (req, res) => {
+    try {
+
+      const result = await pool.query(
+        `SELECT id, data, created_at
+         FROM ${table}
+         ORDER BY created_at DESC`
+      );
+
+      const rows = result.rows.map(row => ({
+        id: row.id,
+        submittedAt: row.created_at,
+        ...(row.data || {})
+      }));
+
+      res.json(rows);
+
+    } catch (error) {
+
+      console.error(`GET /api/${name}`, error);
+
+      res.status(500).json({
+        error: 'Database error'
+      });
+    }
+  });
+
+
+  // Admin delete
+  app.delete(`/api/${name}/:id`, requireAdmin, async (req, res) => {
+    try {
+
+      const id = Number(req.params.id);
+
+      if (!Number.isInteger(id)) {
+        return res.status(400).json({
+          error: 'Invalid ID'
+        });
+      }
+
+      await pool.query(
+        `DELETE FROM ${table}
+         WHERE id = $1`,
+        [id]
+      );
+
+      res.json({
+        ok: true
+      });
+
+    } catch (error) {
+
+      console.error(`DELETE /api/${name}`, error);
+
+      res.status(500).json({
+        error: 'Database error'
+      });
+    }
+  });
+}
 
   // Admin read
   app.get(`/api/${name}`, requireAdmin, async (req, res) => {
