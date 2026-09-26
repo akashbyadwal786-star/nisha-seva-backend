@@ -886,6 +886,102 @@ if (contactForm) {
 
 
 // Load live content from Supabase-backed API
+  /* ---------- Volunteer Form ---------- */
+
+const volunteerForm = document.getElementById('volForm');
+
+if (volunteerForm) {
+  volunteerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const data = {
+      name: document.getElementById('vName').value.trim(),
+      age: document.getElementById('vAge').value,
+      email: document.getElementById('vEmail').value.trim(),
+      phone: document.getElementById('vPhone').value.trim(),
+      city: document.getElementById('vCity').value.trim(),
+      availability: document.getElementById('vAvail').value,
+      area: document.getElementById('vArea').value,
+      skills: document.getElementById('vSkills').value.trim(),
+      message: document.getElementById('vMessage').value.trim()
+    };
+
+    try {
+      const response = await fetch(
+        apiUrl('/api/volunteers'),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Submission failed');
+      }
+
+      alert('Volunteer application successfully submit ho gayi!');
+      volunteerForm.reset();
+
+    } catch (error) {
+      console.error('Volunteer form error:', error);
+      alert('Application submit nahi hui. Please dobara try karein.');
+    }
+  });
+}
+
+
+/* ---------- Membership Form ---------- */
+
+const memberForm = document.getElementById('memberForm');
+
+if (memberForm) {
+  memberForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const data = {
+      name: document.getElementById('mName').value.trim(),
+      phone: document.getElementById('mPhone').value.trim(),
+      email: document.getElementById('mEmail').value.trim(),
+      city: document.getElementById('mCity').value.trim(),
+      area: document.getElementById('mArea').value
+    };
+
+    try {
+      const response = await fetch(
+        apiUrl('/api/members'),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Submission failed');
+      }
+
+      alert('Membership application successfully submit ho gayi!');
+      memberForm.reset();
+
+    } catch (error) {
+      console.error('Membership form error:', error);
+      alert('Membership application submit nahi hui. Please dobara try karein.');
+    }
+  });
+}
+
+
+// Load live content from Supabase-backed API
+
 loadDynamicContent();
 
 </script>
