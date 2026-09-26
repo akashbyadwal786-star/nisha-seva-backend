@@ -1,5 +1,3 @@
-// db.js — Supabase PostgreSQL database
-
 const { Pool } = require('pg');
 
 const defaultDB = {
