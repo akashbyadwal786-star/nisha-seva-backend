@@ -53,5 +53,6 @@ function nextId(collection) {
 module.exports = {
   readDB,
   writeDB,
-  nextId
+  nextId,
+  pool
 };
