@@ -446,7 +446,10 @@ app.get('/', (req, res) => {
 
 
 /* ---------- Start Server ---------- */
-
+submissionRoutes('volunteers');
+submissionRoutes('members');
+submissionRoutes('contactMessages');
+submissionRoutes('newsletter');
 app.listen(PORT, () => {
   console.log(
     `Nisha Seva backend running on port ${PORT}`
