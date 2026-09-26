@@ -1,23 +1,59 @@
-// db.js — tiny JSON-file "database". No external DB needed.
-const fs = require('fs');
-const path = require('path');
+// db.js — Supabase PostgreSQL database
 
-const DB_PATH = path.join(__dirname, 'data', 'db.json');
+const { Pool } = require('pg');
 
-function readDB() {
-  if (!fs.existsSync(DB_PATH)) {
-    throw new Error('db.json not found at ' + DB_PATH);
+const defaultDB = {
+  programs: [],
+  events: [],
+  gallery: [],
+  documents: [],
+  donors: [],
+  volunteers: [],
+  members: [],
+  contactMessages: [],
+  newsletter: []
+};
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
   }
-  const raw = fs.readFileSync(DB_PATH, 'utf-8');
-  return JSON.parse(raw);
+});
+
+async function readDB() {
+  const result = await pool.query(
+    'SELECT data FROM app_data WHERE id = true'
+  );
+
+  if (!result.rows.length) {
+    await writeDB(defaultDB);
+    return defaultDB;
+  }
+
+  return result.rows[0].data;
 }
 
-function writeDB(data) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+async function writeDB(data) {
+  await pool.query(
+    `INSERT INTO app_data (id, data)
+     VALUES (true, $1::jsonb)
+     ON CONFLICT (id)
+     DO UPDATE SET data = EXCLUDED.data`,
+    [JSON.stringify(data)]
+  );
+
+  return data;
 }
 
 function nextId(collection) {
-  return collection.length ? Math.max(...collection.map(i => i.id)) + 1 : 1;
+  return collection.length
+    ? Math.max(...collection.map(i => Number(i.id) || 0)) + 1
+    : 1;
 }
 
-module.exports = { readDB, writeDB, nextId };
+module.exports = {
+  readDB,
+  writeDB,
+  nextId
+};
