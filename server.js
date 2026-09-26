@@ -377,55 +377,6 @@ function submissionRoutes(name) {
   });
 }
 
-  // Admin read
-  app.get(`/api/${name}`, requireAdmin, async (req, res) => {
-    try {
-      const db = await readDB();
-
-      res.json(db[name] || []);
-
-    } catch (error) {
-      console.error(`GET /api/${name}`, error);
-
-      res.status(500).json({
-        error: 'Database error'
-      });
-    }
-  });
-
-
-  // Admin delete
-  app.delete(`/api/${name}/:id`, requireAdmin, async (req, res) => {
-    try {
-      const db = await readDB();
-
-      const id = Number(req.params.id);
-
-      if (!Array.isArray(db[name])) {
-        db[name] = [];
-      }
-
-      db[name] = db[name].filter(
-        item => Number(item.id) !== id
-      );
-
-      await writeDB(db);
-
-      res.json({
-        ok: true
-      });
-
-    } catch (error) {
-      console.error(`DELETE /api/${name}`, error);
-
-      res.status(500).json({
-        error: 'Database error'
-      });
-    }
-  });
-}
-
-
 /* ---------- Website Form Collections ---------- */
 
 [
