@@ -7,7 +7,12 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 const { readDB, writeDB, nextId, pool } = require('./db');
+const { createClient } = require('@supabase/supabase-js');
 
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 const app = express();
 
 const PORT = process.env.PORT || 4000;
@@ -93,45 +98,66 @@ app.post('/api/admin/logout', requireAdmin, (req, res) => {
 
 /* ---------- File Upload ---------- */
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024
   },
-
-  filename: (req, file, cb) => {
-    const safeName = file.originalname
-      .replace(/\s+/g, '-')
-      .replace(/[^a-zA-Z0-9._-]/g, '');
-
-    cb(
-      null,
-      Date.now() + '-' + safeName
-    );
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype && file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
   }
 });
 
-const upload = multer({
-  storage
-});
-
-app.post(
-  '/api/upload',
-  requireAdmin,
-  upload.single('file'),
-  (req, res) => {
-
+app.post('/api/upload', requireAdmin, upload.single('file'), async (req, res) => {
+  try {
     if (!req.file) {
       return res.status(400).json({
         error: 'No file uploaded'
       });
     }
 
+    const ext = (req.file.originalname.split('.').pop() || 'jpg')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+
+    const fileName = `gallery/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+
+    const { error } = await supabase.storage
+      .from('gallery')
+      .upload(fileName, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Supabase upload error:', error);
+
+      return res.status(500).json({
+        error: 'Image upload failed'
+      });
+    }
+
+    const { data } = supabase.storage
+      .from('gallery')
+      .getPublicUrl(fileName);
+
     res.json({
-      url: '/uploads/' + req.file.filename
+      ok: true,
+      url: data.publicUrl
+    });
+
+  } catch (error) {
+    console.error('POST /api/upload', error);
+
+    res.status(500).json({
+      error: 'Upload failed'
     });
   }
-);
-
+});
 
 /* ---------- Generic CRUD Routes ---------- */
 
