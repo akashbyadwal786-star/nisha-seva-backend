@@ -550,192 +550,292 @@
   }
 
   async function loadDynamicContent(){
-    if (API_BASE.includes('YOUR-BACKEND-URL')) {
-      console.info('Set API_BASE to your live backend URL to enable dynamic content.');
-      return;
-    }
-    try {
-      const [programs, events, gallery, documents, donors] = await Promise.all([
-        apiFetch('/api/programs'), apiFetch('/api/events'), apiFetch('/api/gallery'),
-        apiFetch('/api/documents'), apiFetch('/api/donors')
-      ]);
-
-      const pg = document.querySelector('#programs .prog-grid');
-      if (pg && Array.isArray(programs) && programs.length) {
-        pg.innerHTML = programs.map(p => {
-          const title=first(p,['title','name'],'Program'); const loc=first(p,['location','city','loc'],'');
-          const funded=first(p,['funded','funding','fundedPercent','percent'],0); const impacted=first(p,['impacted','peopleImpacted','beneficiaries'],'');
-          const image=first(p,['image','imageUrl','photo'],'');
-          return `<div class="pcard"><div class="pimg" style="${image ? `background-image:url('${esc(image)}');background-size:cover;background-position:center;` : ''}"></div><div class="pbody"><h3>${esc(title)}</h3><span class="loc">${esc(loc)}</span><div class="bar"><i style="width:${Math.min(100,Math.max(0,Number(funded)||0))}%;"></i></div><div class="meta"><span>${esc(funded)}% funded</span><span>${esc(impacted)} impacted</span></div><a href="#donate" class="lm" style="display:inline-block;margin-top:12px;">Donate to this →</a></div></div>`;
-        }).join('');
-      }
-
-      const er = document.querySelector('#events .wrap');
-      if (er && Array.isArray(events) && events.length) {
-        er.querySelectorAll('.event-row').forEach(x=>x.remove());
-        events.forEach(e=>{
-          const d = new Date(first(e,['date','eventDate'],''));
-          const day = isNaN(d) ? first(e,['day'],'') : String(d.getDate()).padStart(2,'0');
-          const mon = isNaN(d) ? first(e,['month'],'') : d.toLocaleString('en-IN',{month:'short'}).toUpperCase();
-          const row=document.createElement('div'); row.className='event-row';
-          row.innerHTML=`<div class="event-date">${esc(day)}<small>${esc(mon)}</small></div><div class="event-info"><h4>${esc(first(e,['title','name'],'Event'))}</h4><span>${esc(first(e,['location','city'],''))}${first(e,['time']) ? ' · '+esc(e.time) : ''}</span></div><a href="#contact" class="btn-ghost">Register</a>`;
-          er.appendChild(row);
-        });
-      }
-
-      const gg = document.querySelector('#gallery .gallery-grid');
-      if (gg && Array.isArray(gallery) && gallery.length) {
-        gg.innerHTML = gallery.map((g,i)=>{ const title=first(g,['title','caption','name'],'Gallery'); const image=first(g,['image','imageUrl','url','photo'],''); const bg=image ? `background-image:url('${esc(image)}');background-size:cover;background-position:center;` : 'background:linear-gradient(150deg,var(--green),var(--teal));'; return `<button type="button" class="gtile" data-title="${esc(title)}" style="${bg}"><span>${esc(title)}</span></button>`; }).join('');
-        attachGalleryLightbox();
-      }
-
-      const dg = document.querySelector('#transparency .doc-grid');
-      if (dg && Array.isArray(documents) && documents.length) {
-        dg.innerHTML = documents.map(doc=>{ const title=first(doc,['title','name'],'Document'); const year=first(doc,['year','period','date'],''); const url=first(doc,['url','link','fileUrl','documentUrl'],''); return `<div class="doc-card"><h4>${esc(title)}</h4><span class="yr">${esc(year)}</span><div class="doc-actions"><button type="button" class="docBtn" ${url ? `data-url="${esc(url)}"` : ''}>View</button><button type="button" class="docBtn" ${url ? `data-url="${esc(url)}"` : ''}>Download</button></div></div>`; }).join('');
-        dg.querySelectorAll('.docBtn').forEach(b=>b.onclick=()=>b.dataset.url ? window.open(b.dataset.url,'_blank','noopener') : showToast('Document link admin panel se add karein.'));
-      }
-
-      const dl = document.querySelector('#donors .donor-list');
-      if (dl && Array.isArray(donors) && donors.length) {
-        dl.innerHTML = donors.map(d=>`<div class="donor-row"><b>${esc(first(d,['name','donorName'],'Anonymous Donor'))}</b><span>${money(first(d,['amount','donation','value'],''))}</span></div>`).join('');
-      }
-    } catch (err) { console.warn('Dynamic content could not load:', err); }
+  if (API_BASE.includes('YOUR-BACKEND-URL')) {
+    console.info('Set API_BASE to your live backend URL to enable dynamic content.');
+    return;
   }
 
-  let selectedAmount = '100';
-  document.querySelectorAll('#amountGroup button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('#amountGroup button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedAmount = btn.dataset.amt;
-      if(selectedAmount === 'custom'){
-        const v = prompt('Enter a custom amount (₹):');
-        if(v && !isNaN(v) && Number(v) > 0){ selectedAmount = v; btn.textContent = '₹' + v; }
-      }
-    });
-  });
+  // PROGRAMS — अलग से load करें
+  try {
+    const programs = await apiFetch('/api/programs');
 
-  const toastEl = document.getElementById('toast');
-  let toastTimer;
-  function showToast(msg){
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 3200);
+    const pg = document.querySelector('#programs .prog-grid');
+
+    if (pg && Array.isArray(programs) && programs.length) {
+      pg.innerHTML = programs.map(p => {
+        const title = first(p, ['title', 'name'], 'Program');
+        const loc = first(p, ['location', 'city', 'loc'], 'Location');
+        const funded = first(p, ['funded', 'funding', 'fundedPercent', 'percent'], 0);
+        const impacted = first(p, ['impacted', 'peopleImpacted', 'beneficiaries'], 0);
+        const image = first(p, ['image', 'imageUrl', 'photo'], '');
+
+        return `
+          <div class="pcard">
+            <div class="pimg"
+              style="${
+                image
+                  ? `background-image:url('${esc(image)}');background-size:cover;background-position:center;`
+                  : ''
+              }">
+            </div>
+
+            <div class="pbody">
+              <h3>${esc(title)}</h3>
+
+              <span class="loc">${esc(loc)}</span>
+
+              <div class="bar">
+                <i style="width:${Math.min(100, Math.max(0, Number(funded) || 0))}%;"></i>
+              </div>
+
+              <div class="meta">
+                <span>${esc(funded)}% funded</span>
+                <span>${esc(impacted)} impacted</span>
+              </div>
+
+              <p style="margin-top:10px;font-size:.86rem;opacity:.72;">
+                ${esc(first(p, ['description', 'details'], ''))}
+              </p>
+
+              <a href="#donate"
+                class="lm"
+                style="display:inline-block;margin-top:12px;">
+                Donate to this →
+              </a>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+  } catch (err) {
+    console.warn('Programs could not load:', err);
   }
 
-  document.getElementById('continueDonateBtn').addEventListener('click', () => {
-    showToast('₹' + selectedAmount + ' चुना गया — payment gateway जल्द जुड़ेगा।');
-  });
 
-  document.getElementById('volForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const payload = { name:vName.value.trim(), age:vAge.value, email:vEmail.value.trim(), phone:vPhone.value.trim(), city:vCity.value.trim(), availability:vAvail.value, areaOfInterest:vArea.value, skills:vSkills.value.trim(), message:vMessage.value.trim() };
-    try { await apiFetch('/api/volunteers',{method:'POST',body:JSON.stringify(payload)}); showToast((payload.name || 'दोस्त') + ', आपका volunteer application admin panel में पहुँच गया।'); e.target.reset(); }
-    catch(err){ showToast('Application submit नहीं हो पाया। Backend URL और hosting check करें।'); console.error(err); }
-  });
+  // EVENTS
+  try {
+    const events = await apiFetch('/api/events');
 
-  document.getElementById('waBtn').addEventListener('click', () => {
-    window.open('https://wa.me/917568660017?text=' + encodeURIComponent('Namaste, mujhe Nisha Seva Foundation ke baare mein jaankari chahiye.'), '_blank');
-  });
+    const er = document.querySelector('#events .wrap');
 
-  document.querySelectorAll('.footLegal').forEach(a => {
-    a.addEventListener('click', (e) => {
-      e.preventDefault();
-      showToast(a.textContent + ' page जल्द जोड़ा जाएगा।');
-    });
-  });
+    if (er && Array.isArray(events) && events.length) {
 
-  /* Document links — paste real file URLs here once uploaded (e.g. Google Drive share link) */
-  const docLinks = {
-    'Annual Report': '',
-    'Financial Report': '',
-    'Registration Certificate': ''
-  };
-  document.querySelectorAll('.doc-card').forEach(card => {
-    const title = card.querySelector('h4').textContent.trim();
-    const url = docLinks[title];
-    const [viewBtn, dlBtn] = card.querySelectorAll('.docBtn');
-    if(url){
-      viewBtn.addEventListener('click', () => window.open(url, '_blank'));
-      dlBtn.addEventListener('click', () => window.open(url, '_blank'));
-    } else {
-      viewBtn.addEventListener('click', () => showToast('Document जल्द upload किया जाएगा।'));
-      dlBtn.addEventListener('click', () => showToast('Document जल्द upload किया जाएगा।'));
+      er.querySelectorAll('.event-row').forEach(x => x.remove());
+
+      events.forEach(e => {
+
+        const d = new Date(first(e, ['date', 'eventDate'], ''));
+
+        const day = isNaN(d)
+          ? first(e, ['day'], '')
+          : String(d.getDate()).padStart(2, '0');
+
+        const mon = isNaN(d)
+          ? first(e, ['month'], '')
+          : d.toLocaleString('en-IN', {
+              month: 'short'
+            }).toUpperCase();
+
+        const row = document.createElement('div');
+
+        row.className = 'event-row';
+
+        row.innerHTML = `
+          <div class="event-date">
+            ${esc(day)}
+            <small>${esc(mon)}</small>
+          </div>
+
+          <div class="event-info">
+            <h4>${esc(first(e, ['title', 'name'], 'Event'))}</h4>
+
+            <span>
+              ${esc(first(e, ['location', 'city'], ''))}
+              ${first(e, ['time']) ? ' · ' + esc(e.time) : ''}
+            </span>
+          </div>
+
+          <a href="#contactform" class="btn-ghost">
+            Register
+          </a>
+        `;
+
+        er.appendChild(row);
+      });
     }
-  });
 
-  document.querySelectorAll('.faq-item').forEach(item => {
-    const q = item.querySelector('.faq-q');
-    const a = item.querySelector('.faq-a');
-    q.addEventListener('click', () => {
-      const open = item.classList.contains('open');
-      document.querySelectorAll('.faq-item').forEach(i => { i.classList.remove('open'); i.querySelector('.faq-a').style.maxHeight = null; });
-      if(!open){ item.classList.add('open'); a.style.maxHeight = a.scrollHeight + 'px'; }
-    });
-  });
+  } catch (err) {
+    console.warn('Events could not load:', err);
+  }
 
-  /* Gallery lightbox */
-  const lightbox = document.getElementById('lightbox');
-  const lbInner = document.getElementById('lightboxInner');
-  document.querySelectorAll('.gtile').forEach(tile => {
-    tile.addEventListener('click', () => {
-      lbInner.style.background = getComputedStyle(tile).backgroundImage;
-      lbInner.innerHTML = '<button class="close" id="lightboxClose">✕</button><span style="position:absolute;bottom:16px;left:18px;color:#fff;font-size:.9rem;background:rgba(0,0,0,.35);padding:6px 12px;border-radius:999px;">' + tile.querySelector('span').textContent + '</span>';
-      lightbox.classList.add('open');
-      document.getElementById('lightboxClose').addEventListener('click', () => lightbox.classList.remove('open'));
-    });
-  });
-  lightbox.addEventListener('click', (e) => { if(e.target === lightbox) lightbox.classList.remove('open'); });
 
-  /* Member apply form + ID card */
-  const idWrap = document.getElementById('idcardWrap');
-  const canvas = document.getElementById('idcanvas');
-  const ctx = canvas.getContext('2d');
-  document.getElementById('memberForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name = document.getElementById('mName').value.trim();
-    const city = document.getElementById('mCity').value.trim();
-    const area = document.getElementById('mArea').value;
-    try { await apiFetch('/api/members',{method:'POST',body:JSON.stringify({name,phone:mPhone.value.trim(),email:mEmail.value.trim(),city,areaOfInterest:area})}); }
-    catch(err){ showToast('Membership application backend तक नहीं पहुँची।'); console.error(err); return; }
-    const grad = ctx.createLinearGradient(0,0,340,200);
-    grad.addColorStop(0,'#0F5132'); grad.addColorStop(1,'#2A9D8F');
-    ctx.fillStyle = grad; ctx.fillRect(0,0,340,200);
-    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.arc(300,20,60,0,7); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = '700 15px Manrope, sans-serif'; ctx.fillText('NISHA SEVA FOUNDATION', 20, 34);
-    ctx.font = '400 10px Inter, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText('Member Identity Card', 20, 50);
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(20,68,60,60,10); ctx.fill();
-    ctx.fillStyle = '#0F5132'; ctx.font = '700 26px Manrope, sans-serif'; ctx.fillText((name[0]||'M').toUpperCase(), 40, 108);
-    ctx.fillStyle = '#fff'; ctx.font = '700 16px Manrope, sans-serif'; ctx.fillText(name || 'Member Name', 96, 90);
-    ctx.font = '400 12px Inter, sans-serif'; ctx.fillStyle='rgba(255,255,255,.85)';
-    ctx.fillText((city || 'City') + ' · ' + area, 96, 110);
-    ctx.fillText('Valid: Demo Preview', 96, 128);
-    ctx.font = '400 10px Inter, sans-serif'; ctx.fillStyle='rgba(255,255,255,.6)';
-    ctx.fillText('Issued once application is verified by the foundation', 20, 182);
-    idWrap.style.display = 'flex';
-    idWrap.scrollIntoView({behavior:'smooth', block:'center'});
-    showToast('Application submit हो गई — नीचे आपका ID card preview है।');
-  });
-  document.getElementById('dlIdBtn').addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.download = 'nisha-seva-foundation-id-card.png';
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  });
+  // GALLERY
+  try {
+    const gallery = await apiFetch('/api/gallery');
 
-  document.getElementById('contactFormEl').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const payload={name:cName.value.trim(),email:cEmail.value.trim(),subject:cSubject.value.trim(),message:cMessage.value.trim()};
-    try { await apiFetch('/api/contactMessages',{method:'POST',body:JSON.stringify(payload)}); showToast('आपका message admin panel में पहुँच गया।'); e.target.reset(); }
-    catch(err){ showToast('Message submit नहीं हो पाया। Backend URL check करें।'); console.error(err); }
-  });
+    const gg = document.querySelector('#gallery .gallery-grid');
 
-  document.querySelectorAll('.socialLink').forEach(a => {
-    a.addEventListener('click', (e) => { e.preventDefault(); showToast(a.dataset.name + ' page जल्द जोड़ा जाएगा।'); });
-  });
+    if (gg && Array.isArray(gallery) && gallery.length) {
 
-  loadDynamicContent();
-</script>
-</body>
-</html>
+      gg.innerHTML = gallery.map(g => {
+
+        const title = first(
+          g,
+          ['title', 'caption', 'name'],
+          'Gallery'
+        );
+
+        const image = first(
+          g,
+          ['image', 'imageUrl', 'url', 'photo'],
+          ''
+        );
+
+        const bg = image
+          ? `background-image:url('${esc(image)}');background-size:cover;background-position:center;`
+          : 'background:linear-gradient(150deg,var(--green),var(--teal));';
+
+        return `
+          <button
+            type="button"
+            class="gtile"
+            data-title="${esc(title)}"
+            style="${bg}">
+            <span>${esc(title)}</span>
+          </button>
+        `;
+
+      }).join('');
+
+      attachGalleryLightbox();
+    }
+
+  } catch (err) {
+    console.warn('Gallery could not load:', err);
+  }
+
+
+  // DOCUMENTS
+  try {
+    const documents = await apiFetch('/api/documents');
+
+    const dg = document.querySelector('#transparency .doc-grid');
+
+    if (dg && Array.isArray(documents) && documents.length) {
+
+      dg.innerHTML = documents.map(doc => {
+
+        const title = first(
+          doc,
+          ['title', 'name'],
+          'Document'
+        );
+
+        const year = first(
+          doc,
+          ['year', 'period', 'date'],
+          ''
+        );
+
+        const url = first(
+          doc,
+          ['url', 'link', 'fileUrl', 'documentUrl'],
+          ''
+        );
+
+        return `
+          <div class="doc-card">
+
+            <h4>${esc(title)}</h4>
+
+            <span class="yr">
+              ${esc(year)}
+            </span>
+
+            <div class="doc-actions">
+
+              <button
+                type="button"
+                class="docBtn"
+                ${url ? `data-url="${esc(url)}"` : ''}>
+                View
+              </button>
+
+              <button
+                type="button"
+                class="docBtn"
+                ${url ? `data-url="${esc(url)}"` : ''}>
+                Download
+              </button>
+
+            </div>
+
+          </div>
+        `;
+
+      }).join('');
+
+      dg.querySelectorAll('.docBtn').forEach(b => {
+        b.onclick = () => {
+          if (b.dataset.url) {
+            window.open(
+              b.dataset.url,
+              '_blank',
+              'noopener'
+            );
+          } else {
+            showToast(
+              'Document link admin panel se add karein.'
+            );
+          }
+        };
+      });
+    }
+
+  } catch (err) {
+    console.warn('Documents could not load:', err);
+  }
+
+
+  // DONORS
+  try {
+    const donors = await apiFetch('/api/donors');
+
+    const dl = document.querySelector('#donors .donor-list');
+
+    if (dl && Array.isArray(donors) && donors.length) {
+
+      dl.innerHTML = donors.map(d => {
+
+        return `
+          <div class="donor-row">
+            <b>
+              ${esc(
+                first(
+                  d,
+                  ['name', 'donorName'],
+                  'Anonymous Donor'
+                )
+              )}
+            </b>
+
+            <span>
+              ${money(
+                first(
+                  d,
+                  ['amount', 'donation', 'value'],
+                  ''
+                )
+              )}
+            </span>
+          </div>
+        `;
+
+      }).join('');
+    }
+
+  } catch (err) {
+    console.warn('Donors could not load:', err);
+  }
+}
