@@ -841,6 +841,52 @@
 }
 
   // Load live content from Supabase-backed API
+  /* ---------- Contact Form ---------- */
+
+const contactForm = document.getElementById('contactFormEl');
+
+if (contactForm) {
+  contactForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const data = {
+      name: document.getElementById('cName').value.trim(),
+      email: document.getElementById('cEmail').value.trim(),
+      subject: document.getElementById('cSubject').value.trim(),
+      message: document.getElementById('cMessage').value.trim()
+    };
+
+    try {
+      const response = await fetch(
+        apiUrl('/api/contactMessages'),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(data)
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Submission failed');
+      }
+
+      alert('Message successfully submit ho gaya!');
+      contactForm.reset();
+
+    } catch (error) {
+      console.error('Contact form error:', error);
+      alert('Message submit nahi hua. Please dobara try karein.');
+    }
+  });
+}
+
+
+// Load live content from Supabase-backed API
+loadDynamicContent();
   loadDynamicContent();
 </script>
 </body>
