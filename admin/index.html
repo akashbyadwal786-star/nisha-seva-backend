@@ -1388,6 +1388,9 @@ function showIdCard(v){
 /* =========================================================
    DRAW ID CARD
    ========================================================= */
+/* =========================================================
+   DRAW ID CARD
+   ========================================================= */
 
 let currentVolunteer = null;
 
@@ -1396,216 +1399,671 @@ function drawIdCard(v){
   currentVolunteer = v;
 
   const canvas = document.getElementById("idCanvas");
+
   if(!canvas){
     alert("ID Card canvas नहीं मिला।");
     return;
   }
 
   const ctx = canvas.getContext("2d");
+
   const W = canvas.width;
   const H = canvas.height;
 
   ctx.clearRect(0,0,W,H);
 
+
+  /* =====================================================
+     GET VOLUNTEER DATA
+     ===================================================== */
+
+  const volunteerName =
+    v.name ||
+    v.fullName ||
+    v.vName ||
+    "Volunteer";
+
+  const volunteerAge =
+    v.age ||
+    v.vAge ||
+    "-";
+
+  const volunteerEmail =
+    v.email ||
+    v.vEmail ||
+    "-";
+
+  const volunteerPhone =
+    v.phone ||
+    v.vPhone ||
+    "-";
+
+  const volunteerCity =
+    v.city ||
+    v.vCity ||
+    "-";
+
+  const volunteerAvailability =
+    v.availability ||
+    v.vAvail ||
+    "-";
+
+  const volunteerArea =
+    v.area ||
+    v.vArea ||
+    "-";
+
+  const volunteerSkills =
+    v.skills ||
+    v.vSkills ||
+    "-";
+
+  const volunteerMessage =
+    v.message ||
+    v.vMessage ||
+    "";
+
+
+  const volunteerId =
+    v.volunteerId ||
+    ("NSF-V-" + String(v.id || "").padStart(5,"0"));
+
+
+  /* =====================================================
+     BACKGROUND
+     ===================================================== */
+
   const gradient = ctx.createLinearGradient(0,0,W,H);
+
   gradient.addColorStop(0,"#0F5132");
   gradient.addColorStop(1,"#198754");
+
   ctx.fillStyle = gradient;
+
   ctx.fillRect(0,0,W,H);
 
-  ctx.fillStyle = "rgba(255,255,255,.97)";
+
+  /* =====================================================
+     WHITE CARD
+     ===================================================== */
+
+  ctx.fillStyle = "rgba(255,255,255,.98)";
+
   if(typeof ctx.roundRect === "function"){
+
     ctx.beginPath();
-    ctx.roundRect(35,35,W-70,H-70,28);
+
+    ctx.roundRect(
+      35,
+      35,
+      W - 70,
+      H - 70,
+      28
+    );
+
     ctx.fill();
+
   }else{
-    ctx.fillRect(35,35,W-70,H-70);
+
+    ctx.fillRect(
+      35,
+      35,
+      W - 70,
+      H - 70
+    );
+
   }
 
+
+  /* =====================================================
+     HEADER
+     ===================================================== */
+
   ctx.fillStyle = "#0F5132";
+
   ctx.font = "bold 38px Arial";
-  ctx.fillText("NISHA SEVA FOUNDATION",75,100);
+
+  ctx.fillText(
+    "NISHA SEVA FOUNDATION",
+    75,
+    100
+  );
+
 
   ctx.fillStyle = "#687386";
+
   ctx.font = "22px Arial";
-  ctx.fillText("OFFICIAL VOLUNTEER IDENTITY CARD",78,137);
+
+  ctx.fillText(
+    "OFFICIAL VOLUNTEER IDENTITY CARD",
+    78,
+    137
+  );
+
 
   ctx.fillStyle = "#198754";
-  ctx.fillRect(75,160,W-150,4);
+
+  ctx.fillRect(
+    75,
+    160,
+    W - 150,
+    4
+  );
+
+
+  /* =====================================================
+     PHOTO / INITIAL BOX
+     ===================================================== */
 
   ctx.fillStyle = "#e9eef6";
+
   if(typeof ctx.roundRect === "function"){
+
     ctx.beginPath();
-    ctx.roundRect(75,200,150,175,18);
+
+    ctx.roundRect(
+      75,
+      200,
+      150,
+      175,
+      18
+    );
+
     ctx.fill();
+
   }else{
-    ctx.fillRect(75,200,150,175);
+
+    ctx.fillRect(
+      75,
+      200,
+      150,
+      175
+    );
+
   }
 
-  ctx.fillStyle = "#0F5132";
-  ctx.font = "bold 60px Arial";
-  const firstLetter = (
-    v.name || v.fullName || "V"
-  ).charAt(0).toUpperCase();
-  ctx.fillText(firstLetter,125,310);
 
-  const volunteerName = String(
-    v.name || v.fullName || "Volunteer"
-  ).substring(0,28);
+  ctx.fillStyle = "#0F5132";
+
+  ctx.font = "bold 60px Arial";
+
+  const firstLetter =
+    String(volunteerName)
+      .charAt(0)
+      .toUpperCase();
+
+
+  ctx.fillText(
+    firstLetter || "V",
+    125,
+    310
+  );
+
+
+  /* =====================================================
+     NAME
+     ===================================================== */
 
   ctx.fillStyle = "#172033";
-  ctx.font = "bold 34px Arial";
-  ctx.fillText(volunteerName,270,225);
+
+  ctx.font = "bold 32px Arial";
+
+  ctx.fillText(
+    String(volunteerName).substring(0,25),
+    270,
+    225
+  );
+
+
+  /* =====================================================
+     VOLUNTEER ID
+     ===================================================== */
 
   ctx.fillStyle = "#687386";
+
   ctx.font = "20px Arial";
-  ctx.fillText("VOLUNTEER ID",270,270);
+
+  ctx.fillText(
+    "VOLUNTEER ID",
+    270,
+    270
+  );
+
 
   ctx.fillStyle = "#123b6d";
+
   ctx.font = "bold 29px Arial";
+
   ctx.fillText(
-    v.volunteerId || ("NSF-V-" + String(v.id).padStart(5,"0")),
+    volunteerId,
     270,
     307
   );
 
+
+  /* =====================================================
+     CITY
+     ===================================================== */
+
   ctx.fillStyle = "#687386";
+
   ctx.font = "20px Arial";
-  ctx.fillText("CITY",270,350);
+
+  ctx.fillText(
+    "CITY",
+    270,
+    350
+  );
+
 
   ctx.fillStyle = "#172033";
+
   ctx.font = "bold 24px Arial";
-  ctx.fillText(String(v.city || "-").substring(0,25),270,382);
+
+  ctx.fillText(
+    String(volunteerCity).substring(0,22),
+    270,
+    382
+  );
+
+
+  /* =====================================================
+     AGE
+     ===================================================== */
+
+  ctx.fillStyle = "#687386";
+
+  ctx.font = "18px Arial";
+
+  ctx.fillText(
+    "AGE",
+    270,
+    415
+  );
+
+  ctx.fillStyle = "#172033";
+
+  ctx.font = "bold 21px Arial";
+
+  ctx.fillText(
+    String(volunteerAge),
+    270,
+    440
+  );
+
+
+  /* =====================================================
+     ACTIVE BADGE
+     ===================================================== */
 
   ctx.fillStyle = "#198754";
+
   if(typeof ctx.roundRect === "function"){
+
     ctx.beginPath();
-    ctx.roundRect(270,420,155,48,20);
+
+    ctx.roundRect(
+      270,
+      455,
+      155,
+      45,
+      20
+    );
+
     ctx.fill();
+
   }else{
-    ctx.fillRect(270,420,155,48);
+
+    ctx.fillRect(
+      270,
+      455,
+      155,
+      45
+    );
+
   }
 
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 21px Arial";
-  ctx.fillText("✓ ACTIVE",300,452);
 
-  const verificationCode = String(v.verificationCode || "");
+  ctx.fillStyle = "#fff";
+
+  ctx.font = "bold 20px Arial";
+
+  ctx.fillText(
+    "✓ ACTIVE",
+    300,
+    485
+  );
+
+
+  /* =====================================================
+     QR VERIFICATION
+     ===================================================== */
+
+  const verificationCode =
+    String(v.verificationCode || "");
+
   const verificationUrl =
     v.verificationUrl ||
-    (API + "/verify/volunteer/" + encodeURIComponent(verificationCode));
+    (
+      API +
+      "/verify/volunteer/" +
+      encodeURIComponent(verificationCode)
+    );
+
 
   const qrX = W - 265;
   const qrY = 205;
   const qrSize = 170;
 
+
   function finishQR(qrSource){
+
     try{
+
       if(qrSource){
-        ctx.drawImage(qrSource,qrX,qrY,qrSize,qrSize);
+
+        ctx.drawImage(
+          qrSource,
+          qrX,
+          qrY,
+          qrSize,
+          qrSize
+        );
+
       }else{
+
         ctx.fillStyle = "#f8d7da";
-        ctx.fillRect(qrX,qrY,qrSize,qrSize);
+
+        ctx.fillRect(
+          qrX,
+          qrY,
+          qrSize,
+          qrSize
+        );
+
         ctx.fillStyle = "#842029";
+
         ctx.font = "bold 16px Arial";
-        ctx.fillText("QR unavailable",qrX+22,qrY+88);
+
+        ctx.fillText(
+          "QR unavailable",
+          qrX + 22,
+          qrY + 88
+        );
+
       }
 
+
+      /* =================================================
+         QR LABEL
+         ================================================= */
+
       ctx.fillStyle = "#687386";
+
       ctx.font = "16px Arial";
-      ctx.fillText("SCAN TO VERIFY",W-250,400);
+
+      ctx.fillText(
+        "SCAN TO VERIFY",
+        W - 250,
+        400
+      );
+
 
       ctx.font = "14px Arial";
+
       ctx.fillText(
         verificationCode || "Verification",
-        W-250,
+        W - 250,
         425
       );
 
+
+      /* =================================================
+         FOOTER
+         ================================================= */
+
       ctx.fillStyle = "#687386";
+
       ctx.font = "15px Arial";
+
       ctx.fillText(
         "This card is issued by Nisha Seva Foundation.",
         75,
         535
       );
 
-      const info = document.getElementById("cardInfo");
+
+      /* =================================================
+         CARD INFO BELOW CANVAS
+         ================================================= */
+
+      const info =
+        document.getElementById("cardInfo");
+
       if(info){
-        info.innerHTML =
-          "<b>Verification URL:</b><br>" +
-          esc(verificationUrl);
+
+        info.innerHTML = `
+
+          <div style="
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:8px;
+            margin-top:10px;
+          ">
+
+            <div>
+              <b>Volunteer Name:</b>
+              ${esc(volunteerName)}
+            </div>
+
+            <div>
+              <b>Volunteer ID:</b>
+              ${esc(volunteerId)}
+            </div>
+
+            <div>
+              <b>Age:</b>
+              ${esc(volunteerAge)}
+            </div>
+
+            <div>
+              <b>City:</b>
+              ${esc(volunteerCity)}
+            </div>
+
+            <div>
+              <b>Phone:</b>
+              ${esc(volunteerPhone)}
+            </div>
+
+            <div>
+              <b>Email:</b>
+              ${esc(volunteerEmail)}
+            </div>
+
+            <div>
+              <b>Area:</b>
+              ${esc(volunteerArea)}
+            </div>
+
+            <div>
+              <b>Availability:</b>
+              ${esc(volunteerAvailability)}
+            </div>
+
+            <div style="grid-column:1/-1">
+              <b>Skills:</b>
+              ${esc(volunteerSkills)}
+            </div>
+
+            <div style="grid-column:1/-1">
+              <b>Verification URL:</b><br>
+              ${esc(verificationUrl)}
+            </div>
+
+          </div>
+
+        `;
+
       }
+
     }catch(err){
-      console.error(err);
+
+      console.error(
+        "ID Card QR Error:",
+        err
+      );
+
     }
+
   }
+
+
+  /* =====================================================
+     NO QR CODE
+     ===================================================== */
 
   if(!verificationCode){
+
     finishQR(null);
+
     return;
+
   }
+
+
+  /* =====================================================
+     QR LIBRARY CHECK
+     ===================================================== */
 
   if(typeof QRCode === "undefined"){
+
     finishQR(null);
-    const info = document.getElementById("cardInfo");
+
+    const info =
+      document.getElementById("cardInfo");
+
     if(info){
+
       info.innerHTML =
-        '<div class="err">QR Code library load नहीं हुई। Page को refresh करके दोबारा कोशिश करें।</div>';
+        '<div class="err">' +
+        'QR Code library load नहीं हुई। ' +
+        'Page को refresh करके दोबारा कोशिश करें।' +
+        '</div>';
+
     }
+
     return;
+
   }
 
-  const qrDiv = document.createElement("div");
+
+  /* =====================================================
+     CREATE QR
+     ===================================================== */
+
+  const qrDiv =
+    document.createElement("div");
+
   qrDiv.style.position = "fixed";
+
   qrDiv.style.left = "-100000px";
+
   qrDiv.style.top = "-100000px";
+
   document.body.appendChild(qrDiv);
 
+
   try{
-    new QRCode(qrDiv,{
-      text: verificationUrl,
-      width: 180,
-      height: 180,
-      correctLevel: QRCode.CorrectLevel.H
-    });
+
+    new QRCode(
+      qrDiv,
+      {
+        text: verificationUrl,
+        width: 180,
+        height: 180,
+        correctLevel:
+          QRCode.CorrectLevel.H
+      }
+    );
+
 
     setTimeout(function(){
-      const qrCanvas = qrDiv.querySelector("canvas");
-      const qrImg = qrDiv.querySelector("img");
+
+      const qrCanvas =
+        qrDiv.querySelector("canvas");
+
+      const qrImg =
+        qrDiv.querySelector("img");
+
 
       if(qrCanvas){
+
         finishQR(qrCanvas);
+
         qrDiv.remove();
+
         return;
+
       }
+
 
       if(qrImg){
+
         if(qrImg.complete){
+
           finishQR(qrImg);
+
           qrDiv.remove();
+
         }else{
-          qrImg.onload = function(){
-            finishQR(qrImg);
-            qrDiv.remove();
-          };
-          qrImg.onerror = function(){
-            finishQR(null);
-            qrDiv.remove();
-          };
+
+          qrImg.onload =
+            function(){
+
+              finishQR(qrImg);
+
+              qrDiv.remove();
+
+            };
+
+
+          qrImg.onerror =
+            function(){
+
+              finishQR(null);
+
+              qrDiv.remove();
+
+            };
+
         }
+
         return;
+
       }
 
+
       finishQR(null);
+
       qrDiv.remove();
+
     },500);
 
+
   }catch(err){
-    console.error(err);
+
+    console.error(
+      "QR generation error:",
+      err
+    );
+
     finishQR(null);
+
     qrDiv.remove();
+
   }
+
 }
 
 /* =========================================================
