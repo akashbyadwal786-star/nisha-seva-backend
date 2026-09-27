@@ -73,6 +73,9 @@
   .btn-ghost{border:1.5px solid var(--line); padding:13px 24px; border-radius:999px; text-decoration:none; font-weight:600; font-size:.96rem;}
   .btn-ghost:hover{border-color:var(--green);}
 
+  .home-premium-banner{width:100%; display:block; border-radius:28px; box-shadow:0 18px 50px rgba(15,81,50,.18); object-fit:cover;}
+  .mission-premium-image{width:100%; height:100%; display:block; object-fit:cover; border-radius:20px;}
+  @media (max-width:900px){ .home-premium-banner{border-radius:20px;} .mission-premium-image{min-height:220px;} }
   .hero-visual{position:relative; height:420px; border-radius:28px; background:linear-gradient(160deg,#0F5132 0%,#1c6b47 45%,#2A9D8F 100%); overflow:hidden;}
   .hero-visual svg{position:absolute; inset:0; width:100%; height:100%;}
   .impact-float{position:absolute; left:-18px; bottom:-22px; background:var(--card); border-radius:18px; padding:20px 22px; box-shadow:0 18px 40px -12px rgba(15,81,50,.35); max-width:250px; border:1px solid var(--line);}
@@ -261,25 +264,11 @@
 </header>
 
 <main>
-  <section class="hero">
-    <div class="wrap hero-grid">
-      <div class="eyebrow-free">
-        <h1>छोटी सी सेवा,<br>बड़ा बदलाव।</h1>
-        <p class="lede">Nisha Seva Foundation समाज के जरूरतमंद लोगों तक शिक्षा, अवसर, सहयोग और सम्मान पहुँचाने के लिए समर्पित है।</p>
-        <div class="hero-ctas">
-          <a href="#donate" class="btn-primary">Donate Now</a>
-          <a href="#mission" class="btn-ghost">Join Our Mission</a>
-        </div>
-      </div>
-      <div class="hero-visual">
-        <svg viewBox="0 0 500 420" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-          <circle cx="380" cy="90" r="140" fill="rgba(244,162,97,0.35)"/>
-          <circle cx="90" cy="330" r="170" fill="rgba(255,255,255,0.08)"/>
-          <path d="M40 260 Q160 180 260 250 T460 230" stroke="rgba(255,255,255,0.35)" stroke-width="3" fill="none"/>
-          <circle cx="250" cy="210" r="60" fill="rgba(255,255,255,0.12)"/>
-        </svg>
-        <div class="impact-float"><strong>Together We Can Create Change</strong><span>Community-led programs across India</span></div>
-      </div>
+  <section class="hero" id="home">
+    <div class="wrap">
+      <img class="home-premium-banner"
+           src="wide_colorful_nonprofit_charity_website_hero_bann.png"
+           alt="Nisha Seva Foundation - Together for a Brighter Tomorrow">
     </div>
   </section>
 
@@ -312,7 +301,7 @@
   <section id="mission">
     <div class="wrap">
       <div class="mission">
-        <div class="mission-art"></div>
+        <div class="mission-art"><img class="mission-premium-image" src="nsfpage.jpeg" alt="Nisha Seva Foundation - Our Mission"></div>
         <div>
           <h2>हमारा मिशन</h2>
           <p>मिलकर हम अपने समुदाय में सकारात्मक बदलाव की दिशा में कदम बढ़ा सकते हैं — शिक्षा, अवसर और सम्मान के ज़रिए।</p>
@@ -386,14 +375,11 @@
       </div>
       <form class="form-card" id="volForm" style="max-width:100%;">
         <div class="form-grid" id="volform">
-          <div class="field"><label for="vName">Full Name</label><input id="vName" placeholder="Enter full name" required></div>
-          <div class="field"><label for="vFatherName">Father's Name</label><input id="vFatherName" placeholder="Enter father's name" required></div>
-          <div class="field"><label for="vGender">Gender</label><select id="vGender" required><option value="">Select Gender</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select></div>
-          <div class="field"><label for="vAge">Age</label><input id="vAge" type="number" min="14" max="100" required></div>
-          <div class="field"><label for="vEmail">Email</label><input id="vEmail" type="email" placeholder="Email address" required></div>
-          <div class="field"><label for="vPhone">Phone</label><input id="vPhone" type="tel" placeholder="10 digit mobile number" required></div>
-          <div class="field"><label for="vCity">City</label><input id="vCity" placeholder="City" required></div>
-          <div class="field"><label for="vPhoto">Volunteer Photo</label><input id="vPhoto" type="file" accept="image/jpeg,image/png,image/webp" required><small style="opacity:.65;display:block;margin-top:6px;">Passport-size photo • JPG/PNG/WebP • Max 5 MB</small></div>
+          <div class="field"><label for="vName">Full Name</label><input id="vName" required></div>
+          <div class="field"><label for="vAge">Age</label><input id="vAge" type="number" min="14" required></div>
+          <div class="field"><label for="vEmail">Email</label><input id="vEmail" type="email" required></div>
+          <div class="field"><label for="vPhone">Phone</label><input id="vPhone" type="tel" required></div>
+          <div class="field"><label for="vCity">City</label><input id="vCity" required></div>
           <div class="field"><label for="vAvail">Availability</label><select id="vAvail"><option>Weekdays</option><option>Weekends</option><option>Evenings only</option><option>Flexible</option></select></div>
           <div class="field full"><label for="vArea">Area of Interest</label><select id="vArea"><option>Teaching</option><option>Social Media</option><option>Graphic Design</option><option>Event Management</option><option>Fundraising</option><option>Field Work</option><option>Technology</option><option>Community Outreach</option></select></div>
           <div class="field full"><label for="vSkills">Skills</label><input id="vSkills" placeholder="e.g. teaching, photography, design"></div>
@@ -941,103 +927,25 @@ if (contactForm) {
 // Load live content from Supabase-backed API
   /* ---------- Volunteer Form ---------- */
 
-/* ---------- Volunteer Photo Compression ---------- */
-
-function compressVolunteerPhoto(file) {
-  return new Promise((resolve, reject) => {
-    if (!file) {
-      reject(new Error('कृपया Volunteer Photo select करें.'));
-      return;
-    }
-
-    if (!file.type || !file.type.startsWith('image/')) {
-      reject(new Error('कृपया JPG, PNG या WebP image select करें.'));
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      reject(new Error('Photo 5 MB से छोटी होनी चाहिए.'));
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = function (e) {
-      const img = new Image();
-
-      img.onload = function () {
-        const MAX_WIDTH = 380;
-        const MAX_HEIGHT = 500;
-
-        let width = img.width;
-        let height = img.height;
-
-        const ratio = Math.min(
-          MAX_WIDTH / width,
-          MAX_HEIGHT / height,
-          1
-        );
-
-        width = Math.max(1, Math.round(width * ratio));
-        height = Math.max(1, Math.round(height * ratio));
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-
-        resolve(canvas.toDataURL('image/jpeg', 0.60));
-      };
-
-      img.onerror = function () {
-        reject(new Error('Photo load नहीं हो सकी.'));
-      };
-
-      img.src = e.target.result;
-    };
-
-    reader.onerror = function () {
-      reject(new Error('Photo read नहीं हो सकी.'));
-    };
-
-    reader.readAsDataURL(file);
-  });
-}
-
-
-/* ---------- Volunteer Form ---------- */
-
 const volunteerForm = document.getElementById('volForm');
 
 if (volunteerForm) {
   volunteerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    const data = {
+      name: document.getElementById('vName').value.trim(),
+      age: document.getElementById('vAge').value,
+      email: document.getElementById('vEmail').value.trim(),
+      phone: document.getElementById('vPhone').value.trim(),
+      city: document.getElementById('vCity').value.trim(),
+      availability: document.getElementById('vAvail').value,
+      area: document.getElementById('vArea').value,
+      skills: document.getElementById('vSkills').value.trim(),
+      message: document.getElementById('vMessage').value.trim()
+    };
+
     try {
-      const photoInput = document.getElementById('vPhoto');
-      const photoFile = photoInput && photoInput.files
-        ? photoInput.files[0]
-        : null;
-
-      const photoUrl = await compressVolunteerPhoto(photoFile);
-
-      const data = {
-        name: document.getElementById('vName').value.trim(),
-        fatherName: document.getElementById('vFatherName').value.trim(),
-        gender: document.getElementById('vGender').value,
-        age: document.getElementById('vAge').value,
-        email: document.getElementById('vEmail').value.trim(),
-        phone: document.getElementById('vPhone').value.trim(),
-        city: document.getElementById('vCity').value.trim(),
-        availability: document.getElementById('vAvail').value,
-        area: document.getElementById('vArea').value,
-        skills: document.getElementById('vSkills').value.trim(),
-        message: document.getElementById('vMessage').value.trim(),
-        photoUrl: photoUrl
-      };
-
       const response = await fetch(
         apiUrl('/api/volunteers'),
         {
@@ -1055,16 +963,15 @@ if (volunteerForm) {
         throw new Error(result.error || 'Submission failed');
       }
 
-      alert('Volunteer application successfully submit हो गई!\n\nAdmin approval के बाद Official Volunteer ID Card जारी किया जाएगा.');
+      alert('Volunteer application successfully submit ho gayi!');
       volunteerForm.reset();
 
     } catch (error) {
       console.error('Volunteer form error:', error);
-      alert('Application submit नहीं हुई.\n\n' + error.message);
+      alert('Application submit nahi hui. Please dobara try karein.');
     }
   });
 }
-
 
 
 /* ---------- Membership Form ---------- */
