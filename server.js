@@ -1,477 +1,688 @@
-from pathlib import Path
-import re
+require('dotenv').config();
 
-src_path = Path("/mnt/data/server(2).js")
-out_path = Path("/mnt/data/server.js")
+const express = require('express');
+const cors = require('cors');
+const multer = require('multer');
+const path = require('path');
+const crypto = require('crypto');
+const fs = require('fs');
+const { readDB, writeDB, nextId, pool } = require('./db');
+const { createClient } = require('@supabase/supabase-js');
 
-src = src_path.read_text(encoding="utf-8")
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-# 1) Make new volunteer applications start as "pending".
-old = """      const result = await pool.query(
-        `INSERT INTO ${table} (data)
-         VALUES ($1::jsonb)
-         RETURNING id, data, created_at`,
-        [JSON.stringify(req.body || {})]
-      );"""
+const app = express();
 
-new = """      // New volunteer applications always start as pending.
-      // Other public forms are stored exactly as submitted.
-      const submissionData = { ...(req.body || {}) };
-
-      if (name === 'volunteers') {
-        submissionData.status = 'pending';
-        submissionData.volunteerId = null;
-        submissionData.verificationCode = null;
-        submissionData.verificationUrl = null;
-        submissionData.approvedAt = null;
-        submissionData.issuedAt = null;
-        submissionData.revokedAt = null;
-        submissionData.rejectedAt = null;
-      }
-
-      const result = await pool.query(
-        `INSERT INTO ${table} (data)
-         VALUES ($1::jsonb)
-         RETURNING id, data, created_at`,
-        [JSON.stringify(submissionData)]
-      );"""
-
-if old not in src:
-    raise RuntimeError("Volunteer submission block not found.")
-src = src.replace(old, new, 1)
-
-# 2) Add volunteer approval / rejection / revocation / public verification routes.
-marker = "/* ---------- Website Form Collections ---------- */"
-
-block = r"""
-/* ---------- Volunteer ID / Approval System ---------- */
+const PORT = process.env.PORT || 4000;
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-this-password';
 
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
   'https://nisha-seva-backend.onrender.com';
 
-/*
-  Admin: Approve volunteer and issue official ID.
-  ID format: NSF-V-00001
-  The numeric part comes from the database row ID, so it remains stable.
-*/
-app.post('/api/volunteers/:id/approve', requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
+app.use(cors());
+app.use(express.json());
 
-    if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: 'Invalid volunteer ID' });
-    }
+/* ---------- Uploads ---------- */
 
-    const result = await pool.query(
-      `SELECT id, data, created_at
-       FROM volunteers
-       WHERE id = $1
-       LIMIT 1`,
-      [id]
-    );
+const uploadsDir = path.join(__dirname, 'uploads');
 
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Volunteer application not found' });
-    }
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
-    const row = result.rows[0];
-    const data = { ...(row.data || {}) };
+app.use('/uploads', express.static(uploadsDir));
+app.use('/admin', express.static(path.join(__dirname, 'admin')));
 
-    // Do not issue a different official ID every time admin clicks approve.
-    const volunteerId =
-      data.volunteerId || `NSF-V-${String(row.id).padStart(5, '0')}`;
 
-    const verificationCode =
-      data.verificationCode || crypto.randomBytes(16).toString('hex');
+/* ---------- Admin Auth ---------- */
 
-    const verificationUrl =
-      `${PUBLIC_BASE_URL.replace(/\/$/, '')}/verify/volunteer/${verificationCode}`;
+const sessions = new Map();
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
-    const now = new Date().toISOString();
+function requireAdmin(req, res, next) {
 
-    data.status = 'active';
-    data.volunteerId = volunteerId;
-    data.verificationCode = verificationCode;
-    data.verificationUrl = verificationUrl;
-    data.approvedAt = data.approvedAt || now;
-    data.issuedAt = data.issuedAt || now;
-    data.rejectedAt = null;
-    data.revokedAt = null;
+  const header = req.headers.authorization || '';
 
-    const updated = await pool.query(
-      `UPDATE volunteers
-       SET data = $1::jsonb
-       WHERE id = $2
-       RETURNING id, data, created_at`,
-      [JSON.stringify(data), id]
-    );
+  const token = header.startsWith('Bearer ')
+    ? header.slice(7)
+    : null;
 
-    return res.json({
-      ok: true,
-      message: 'Volunteer approved and ID issued',
-      volunteer: {
-        id: updated.rows[0].id,
-        submittedAt: updated.rows[0].created_at,
-        ...(updated.rows[0].data || {})
-      },
-      volunteerId,
-      verificationCode,
-      verificationUrl
+  const expiry = token && sessions.get(token);
+
+  if (!expiry || expiry < Date.now()) {
+
+    return res.status(401).json({
+      error: 'Unauthorized'
     });
-  } catch (error) {
-    console.error('POST /api/volunteers/:id/approve', error);
-    return res.status(500).json({
-      error: 'Could not approve volunteer'
-    });
+
   }
-});
+
+  next();
+}
 
 
-/* Admin: Reject volunteer application */
-app.post('/api/volunteers/:id/reject', requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
+/* ---------- Admin Login ---------- */
 
-    if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: 'Invalid volunteer ID' });
-    }
+app.post('/api/admin/login', (req, res) => {
 
-    const result = await pool.query(
-      `SELECT id, data, created_at
-       FROM volunteers
-       WHERE id = $1
-       LIMIT 1`,
-      [id]
-    );
+  const { username, password } = req.body || {};
 
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Volunteer application not found' });
-    }
+  if (
+    username === ADMIN_USERNAME &&
+    password === ADMIN_PASSWORD
+  ) {
 
-    const data = { ...(result.rows[0].data || {}) };
+    const token =
+      crypto.randomBytes(24).toString('hex');
 
-    data.status = 'rejected';
-    data.rejectedAt = new Date().toISOString();
-    data.revokedAt = null;
-
-    const updated = await pool.query(
-      `UPDATE volunteers
-       SET data = $1::jsonb
-       WHERE id = $2
-       RETURNING id, data, created_at`,
-      [JSON.stringify(data), id]
+    sessions.set(
+      token,
+      Date.now() + SESSION_TTL_MS
     );
 
     return res.json({
-      ok: true,
-      message: 'Volunteer application rejected',
-      volunteer: {
-        id: updated.rows[0].id,
-        submittedAt: updated.rows[0].created_at,
-        ...(updated.rows[0].data || {})
-      }
-    });
-  } catch (error) {
-    console.error('POST /api/volunteers/:id/reject', error);
-    return res.status(500).json({
-      error: 'Could not reject volunteer'
+      token
     });
   }
+
+  res.status(401).json({
+    error: 'Invalid username or password'
+  });
 });
 
 
-/* Admin: Revoke an already issued volunteer ID */
-app.post('/api/volunteers/:id/revoke', requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
+/* ---------- Admin Logout ---------- */
 
-    if (!Number.isInteger(id)) {
-      return res.status(400).json({ error: 'Invalid volunteer ID' });
-    }
+app.post('/api/admin/logout', requireAdmin, (req, res) => {
 
-    const result = await pool.query(
-      `SELECT id, data, created_at
-       FROM volunteers
-       WHERE id = $1
-       LIMIT 1`,
-      [id]
-    );
+  const token =
+    req.headers.authorization.slice(7);
 
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Volunteer application not found' });
-    }
+  sessions.delete(token);
 
-    const data = { ...(result.rows[0].data || {}) };
+  res.json({
+    ok: true
+  });
 
-    data.status = 'revoked';
-    data.revokedAt = new Date().toISOString();
-
-    const updated = await pool.query(
-      `UPDATE volunteers
-       SET data = $1::jsonb
-       WHERE id = $2
-       RETURNING id, data, created_at`,
-      [JSON.stringify(data), id]
-    );
-
-    return res.json({
-      ok: true,
-      message: 'Volunteer ID revoked',
-      volunteer: {
-        id: updated.rows[0].id,
-        submittedAt: updated.rows[0].created_at,
-        ...(updated.rows[0].data || {})
-      }
-    });
-  } catch (error) {
-    console.error('POST /api/volunteers/:id/revoke', error);
-    return res.status(500).json({
-      error: 'Could not revoke volunteer ID'
-    });
-  }
 });
 
 
-/* Public: Verify volunteer ID using QR verification code */
-app.get('/api/volunteers/verify/:code', async (req, res) => {
-  try {
-    const code = String(req.params.code || '').trim();
+/* ---------- File Upload ---------- */
 
-    if (!code) {
-      return res.status(400).json({
-        verified: false,
-        error: 'Verification code is required'
-      });
-    }
+const upload = multer({
+  storage: multer.memoryStorage(),
 
-    const result = await pool.query(
-      `SELECT id, data, created_at
-       FROM volunteers
-       WHERE data->>'verificationCode' = $1
-       LIMIT 1`,
-      [code]
-    );
+  limits: {
+    fileSize: 5 * 1024 * 1024
+  },
 
-    if (!result.rows.length) {
-      return res.status(404).json({
-        verified: false,
-        status: 'not_found',
-        message: 'Volunteer ID could not be verified'
-      });
-    }
+  fileFilter: (req, file, cb) => {
 
-    const row = result.rows[0];
-    const data = row.data || {};
+    if (
+      file.mimetype &&
+      file.mimetype.startsWith('image/')
+    ) {
 
-    const status = data.status || 'pending';
-    const verified = status === 'active';
+      cb(null, true);
 
-    return res.json({
-      verified,
-      status,
-      volunteerId: data.volunteerId || null,
-      name: data.vName || data.name || '',
-      city: data.vCity || data.city || '',
-      area: data.vArea || data.area || '',
-      skills: data.vSkills || data.skills || '',
-      approvedAt: data.approvedAt || null,
-      issuedAt: data.issuedAt || null,
-      revokedAt: data.revokedAt || null,
-      rejectedAt: data.rejectedAt || null,
-      message: verified
-        ? 'Volunteer ID is valid and active'
-        : `Volunteer ID status: ${status}`
-    });
-  } catch (error) {
-    console.error('GET /api/volunteers/verify/:code', error);
-    return res.status(500).json({
-      verified: false,
-      error: 'Verification service error'
-    });
-  }
-});
-
-
-/* Public verification page opened by QR code */
-app.get('/verify/volunteer/:code', (req, res) => {
-  const code = String(req.params.code || '');
-
-  const safeCode = code.replace(/[^a-zA-Z0-9_-]/g, '');
-
-  res.type('html').send(`<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Volunteer ID Verification - Nisha Seva Foundation</title>
-<style>
-  *{box-sizing:border-box}
-  body{
-    margin:0;
-    min-height:100vh;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:20px;
-    font-family:Arial,Helvetica,sans-serif;
-    background:#f3f6f9;
-    color:#1f2937
-  }
-  .card{
-    width:100%;
-    max-width:520px;
-    background:#fff;
-    border-radius:18px;
-    padding:28px;
-    box-shadow:0 10px 35px rgba(0,0,0,.10)
-  }
-  h1{margin:0 0 8px;font-size:25px}
-  .sub{color:#64748b;margin-bottom:22px}
-  .status{
-    padding:14px 16px;
-    border-radius:12px;
-    font-weight:700;
-    margin-bottom:20px
-  }
-  .active{background:#dcfce7;color:#166534}
-  .other{background:#fee2e2;color:#991b1b}
-  .loading{background:#e2e8f0;color:#334155}
-  .row{
-    display:flex;
-    justify-content:space-between;
-    gap:15px;
-    border-bottom:1px solid #e5e7eb;
-    padding:12px 0
-  }
-  .label{font-weight:700;color:#475569}
-  .value{text-align:right}
-  .footer{
-    margin-top:20px;
-    font-size:13px;
-    color:#64748b;
-    text-align:center
-  }
-</style>
-</head>
-<body>
-<div class="card">
-  <h1>Nisha Seva Foundation</h1>
-  <div class="sub">Volunteer ID Verification</div>
-  <div id="status" class="status loading">Verifying ID...</div>
-  <div id="details"></div>
-  <div class="footer">
-    This page verifies the volunteer ID issued by Nisha Seva Foundation.
-  </div>
-</div>
-
-<script>
-(async function(){
-  const statusEl = document.getElementById('status');
-  const detailsEl = document.getElementById('details');
-
-  try {
-    const response = await fetch('/api/volunteers/verify/${safeCode}');
-    const data = await response.json();
-
-    if (data.verified) {
-      statusEl.className = 'status active';
-      statusEl.textContent = '✓ VERIFIED — ACTIVE VOLUNTEER';
     } else {
-      statusEl.className = 'status other';
-      statusEl.textContent =
-        '✕ NOT ACTIVE — ' + String(data.status || 'Not verified').toUpperCase();
+
+      cb(
+        new Error(
+          'Only image files are allowed'
+        )
+      );
+
     }
 
-    const rows = [
-      ['Volunteer ID', data.volunteerId || '—'],
-      ['Name', data.name || '—'],
-      ['City', data.city || '—'],
-      ['Area', data.area || '—'],
-      ['Skills', data.skills || '—']
-    ];
-
-    detailsEl.innerHTML = rows.map(function(row){
-      return '<div class="row">' +
-        '<div class="label">' + escapeHtml(row[0]) + '</div>' +
-        '<div class="value">' + escapeHtml(row[1]) + '</div>' +
-      '</div>';
-    }).join('');
-  } catch (error) {
-    statusEl.className = 'status other';
-    statusEl.textContent = 'Verification service unavailable';
   }
 
-  function escapeHtml(value) {
-    return String(value)
-      .replaceAll('&','&amp;')
-      .replaceAll('<','&lt;')
-      .replaceAll('>','&gt;')
-      .replaceAll('"','&quot;')
-      .replaceAll("'","&#039;");
-  }
-})();
-</script>
-</body>
-</html>`);
 });
 
 
-"""
+app.post(
+  '/api/upload',
+  requireAdmin,
+  upload.single('file'),
+  async (req, res) => {
 
-if marker not in src:
-    raise RuntimeError("Insertion marker not found.")
-src = src.replace(marker, block + marker, 1)
+    try {
 
-# 3) Add a clear startup message showing the public base URL.
-old_start = """  console.log(
-    `Admin panel: /admin`
-  );"""
+      if (!req.file) {
 
-new_start = """  console.log(
-    `Admin panel: /admin`
-  );
+        return res.status(400).json({
+          error: 'No file uploaded'
+        });
 
-  console.log(
-    `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
-  );"""
+      }
 
-if old_start in src:
-    src = src.replace(old_start, new_start, 1)
+      const ext =
+        (
+          req.file.originalname
+            .split('.')
+            .pop() || 'jpg'
+        )
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
 
-out_path.write_text(src, encoding="utf-8")
+      const fileName =
+        `gallery/${Date.now()}-${crypto.randomUUID()}.${ext}`;
 
-print(f"✅ Corrected server.js created: {out_path}")
-print(f"Lines: {len(src.splitlines())}")
-print("Added: pending status, approve, reject, revoke, verification API, QR verification page.")
-/*
-|--------------------------------------------------------------------------
-| REGISTER WEBSITE FORM COLLECTIONS
-|--------------------------------------------------------------------------
-*/
+      const { error } =
+        await supabase.storage
+          .from('gallery')
+          .upload(
+            fileName,
+            req.file.buffer,
+            {
+              contentType: req.file.mimetype,
+              upsert: false
+            }
+          );
 
-[
-  'volunteers',
-  'members',
-  'contactMessages',
-  'newsletter'
-].forEach(
-  submissionRoutes
+      if (error) {
+
+        console.error(
+          'Supabase upload error:',
+          error
+        );
+
+        return res.status(500).json({
+          error: 'Image upload failed'
+        });
+
+      }
+
+      const { data } =
+        supabase.storage
+          .from('gallery')
+          .getPublicUrl(fileName);
+
+      res.json({
+        ok: true,
+        url: data.publicUrl
+      });
+
+    } catch (error) {
+
+      console.error(
+        'POST /api/upload',
+        error
+      );
+
+      res.status(500).json({
+        error: 'Upload failed'
+      });
+
+    }
+
+  }
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| VOLUNTEER ID / APPROVAL SYSTEM
-|--------------------------------------------------------------------------
-*/
+/* ---------- Generic CRUD Routes ---------- */
+
+function crudRoutes(name) {
+
+  /* Public read */
+
+  app.get(
+    `/api/${name}`,
+    async (req, res) => {
+
+      try {
+
+        const db = await readDB();
+
+        res.json(
+          db[name] || []
+        );
+
+      } catch (error) {
+
+        console.error(
+          `GET /api/${name}`,
+          error
+        );
+
+        res.status(500).json({
+          error: 'Database error'
+        });
+
+      }
+
+    }
+  );
 
 
-/*
-|--------------------------------------------------------------------------
-| APPROVE & ISSUE VOLUNTEER ID
-|--------------------------------------------------------------------------
-*/
+  /* Admin create */
+
+  app.post(
+    `/api/${name}`,
+    requireAdmin,
+    async (req, res) => {
+
+      try {
+
+        const db = await readDB();
+
+        if (!Array.isArray(db[name])) {
+          db[name] = [];
+        }
+
+        const item = {
+          id: nextId(db[name]),
+          ...req.body
+        };
+
+        db[name].push(item);
+
+        await writeDB(db);
+
+        res.status(201).json(item);
+
+      } catch (error) {
+
+        console.error(
+          `POST /api/${name}`,
+          error
+        );
+
+        res.status(500).json({
+          error: 'Database error'
+        });
+
+      }
+
+    }
+  );
+
+
+  /* Admin update */
+
+  app.put(
+    `/api/${name}/:id`,
+    requireAdmin,
+    async (req, res) => {
+
+      try {
+
+        const db = await readDB();
+
+        const id =
+          Number(req.params.id);
+
+        if (!Array.isArray(db[name])) {
+          db[name] = [];
+        }
+
+        const idx =
+          db[name].findIndex(
+            item =>
+              Number(item.id) === id
+          );
+
+        if (idx === -1) {
+
+          return res.status(404).json({
+            error: 'Not found'
+          });
+
+        }
+
+        db[name][idx] = {
+          ...db[name][idx],
+          ...req.body,
+          id
+        };
+
+        await writeDB(db);
+
+        res.json(
+          db[name][idx]
+        );
+
+      } catch (error) {
+
+        console.error(
+          `PUT /api/${name}`,
+          error
+        );
+
+        res.status(500).json({
+          error: 'Database error'
+        });
+
+      }
+
+    }
+  );
+
+
+  /* Admin delete */
+
+  app.delete(
+    `/api/${name}/:id`,
+    requireAdmin,
+    async (req, res) => {
+
+      try {
+
+        const db = await readDB();
+
+        const id =
+          Number(req.params.id);
+
+        if (!Array.isArray(db[name])) {
+          db[name] = [];
+        }
+
+        db[name] =
+          db[name].filter(
+            item =>
+              Number(item.id) !== id
+          );
+
+        await writeDB(db);
+
+        res.json({
+          ok: true
+        });
+
+      } catch (error) {
+
+        console.error(
+          `DELETE /api/${name}`,
+          error
+        );
+
+        res.status(500).json({
+          error: 'Database error'
+        });
+
+      }
+
+    }
+  );
+
+}
+
+
+/* ---------- Admin Collections ---------- */
+
+[
+  'programs',
+  'events',
+  'gallery',
+  'documents',
+  'donors'
+].forEach(crudRoutes);
+
+
+/* ---------- Submission Tables ---------- */
+
+const submissionTables = {
+
+  volunteers:
+    'volunteers',
+
+  members:
+    'members',
+
+  contactMessages:
+    'contact_messages',
+
+  newsletter:
+    'newsletter'
+
+};
+
+
+/* ---------- Submission Routes ---------- */
+
+function submissionRoutes(name) {
+
+  const table =
+    submissionTables[name];
+
+  if (!table) {
+
+    console.error(
+      `Unknown submission collection: ${name}`
+    );
+
+    return;
+  }
+
+
+  /* Public form submission */
+
+  app.post(
+    `/api/${name}`,
+    async (req, res) => {
+
+      try {
+
+        const submissionData =
+          {
+            ...(req.body || {})
+          };
+
+
+        /*
+         * Volunteer applications
+         * always start as pending.
+         */
+
+        if (name === 'volunteers') {
+
+          submissionData.status =
+            'pending';
+
+          submissionData.volunteerId =
+            null;
+
+          submissionData.verificationCode =
+            null;
+
+          submissionData.verificationUrl =
+            null;
+
+          submissionData.approvedAt =
+            null;
+
+          submissionData.issuedAt =
+            null;
+
+          submissionData.revokedAt =
+            null;
+
+          submissionData.rejectedAt =
+            null;
+
+        }
+
+
+        const result =
+          await pool.query(
+
+            `INSERT INTO ${table} (data)
+             VALUES ($1::jsonb)
+             RETURNING id, data, created_at`,
+
+            [
+              JSON.stringify(
+                submissionData
+              )
+            ]
+
+          );
+
+
+        const row =
+          result.rows[0];
+
+
+        res.status(201).json({
+
+          ok: true,
+
+          id: row.id
+
+        });
+
+
+      } catch (error) {
+
+        console.error(
+          `POST /api/${name}`,
+          error
+        );
+
+        res.status(500).json({
+
+          error:
+            'Database error'
+
+        });
+
+      }
+
+    }
+  );
+
+
+  /* Admin read */
+
+  app.get(
+    `/api/${name}`,
+    requireAdmin,
+    async (req, res) => {
+
+      try {
+
+        const result =
+          await pool.query(
+
+            `SELECT id, data, created_at
+             FROM ${table}
+             ORDER BY created_at DESC`
+
+          );
+
+
+        const rows =
+          result.rows.map(
+            row => ({
+
+              id:
+                row.id,
+
+              submittedAt:
+                row.created_at,
+
+              ...(row.data || {})
+
+            })
+          );
+
+
+        res.json(rows);
+
+
+      } catch (error) {
+
+        console.error(
+          `GET /api/${name}`,
+          error
+        );
+
+        res.status(500).json({
+
+          error:
+            'Database error'
+
+        });
+
+      }
+
+    }
+  );
+
+
+  /* Admin delete */
+
+  app.delete(
+    `/api/${name}/:id`,
+    requireAdmin,
+    async (req, res) => {
+
+      try {
+
+        const id =
+          Number(req.params.id);
+
+
+        if (!Number.isInteger(id)) {
+
+          return res.status(400).json({
+
+            error:
+              'Invalid ID'
+
+          });
+
+        }
+
+
+        await pool.query(
+
+          `DELETE FROM ${table}
+           WHERE id = $1`,
+
+          [id]
+
+        );
+
+
+        res.json({
+          ok: true
+        });
+
+
+      } catch (error) {
+
+        console.error(
+          `DELETE /api/${name}`,
+          error
+        );
+
+        res.status(500).json({
+
+          error:
+            'Database error'
+
+        });
+
+      }
+
+    }
+  );
+
+}
+
+
+/* =========================================================
+   VOLUNTEER ID SYSTEM
+   ========================================================= */
+
+
+/* ---------- Approve & Issue ID ---------- */
 
 app.post(
   '/api/volunteers/:id/approve',
@@ -487,18 +698,14 @@ app.post(
       if (!Number.isInteger(id)) {
 
         return res.status(400).json({
+
           error:
             'Invalid volunteer ID'
+
         });
 
       }
 
-
-      /*
-      |----------------------------------------------------------------
-      | GET VOLUNTEER
-      |----------------------------------------------------------------
-      */
 
       const result =
         await pool.query(
@@ -513,9 +720,7 @@ app.post(
         );
 
 
-      if (
-        result.rows.length === 0
-      ) {
+      if (!result.rows.length) {
 
         return res.status(404).json({
 
@@ -531,28 +736,15 @@ app.post(
         result.rows[0];
 
 
-      const data =
-        {
-          ...(row.data || {})
-        };
+      const data = {
+        ...(row.data || {})
+      };
 
-
-      /*
-      |----------------------------------------------------------------
-      | CREATE OFFICIAL VOLUNTEER ID
-      |----------------------------------------------------------------
-      */
 
       const volunteerId =
         data.volunteerId ||
         `NSF-V-${String(row.id).padStart(5, '0')}`;
 
-
-      /*
-      |----------------------------------------------------------------
-      | CREATE VERIFICATION CODE
-      |----------------------------------------------------------------
-      */
 
       const verificationCode =
         data.verificationCode ||
@@ -561,12 +753,6 @@ app.post(
           .toString('hex');
 
 
-      /*
-      |----------------------------------------------------------------
-      | VERIFICATION URL
-      |----------------------------------------------------------------
-      */
-
       const verificationUrl =
         `${PUBLIC_BASE_URL.replace(/\/$/, '')}/verify/volunteer/${verificationCode}`;
 
@@ -574,12 +760,6 @@ app.post(
       const now =
         new Date().toISOString();
 
-
-      /*
-      |----------------------------------------------------------------
-      | UPDATE VOLUNTEER DATA
-      |----------------------------------------------------------------
-      */
 
       data.status =
         'active';
@@ -606,12 +786,6 @@ app.post(
         null;
 
 
-      /*
-      |----------------------------------------------------------------
-      | SAVE TO DATABASE
-      |----------------------------------------------------------------
-      */
-
       const updated =
         await pool.query(
 
@@ -632,27 +806,18 @@ app.post(
         updated.rows[0];
 
 
-      /*
-      |----------------------------------------------------------------
-      | RESPONSE
-      |----------------------------------------------------------------
-      */
-
-      return res.json({
+      res.json({
 
         ok: true,
 
         message:
-          'Volunteer approved and ID issued successfully',
+          'Volunteer approved and ID issued',
 
-        volunteerId:
-          volunteerId,
+        volunteerId,
 
-        verificationCode:
-          verificationCode,
+        verificationCode,
 
-        verificationUrl:
-          verificationUrl,
+        verificationUrl,
 
         volunteer: {
 
@@ -676,8 +841,7 @@ app.post(
         error
       );
 
-
-      return res.status(500).json({
+      res.status(500).json({
 
         error:
           'Could not approve volunteer'
@@ -690,11 +854,7 @@ app.post(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| REJECT VOLUNTEER
-|--------------------------------------------------------------------------
-*/
+/* ---------- Reject Volunteer ---------- */
 
 app.post(
   '/api/volunteers/:id/reject',
@@ -732,9 +892,7 @@ app.post(
         );
 
 
-      if (
-        result.rows.length === 0
-      ) {
+      if (!result.rows.length) {
 
         return res.status(404).json({
 
@@ -746,10 +904,9 @@ app.post(
       }
 
 
-      const data =
-        {
-          ...(result.rows[0].data || {})
-        };
+      const data = {
+        ...(result.rows[0].data || {})
+      };
 
 
       data.status =
@@ -811,7 +968,6 @@ app.post(
         error
       );
 
-
       res.status(500).json({
 
         error:
@@ -825,11 +981,7 @@ app.post(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| REVOKE VOLUNTEER ID
-|--------------------------------------------------------------------------
-*/
+/* ---------- Revoke Volunteer ID ---------- */
 
 app.post(
   '/api/volunteers/:id/revoke',
@@ -867,9 +1019,7 @@ app.post(
         );
 
 
-      if (
-        result.rows.length === 0
-      ) {
+      if (!result.rows.length) {
 
         return res.status(404).json({
 
@@ -881,10 +1031,9 @@ app.post(
       }
 
 
-      const data =
-        {
-          ...(result.rows[0].data || {})
-        };
+      const data = {
+        ...(result.rows[0].data || {})
+      };
 
 
       data.status =
@@ -943,7 +1092,6 @@ app.post(
         error
       );
 
-
       res.status(500).json({
 
         error:
@@ -957,11 +1105,7 @@ app.post(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| PUBLIC VOLUNTEER VERIFICATION API
-|--------------------------------------------------------------------------
-*/
+/* ---------- Public Verification API ---------- */
 
 app.get(
   '/api/volunteers/verify/:code',
@@ -1003,9 +1147,7 @@ app.get(
         );
 
 
-      if (
-        result.rows.length === 0
-      ) {
+      if (!result.rows.length) {
 
         return res.status(404).json({
 
@@ -1041,11 +1183,9 @@ app.get(
 
       res.json({
 
-        verified:
-          verified,
+        verified,
 
-        status:
-          status,
+        status,
 
         volunteerId:
           data.volunteerId || null,
@@ -1101,7 +1241,6 @@ app.get(
         error
       );
 
-
       res.status(500).json({
 
         verified:
@@ -1118,11 +1257,7 @@ app.get(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| PUBLIC QR VERIFICATION PAGE
-|--------------------------------------------------------------------------
-*/
+/* ---------- Public QR Verification Page ---------- */
 
 app.get(
   '/verify/volunteer/:code',
@@ -1158,13 +1293,11 @@ app.get(
 Volunteer ID Verification
 </title>
 
-
 <style>
 
 * {
   box-sizing: border-box;
 }
-
 
 body {
 
@@ -1193,18 +1326,20 @@ body {
 
 }
 
-
 .card {
 
   width: 100%;
 
   max-width: 520px;
 
-  background: white;
+  background:
+    white;
 
-  border-radius: 20px;
+  border-radius:
+    20px;
 
-  padding: 30px;
+  padding:
+    30px;
 
   box-shadow:
     0 10px 40px
@@ -1212,31 +1347,33 @@ body {
 
 }
 
-
 .logo {
 
-  text-align: center;
+  text-align:
+    center;
 
-  font-size: 30px;
+  font-size:
+    30px;
 
-  margin-bottom: 8px;
+  margin-bottom:
+    8px;
 
 }
 
-
 h1 {
 
-  text-align: center;
+  text-align:
+    center;
 
   margin:
     0 0 8px;
 
 }
 
-
 .subtitle {
 
-  text-align: center;
+  text-align:
+    center;
 
   color:
     #64748b;
@@ -1246,22 +1383,24 @@ h1 {
 
 }
 
-
 .status {
 
-  padding: 15px;
+  padding:
+    15px;
 
-  border-radius: 12px;
+  border-radius:
+    12px;
 
-  text-align: center;
+  text-align:
+    center;
 
-  font-weight: bold;
+  font-weight:
+    bold;
 
   margin-bottom:
     20px;
 
 }
-
 
 .loading {
 
@@ -1273,7 +1412,6 @@ h1 {
 
 }
 
-
 .active {
 
   background:
@@ -1283,7 +1421,6 @@ h1 {
     #166534;
 
 }
-
 
 .invalid {
 
@@ -1295,15 +1432,16 @@ h1 {
 
 }
 
-
 .row {
 
-  display: flex;
+  display:
+    flex;
 
   justify-content:
     space-between;
 
-  gap: 20px;
+  gap:
+    20px;
 
   padding:
     13px 0;
@@ -1312,7 +1450,6 @@ h1 {
     1px solid #e2e8f0;
 
 }
-
 
 .label {
 
@@ -1324,7 +1461,6 @@ h1 {
 
 }
 
-
 .value {
 
   text-align:
@@ -1334,7 +1470,6 @@ h1 {
     break-word;
 
 }
-
 
 .footer {
 
@@ -1356,27 +1491,21 @@ h1 {
 
 </head>
 
-
 <body>
 
-
 <div class="card">
-
 
 <div class="logo">
 🌿
 </div>
 
-
 <h1>
 Nisha Seva Foundation
 </h1>
 
-
 <div class="subtitle">
 Volunteer ID Verification
 </div>
-
 
 <div
   id="status"
@@ -1385,18 +1514,12 @@ Volunteer ID Verification
 Verifying Volunteer ID...
 </div>
 
-
 <div id="details">
 </div>
 
-
 <div class="footer">
-
-This page verifies the volunteer ID
-issued by Nisha Seva Foundation.
-
+This page verifies the volunteer ID issued by Nisha Seva Foundation.
 </div>
-
 
 </div>
 
@@ -1410,12 +1533,10 @@ issued by Nisha Seva Foundation.
       'status'
     );
 
-
   const detailsElement =
     document.getElementById(
       'details'
     );
-
 
   try {
 
@@ -1423,7 +1544,6 @@ issued by Nisha Seva Foundation.
       await fetch(
         '/api/volunteers/verify/${code}'
       );
-
 
     const data =
       await response.json();
@@ -1505,7 +1625,6 @@ issued by Nisha Seva Foundation.
         }
       ).join('');
 
-
   }
 
   catch (error) {
@@ -1554,20 +1673,28 @@ issued by Nisha Seva Foundation.
 
 </script>
 
-
 </body>
 
 </html>`);
 
   }
+
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| MAIN WEBSITE
-|--------------------------------------------------------------------------
-*/
+/* ---------- Website Form Collections ---------- */
+
+[
+  'volunteers',
+  'members',
+  'contactMessages',
+  'newsletter'
+].forEach(
+  submissionRoutes
+);
+
+
+/* ---------- Main Website ---------- */
 
 app.get(
   '/',
@@ -1584,12 +1711,6 @@ app.get(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| LOGO
-|--------------------------------------------------------------------------
-*/
-
 app.get(
   '/logo.jpeg',
   (req, res) => {
@@ -1604,12 +1725,6 @@ app.get(
   }
 );
 
-
-/*
-|--------------------------------------------------------------------------
-| DONATION QR
-|--------------------------------------------------------------------------
-*/
 
 app.get(
   '/donation-qr.jpg',
@@ -1626,11 +1741,7 @@ app.get(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| ERROR HANDLER
-|--------------------------------------------------------------------------
-*/
+/* ---------- Error Handler ---------- */
 
 app.use(
   (err, req, res, next) => {
@@ -1640,15 +1751,9 @@ app.use(
       err
     );
 
-
-    if (
-      res.headersSent
-    ) {
-
+    if (res.headersSent) {
       return next(err);
-
     }
-
 
     res.status(500).json({
 
@@ -1662,11 +1767,7 @@ app.use(
 );
 
 
-/*
-|--------------------------------------------------------------------------
-| START SERVER
-|--------------------------------------------------------------------------
-*/
+/* ---------- Start Server ---------- */
 
 app.listen(
   PORT,
@@ -1689,7 +1790,7 @@ app.listen(
     );
 
     console.log(
-      `Verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
+      `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
     );
 
     console.log(
