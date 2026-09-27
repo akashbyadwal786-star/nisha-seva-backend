@@ -925,28 +925,27 @@ function volunteerCard(v){
   }
 
 
-  if(status === "active"){
+ if(status === "active"){
 
-    actions = `
+  actions = `
 
-      <button
-        class="primary"
-        onclick='showIdCard(${JSON.stringify(v).replace(/'/g,"&#39;")})'
-      >
-        🪪 ID Card
-      </button>
+    <button
+      class="primary"
+      onclick='showIdCard(${JSON.stringify(v).replace(/'/g,"&#39;")})'
+    >
+      🪪 ID Card
+    </button>
 
-      <button
-        class="warning"
-        onclick="revokeVolunteer(${v.id})"
-      >
-        Revoke ID
-      </button>
+    <button
+      class="warning"
+      onclick="revokeVolunteer(${v.id})"
+    >
+      Revoke ID
+    </button>
 
-    `;
+  `;
 
-  }
-
+}
 
   if(status === "rejected"){
 
@@ -1096,49 +1095,106 @@ function volunteerCard(v){
 
 async function approveVolunteer(id){
 
-  if(
-    !confirm(
-      "Approve this volunteer and issue official Volunteer ID?"
-    )
-  ){
+  if(!confirm("क्या आप इस volunteer को Approve करके Official ID जारी करना चाहते हैं?")){
     return;
   }
 
-
   try{
 
-    const result =
-      await api(
-        "/api/volunteers/" + id + "/approve",
-        {
-          method:"POST"
-        }
-      );
-
-
-    alert(
-      "Volunteer approved successfully!\n\n" +
-      "Volunteer ID: " +
-      (result.volunteerId || "Issued") +
-      "\n\nअब ID Card generate कर सकते हैं।"
+    const result = await api(
+      "/api/volunteers/" + id + "/approve",
+      {
+        method:"POST"
+      }
     );
 
+    /*
+      Backend से जो data आएगा उसे existing volunteer
+      data के साथ merge किया जाएगा।
+    */
 
-    renderVolunteers();
+    const volunteers = await api("/api/volunteers");
+
+    const list = Array.isArray(volunteers)
+      ? volunteers
+      : [];
+
+    let volunteer = list.find(
+      v => Number(v.id) === Number(id)
+    );
+
+    /*
+      अगर backend से volunteer वापस नहीं मिला,
+      तो result का इस्तेमाल करेंगे।
+    */
+
+    if(!volunteer){
+
+      volunteer = {
+        id:id,
+        ...(result || {})
+      };
+
+    }
+
+    /*
+      सुनिश्चित करें कि status ACTIVE रहे
+    */
+
+    volunteer.status = "active";
+
+    /*
+      अगर backend ने Volunteer ID नहीं भेजी,
+      तो database ID से official ID बनाएंगे।
+    */
+
+    if(!volunteer.volunteerId){
+
+      volunteer.volunteerId =
+        "NSF-V-" +
+        String(id).padStart(5,"0");
+
+    }
+
+    /*
+      Verification code backend से आना चाहिए।
+    */
+
+    if(result && result.verificationCode){
+
+      volunteer.verificationCode =
+        result.verificationCode;
+
+    }
+
+
+    /*
+      ID Card तुरंत खोलें
+    */
+
+    showIdCard(volunteer);
+
+    /*
+      पीछे volunteer list भी refresh होगी
+    */
+
+    setTimeout(function(){
+
+      renderVolunteers();
+
+    },500);
 
   }
   catch(error){
 
     alert(
-      "Approval failed:\n" +
+      "ID जारी नहीं हो सकी:\n\n" +
       error.message
     );
 
   }
 
 }
-
-
 /* =========================================================
    REJECT
    ========================================================= */
