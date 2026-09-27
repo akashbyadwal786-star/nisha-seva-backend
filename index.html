@@ -355,7 +355,9 @@
   📱 किसी भी supported payment/UPI app से QR Code scan करें।
 </p>
         <div class="amounts" id="amountGroup">
-          <button class="active" data-amt="100">₹100</button><button data-amt="500">₹500</button><button data-amt="1000">₹1,000</button><button data-amt="2500">₹2,500</button><button data-amt="5000">₹5,000</button><button data-amt="custom">Custom</button>
+        <button type="button" data-amt="custom" id="customAmountBtn">
+  Custom
+</button>
         </div>
  <a
   href="/donation-qr.jpg"
@@ -1012,7 +1014,7 @@ if (memberForm) {
 loadDynamicContent();
 
 </script>
-  <!-- Donation QR Popup -->
+  <!-- Donation QR Popup 
 <div id="donatePopup" class="donate-popup">
 
   <div class="donate-box">
