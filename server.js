@@ -423,7 +423,9 @@ app.get('/', (req, res) => {
 app.get('/logo.jpeg', (req, res) => {
   res.sendFile(path.join(__dirname, 'logo.jpeg'));
 });
-
+app.get('/donation-qr.jpg', (req, res) => {
+  res.sendFile(path.join(__dirname, 'donation-qr.jpg'));
+});
 /* ---------- Start Server ---------- */
 app.listen(PORT, () => {
   console.log(
