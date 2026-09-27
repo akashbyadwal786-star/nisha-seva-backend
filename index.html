@@ -355,7 +355,12 @@
   📱 किसी भी supported payment/UPI app से QR Code scan करें।
 </p>
         <div class="amounts" id="amountGroup">
-        <button type="button" data-amt="custom" id="customAmountBtn">
+       <button
+  type="button"
+  data-amt="custom"
+  id="customAmountBtn"
+  onclick="const amount=prompt('Enter donation amount (₹):'); if(amount===null)return; const value=Number(amount); if(!value||value<1){alert('Please enter a valid donation amount.');return;} alert('आप ₹'+value.toLocaleString('en-IN')+' का donation करना चाहते हैं। अब नीचे दिए QR Code को scan करें।'); document.getElementById('donate').scrollIntoView({behavior:'smooth'});"
+>
   Custom
 </button>
         </div>
@@ -1139,31 +1144,6 @@ document.getElementById('donatePopup').addEventListener('click', function(e){
   if(e.target === this){
     closeDonatePopup();
   }
-});
-</script>
-  <script>
-document.getElementById('customAmountBtn').addEventListener('click', function () {
-
-  const amount = prompt('Enter donation amount (₹):');
-
-  if (amount === null) return;
-
-  const value = Number(amount);
-
-  if (!value || value < 1) {
-    alert('Please enter a valid donation amount.');
-    return;
-  }
-
-  alert(
-    'आप ₹' + value.toLocaleString('en-IN') +
-    ' का donation करना चाहते हैं। अब नीचे दिए QR Code को scan करें।'
-  );
-
-  document.getElementById('donate').scrollIntoView({
-    behavior: 'smooth'
-  });
-
 });
 </script>
 </body>
