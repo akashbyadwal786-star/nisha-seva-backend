@@ -937,6 +937,13 @@ function volunteerCard(v){
     </button>
 
     <button
+      class="muted"
+      onclick="openVerification('${esc(v.verificationCode || "")}','${esc(v.verificationUrl || "")}')"
+    >
+      🔍 Verify
+    </button>
+
+    <button
       class="warning"
       onclick="revokeVolunteer(${v.id})"
     >
@@ -1161,10 +1168,11 @@ async function approveVolunteer(id){
     */
 
     if(result && result.verificationCode){
+      volunteer.verificationCode = result.verificationCode;
+    }
 
-      volunteer.verificationCode =
-        result.verificationCode;
-
+    if(result && result.verificationUrl){
+      volunteer.verificationUrl = result.verificationUrl;
     }
 
 
@@ -1350,7 +1358,7 @@ function showIdCard(v){
 
           <button
             class="muted"
-            onclick="openVerification('${esc(v.verificationCode || "")}')"
+            onclick="openVerification('${esc(v.verificationCode || "")}','${esc(v.verificationUrl || "")}')"
           >
             🔍 Open Verification
           </button>
@@ -1387,356 +1395,218 @@ function drawIdCard(v){
 
   currentVolunteer = v;
 
+  const canvas = document.getElementById("idCanvas");
+  if(!canvas){
+    alert("ID Card canvas नहीं मिला।");
+    return;
+  }
 
-  const canvas =
-    document.getElementById("idCanvas");
-
-  const ctx =
-    canvas.getContext("2d");
-
-
+  const ctx = canvas.getContext("2d");
   const W = canvas.width;
   const H = canvas.height;
 
+  ctx.clearRect(0,0,W,H);
 
-  /* Background */
-
-  const gradient =
-    ctx.createLinearGradient(
-      0,0,W,H
-    );
-
-  gradient.addColorStop(
-    0,
-    "#0F5132"
-  );
-
-  gradient.addColorStop(
-    1,
-    "#198754"
-  );
-
+  const gradient = ctx.createLinearGradient(0,0,W,H);
+  gradient.addColorStop(0,"#0F5132");
+  gradient.addColorStop(1,"#198754");
   ctx.fillStyle = gradient;
+  ctx.fillRect(0,0,W,H);
 
-  ctx.fillRect(
-    0,
-    0,
-    W,
-    H
-  );
+  ctx.fillStyle = "rgba(255,255,255,.97)";
+  if(typeof ctx.roundRect === "function"){
+    ctx.beginPath();
+    ctx.roundRect(35,35,W-70,H-70,28);
+    ctx.fill();
+  }else{
+    ctx.fillRect(35,35,W-70,H-70);
+  }
 
+  ctx.fillStyle = "#0F5132";
+  ctx.font = "bold 38px Arial";
+  ctx.fillText("NISHA SEVA FOUNDATION",75,100);
 
-  /* White card */
+  ctx.fillStyle = "#687386";
+  ctx.font = "22px Arial";
+  ctx.fillText("OFFICIAL VOLUNTEER IDENTITY CARD",78,137);
 
-  ctx.fillStyle =
-    "rgba(255,255,255,.96)";
+  ctx.fillStyle = "#198754";
+  ctx.fillRect(75,160,W-150,4);
 
-  ctx.roundRect(
-    35,
-    35,
-    W-70,
-    H-70,
-    28
-  );
+  ctx.fillStyle = "#e9eef6";
+  if(typeof ctx.roundRect === "function"){
+    ctx.beginPath();
+    ctx.roundRect(75,200,150,175,18);
+    ctx.fill();
+  }else{
+    ctx.fillRect(75,200,150,175);
+  }
 
-  ctx.fill();
+  ctx.fillStyle = "#0F5132";
+  ctx.font = "bold 60px Arial";
+  const firstLetter = (
+    v.name || v.fullName || "V"
+  ).charAt(0).toUpperCase();
+  ctx.fillText(firstLetter,125,310);
 
+  const volunteerName = String(
+    v.name || v.fullName || "Volunteer"
+  ).substring(0,28);
 
-  /* Header */
+  ctx.fillStyle = "#172033";
+  ctx.font = "bold 34px Arial";
+  ctx.fillText(volunteerName,270,225);
 
-  ctx.fillStyle =
-    "#0F5132";
+  ctx.fillStyle = "#687386";
+  ctx.font = "20px Arial";
+  ctx.fillText("VOLUNTEER ID",270,270);
 
-  ctx.font =
-    "bold 38px Arial";
-
+  ctx.fillStyle = "#123b6d";
+  ctx.font = "bold 29px Arial";
   ctx.fillText(
-    "NISHA SEVA FOUNDATION",
-    75,
-    100
-  );
-
-
-  ctx.fillStyle =
-    "#687386";
-
-  ctx.font =
-    "22px Arial";
-
-  ctx.fillText(
-    "OFFICIAL VOLUNTEER IDENTITY CARD",
-    78,
-    137
-  );
-
-
-  /* Divider */
-
-  ctx.fillStyle =
-    "#198754";
-
-  ctx.fillRect(
-    75,
-    160,
-    W-150,
-    4
-  );
-
-
-  /* Photo placeholder */
-
-  ctx.fillStyle =
-    "#e9eef6";
-
-  ctx.roundRect(
-    75,
-    200,
-    150,
-    175,
-    18
-  );
-
-  ctx.fill();
-
-
-  ctx.fillStyle =
-    "#0F5132";
-
-  ctx.font =
-    "bold 60px Arial";
-
-  const firstLetter =
-    (
-      v.name ||
-      v.fullName ||
-      "V"
-    )
-    .charAt(0)
-    .toUpperCase();
-
-
-  ctx.fillText(
-    firstLetter,
-    125,
-    310
-  );
-
-
-  /* Name */
-
-  ctx.fillStyle =
-    "#172033";
-
-  ctx.font =
-    "bold 34px Arial";
-
-  ctx.fillText(
-    (
-      v.name ||
-      v.fullName ||
-      "Volunteer"
-    ).substring(0,28),
-    270,
-    225
-  );
-
-
-  /* Volunteer ID */
-
-  ctx.fillStyle =
-    "#687386";
-
-  ctx.font =
-    "20px Arial";
-
-  ctx.fillText(
-    "VOLUNTEER ID",
-    270,
-    270
-  );
-
-
-  ctx.fillStyle =
-    "#123b6d";
-
-  ctx.font =
-    "bold 29px Arial";
-
-  ctx.fillText(
-    v.volunteerId ||
-    ("NSF-V-" + String(v.id).padStart(5,"0")),
+    v.volunteerId || ("NSF-V-" + String(v.id).padStart(5,"0")),
     270,
     307
   );
 
+  ctx.fillStyle = "#687386";
+  ctx.font = "20px Arial";
+  ctx.fillText("CITY",270,350);
 
-  /* City */
+  ctx.fillStyle = "#172033";
+  ctx.font = "bold 24px Arial";
+  ctx.fillText(String(v.city || "-").substring(0,25),270,382);
 
-  ctx.fillStyle =
-    "#687386";
+  ctx.fillStyle = "#198754";
+  if(typeof ctx.roundRect === "function"){
+    ctx.beginPath();
+    ctx.roundRect(270,420,155,48,20);
+    ctx.fill();
+  }else{
+    ctx.fillRect(270,420,155,48);
+  }
 
-  ctx.font =
-    "20px Arial";
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 21px Arial";
+  ctx.fillText("✓ ACTIVE",300,452);
 
-  ctx.fillText(
-    "CITY",
-    270,
-    350
-  );
-
-
-  ctx.fillStyle =
-    "#172033";
-
-  ctx.font =
-    "bold 24px Arial";
-
-  ctx.fillText(
-    (
-      v.city ||
-      "-"
-    ).substring(0,25),
-    270,
-    382
-  );
-
-
-  /* Status */
-
-  ctx.fillStyle =
-    "#198754";
-
-  ctx.roundRect(
-    270,
-    420,
-    155,
-    48,
-    20
-  );
-
-  ctx.fill();
-
-
-  ctx.fillStyle =
-    "#fff";
-
-  ctx.font =
-    "bold 21px Arial";
-
-  ctx.fillText(
-    "✓ ACTIVE",
-    300,
-    452
-  );
-
-
-  /* QR */
-
-  const qrDiv =
-    document.createElement("div");
-
-  qrDiv.style.position =
-    "absolute";
-
-  qrDiv.style.left =
-    "-99999px";
-
-  document.body.appendChild(qrDiv);
-
-
-  const verificationCode =
-    v.verificationCode || "";
-
-
+  const verificationCode = String(v.verificationCode || "");
   const verificationUrl =
-    API +
-    "/verify/volunteer/" +
-    verificationCode;
+    v.verificationUrl ||
+    (API + "/verify/volunteer/" + encodeURIComponent(verificationCode));
 
+  const qrX = W - 265;
+  const qrY = 205;
+  const qrSize = 170;
 
-  new QRCode(
-    qrDiv,
-    {
-      text:verificationUrl,
-      width:180,
-      height:180,
-      correctLevel:QRCode.CorrectLevel.H
-    }
-  );
+  function finishQR(qrSource){
+    try{
+      if(qrSource){
+        ctx.drawImage(qrSource,qrX,qrY,qrSize,qrSize);
+      }else{
+        ctx.fillStyle = "#f8d7da";
+        ctx.fillRect(qrX,qrY,qrSize,qrSize);
+        ctx.fillStyle = "#842029";
+        ctx.font = "bold 16px Arial";
+        ctx.fillText("QR unavailable",qrX+22,qrY+88);
+      }
 
+      ctx.fillStyle = "#687386";
+      ctx.font = "16px Arial";
+      ctx.fillText("SCAN TO VERIFY",W-250,400);
 
-  setTimeout(()=>{
-
-    const qrCanvas =
-      qrDiv.querySelector("canvas");
-
-
-    if(qrCanvas){
-
-      ctx.drawImage(
-        qrCanvas,
-        W-265,
-        205,
-        170,
-        170
+      ctx.font = "14px Arial";
+      ctx.fillText(
+        verificationCode || "Verification",
+        W-250,
+        425
       );
 
+      ctx.fillStyle = "#687386";
+      ctx.font = "15px Arial";
+      ctx.fillText(
+        "This card is issued by Nisha Seva Foundation.",
+        75,
+        535
+      );
+
+      const info = document.getElementById("cardInfo");
+      if(info){
+        info.innerHTML =
+          "<b>Verification URL:</b><br>" +
+          esc(verificationUrl);
+      }
+    }catch(err){
+      console.error(err);
     }
+  }
 
+  if(!verificationCode){
+    finishQR(null);
+    return;
+  }
 
-    ctx.fillStyle =
-      "#687386";
+  if(typeof QRCode === "undefined"){
+    finishQR(null);
+    const info = document.getElementById("cardInfo");
+    if(info){
+      info.innerHTML =
+        '<div class="err">QR Code library load नहीं हुई। Page को refresh करके दोबारा कोशिश करें।</div>';
+    }
+    return;
+  }
 
-    ctx.font =
-      "16px Arial";
+  const qrDiv = document.createElement("div");
+  qrDiv.style.position = "fixed";
+  qrDiv.style.left = "-100000px";
+  qrDiv.style.top = "-100000px";
+  document.body.appendChild(qrDiv);
 
-    ctx.fillText(
-      "SCAN TO VERIFY",
-      W-250,
-      400
-    );
+  try{
+    new QRCode(qrDiv,{
+      text: verificationUrl,
+      width: 180,
+      height: 180,
+      correctLevel: QRCode.CorrectLevel.H
+    });
 
+    setTimeout(function(){
+      const qrCanvas = qrDiv.querySelector("canvas");
+      const qrImg = qrDiv.querySelector("img");
 
-    ctx.font =
-      "14px Arial";
+      if(qrCanvas){
+        finishQR(qrCanvas);
+        qrDiv.remove();
+        return;
+      }
 
-    ctx.fillText(
-      verificationCode,
-      W-250,
-      425
-    );
+      if(qrImg){
+        if(qrImg.complete){
+          finishQR(qrImg);
+          qrDiv.remove();
+        }else{
+          qrImg.onload = function(){
+            finishQR(qrImg);
+            qrDiv.remove();
+          };
+          qrImg.onerror = function(){
+            finishQR(null);
+            qrDiv.remove();
+          };
+        }
+        return;
+      }
 
+      finishQR(null);
+      qrDiv.remove();
+    },500);
 
-    ctx.fillStyle =
-      "#687386";
-
-    ctx.font =
-      "15px Arial";
-
-    ctx.fillText(
-      "This card is issued by Nisha Seva Foundation.",
-      75,
-      535
-    );
-
-
-    document.getElementById(
-      "cardInfo"
-    ).innerHTML = `
-
-      <b>Verification URL:</b>
-      <br>
-      ${esc(verificationUrl)}
-
-    `;
-
-
+  }catch(err){
+    console.error(err);
+    finishQR(null);
     qrDiv.remove();
-
-  },300);
-
+  }
 }
-
 
 /* =========================================================
    DOWNLOAD PNG
@@ -1897,27 +1767,20 @@ function downloadPDF(){
    OPEN VERIFICATION
    ========================================================= */
 
-function openVerification(code){
+function openVerification(code,url){
 
-  if(!code){
+  const target =
+    url ||
+    (code
+      ? API + "/verify/volunteer/" + encodeURIComponent(code)
+      : "");
 
-    alert(
-      "Verification code available नहीं है।"
-    );
-
+  if(!target){
+    alert("Verification link available नहीं है।");
     return;
-
   }
 
-
-  window.open(
-    API +
-    "/verify/volunteer/" +
-    encodeURIComponent(code),
-
-    "_blank"
-  );
-
+  window.open(target,"_blank","noopener,noreferrer");
 }
 
 
