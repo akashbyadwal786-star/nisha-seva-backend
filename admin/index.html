@@ -143,30 +143,6 @@ async function save(id){
 async function del(id){if(!confirm("Delete this record?"))return;try{await api("/api/"+current+"/"+id,{method:"DELETE"});render()}catch(e){alert(e.message)}}
 render();
 </script>
- <script>
-document.getElementById('customAmountBtn').addEventListener('click', function () {
-
-  const amount = prompt('Enter donation amount (₹):');
-
-  if (amount === null) return;
-
-  const value = Number(amount);
-
-  if (!value || value < 1) {
-    alert('Please enter a valid donation amount.');
-    return;
-  }
-
-  alert(
-    'आप ₹' + value.toLocaleString('en-IN') +
-    ' का donation करना चाहते हैं। अब नीचे दिए QR Code को scan करें।'
-  );
-
-  document.getElementById('donate').scrollIntoView({
-    behavior: 'smooth'
-  });
-
-});
-</script>
+ 
 </body>
 </html>
