@@ -1538,82 +1538,138 @@ function drawIdCard(v){
   drawLabelValue("Age",age,490,405,8);
   drawLabelValue("City",city,335,465,22);
 
-  /* ========================= QR ========================= */
+  /* ========================= QR + PREMIUM FOOTER ========================= */
   const qrX=875, qrY=190, qrSize=220;
-  roundedRect(qrX-15,qrY-15,qrSize+30,qrSize+30,20,"#ffffff","#ead7a6",2);
+  roundedRect(qrX-15,qrY-15,qrSize+30,qrSize+30,20,"#ffffff","#d9a441",3);
+
+  function drawPremiumFooter(){
+    /* elegant gold divider */
+    ctx.strokeStyle="#d9a441";
+    ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(72,625);
+    ctx.lineTo(1128,625);
+    ctx.stroke();
+
+    /* General Secretary signature area */
+    ctx.textAlign="center";
+    ctx.fillStyle="#172033";
+    ctx.font="italic 24px 'Brush Script MT', 'Segoe Script', cursive";
+    ctx.fillText("General Secretary",920,570);
+
+    ctx.strokeStyle="#8b6a20";
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(845,580);
+    ctx.lineTo(995,580);
+    ctx.stroke();
+
+    ctx.fillStyle="#8b6a20";
+    ctx.font="bold 12px Arial";
+    ctx.fillText("GENERAL SECRETARY",920,600);
+
+    ctx.fillStyle="#718096";
+    ctx.font="11px Arial";
+    ctx.fillText("Nisha Seva Foundation",920,616);
+    ctx.textAlign="left";
+
+    /* small floral ornaments near signature */
+    drawFlower(820,585,.42);
+    drawFlower(1020,585,.42);
+  }
 
   function finishQR(qrSource){
-    if(qrSource) ctx.drawImage(qrSource,qrX,qrY,qrSize,qrSize);
-    else { ctx.fillStyle="#f8d7da"; ctx.fillRect(qrX,qrY,qrSize,qrSize); ctx.fillStyle="#842029"; ctx.font="bold 16px Arial"; ctx.fillText("QR unavailable",qrX+43,qrY+112); }
+    if(qrSource){
+      ctx.drawImage(qrSource,qrX,qrY,qrSize,qrSize);
+    }else{
+      ctx.fillStyle="#f8d7da";
+      ctx.fillRect(qrX,qrY,qrSize,qrSize);
+      ctx.fillStyle="#842029";
+      ctx.font="bold 16px Arial";
+      ctx.textAlign="center";
+      ctx.fillText("QR unavailable",qrX+qrSize/2,qrY+112);
+      ctx.textAlign="left";
+    }
 
-    ctx.fillStyle="#0f5132"; ctx.font="bold 16px Arial"; ctx.textAlign="center"; ctx.fillText("SCAN TO VERIFY",qrX+qrSize/2,qrY+qrSize+48);
-    ctx.fillStyle="#718096"; ctx.font="13px Arial"; ctx.fillText(verificationCode || "Verification",qrX+qrSize/2,qrY+qrSize+70); ctx.textAlign="left";
+    ctx.fillStyle="#0f5132";
+    ctx.font="bold 16px Arial";
+    ctx.textAlign="center";
+    ctx.fillText("SCAN TO VERIFY",qrX+qrSize/2,qrY+qrSize+48);
+
+    ctx.fillStyle="#718096";
+    ctx.font="13px Arial";
+    ctx.fillText(verificationCode || "Verification",qrX+qrSize/2,qrY+qrSize+70);
+    ctx.textAlign="left";
 
     /* ========================= BOTTOM DETAILS ========================= */
-    roundedRect(72,530,750,86,18,"#f6f1e5",null);
+    roundedRect(72,530,750,86,18,"#f6f1e5","#ead7a6",1.5);
     drawLabelValue("Phone",phone,95,548,18);
     drawLabelValue("Area",area,310,548,22);
     drawLabelValue("Gender",gender,565,548,14);
 
-   /* ========================= GENERAL SECRETARY SIGNATURE ========================= */
-const sigImg=new Image();
+    drawPremiumFooter();
 
-sigImg.onload=function(){
+    /* restore volunteer photo after the card has been composed */
+    if(photoUrl){
+      const photo=new Image();
+      photo.onload=function(){drawPhoto(photo);};
+      photo.onerror=function(){drawInitial();};
+      photo.src=photoUrl;
+    }else{
+      drawInitial();
+    }
+  }
 
-  ctx.drawImage(
-    sigImg,
-    835,
-    535,
-    170,
-    70
-  );
+  /* ========================= GENERATE QR ========================= */
+  if(verificationUrl){
+    const qrHost=document.createElement("div");
+    qrHost.style.position="fixed";
+    qrHost.style.left="-10000px";
+    qrHost.style.top="-10000px";
+    qrHost.style.width=qrSize+"px";
+    qrHost.style.height=qrSize+"px";
+    document.body.appendChild(qrHost);
 
-  ctx.fillStyle="#172033";
-  ctx.font="bold 13px Arial";
-  ctx.textAlign="center";
+    try{
+      new QRCode(qrHost,{
+        text:verificationUrl,
+        width:qrSize,
+        height:qrSize,
+        correctLevel:QRCode.CorrectLevel.H
+      });
 
-  ctx.fillText(
-    "General Secretary Signature",
-    920,
-    610
-  );
-
-  ctx.fillStyle="#8b6a20";
-  ctx.font="12px Arial";
-
-  ctx.fillText(
-    "Nisha Seva Foundation",
-    920,
-    628
-  );
-
-  ctx.textAlign="left";
-};
-
-
-sigImg.onerror=function(){
-
-  ctx.fillStyle="#172033";
-  ctx.font="italic 20px cursive";
-
-  ctx.fillText(
-    "General Secretary",
-    845,
-    580
-  );
-
-  ctx.fillStyle="#718096";
-  ctx.font="12px Arial";
-
-  ctx.fillText(
-    "General Secretary Signature",
-    845,
-    605
-  );
-
-};
-
-  // Close finishQR()
+      setTimeout(function(){
+        const source=qrHost.querySelector("img") || qrHost.querySelector("canvas");
+        if(source){
+          if(source.tagName==="IMG"){
+            if(source.complete){
+              finishQR(source);
+              qrHost.remove();
+            }else{
+              source.onload=function(){
+                finishQR(source);
+                qrHost.remove();
+              };
+              source.onerror=function(){
+                finishQR(null);
+                qrHost.remove();
+              };
+            }
+          }else{
+            finishQR(source);
+            qrHost.remove();
+          }
+        }else{
+          finishQR(null);
+          qrHost.remove();
+        }
+      },120);
+    }catch(e){
+      finishQR(null);
+      qrHost.remove();
+    }
+  }else{
+    finishQR(null);
   }
 
   /* ========================= VOLUNTEER PHOTO ========================= */
