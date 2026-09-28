@@ -296,8 +296,12 @@ const tabs = [
 
 async function api(path,opt={}){
 
+  const isFormData =
+    typeof FormData !== "undefined" &&
+    opt.body instanceof FormData;
+
   opt.headers = {
-    "Content-Type":"application/json",
+    ...(isFormData ? {} : {"Content-Type":"application/json"}),
     ...(opt.headers || {})
   };
 
@@ -693,7 +697,7 @@ function galleryEditor(x){
   x=x||{title:'',description:'',image:''};
   document.body.insertAdjacentHTML('beforeend',`
     <div class="modal" id="modal"><div class="modalbox">
-      <h2>📷 Gallery Photo</h2>
+      <h2>📷 Gallery Photo</h2><div class="small" style="margin-bottom:12px">Photo सीधे server storage में upload होगी; database में केवल image URL save होगा।</div>
       <label><b>Photo</b></label>
       <input type="file" id="galleryPhoto" accept="image/jpeg,image/png,image/webp" style="margin:8px 0 14px" onchange="previewGalleryPhoto(this)">
       <div id="galleryPhotoPreview" style="margin:8px 0 16px;text-align:center">
@@ -715,20 +719,109 @@ function previewGalleryPhoto(input){
   const reader=new FileReader(); reader.onload=e=>{const box=document.getElementById('galleryPhotoPreview');if(box)box.innerHTML=`<img src="${e.target.result}" style="max-width:100%;max-height:280px;border-radius:12px;border:1px solid #ddd;object-fit:contain">`;}; reader.readAsDataURL(file);
 }
 async function saveGallery(id){
+
   try{
-    const title=document.getElementById('galleryTitle').value.trim();
-    const description=document.getElementById('galleryDescription').value.trim();
-    const input=document.getElementById('galleryPhoto'); const existing=document.getElementById('galleryExistingImage').value||'';
-    if(!title)throw new Error('Gallery title डालें।');
-    let image=existing;
-    if(input&&input.files&&input.files[0]){
-      const file=input.files[0]; if(file.size>6*1024*1024)throw new Error('Photo 6MB से कम रखें।');
-      image=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Photo read नहीं हो सकी।'));r.readAsDataURL(file);});
+
+    const title =
+      document.getElementById("galleryTitle").value.trim();
+
+    const description =
+      document.getElementById("galleryDescription").value.trim();
+
+    const input =
+      document.getElementById("galleryPhoto");
+
+    const existing =
+      document.getElementById("galleryExistingImage").value || "";
+
+    if(!title){
+      throw new Error("Gallery title डालें।");
     }
-    if(!image)throw new Error('Gallery photo चुनें।');
-    await api(id===null?'/api/gallery':'/api/gallery/'+id,{method:id===null?'POST':'PUT',body:JSON.stringify({title,description,image})});
-    modal.remove(); render();
-  }catch(error){const box=document.getElementById('em');if(box)box.innerHTML=`<div class="err">${esc(error.message)}</div>`;else alert(error.message);}
+
+    let image = existing;
+
+    /* -----------------------------------------
+       NEW PHOTO -> REAL FILE UPLOAD
+       Image is uploaded to Supabase Storage
+       through /api/upload.
+       ----------------------------------------- */
+
+    if(input && input.files && input.files[0]){
+
+      const file = input.files[0];
+
+      if(file.size > 5 * 1024 * 1024){
+        throw new Error("Photo 5MB से कम रखें।");
+      }
+
+      if(!file.type.startsWith("image/")){
+        throw new Error("केवल image file upload करें।");
+      }
+
+      const formData = new FormData();
+
+      formData.append("file",file);
+
+      const uploadResult =
+        await api("/api/upload",{
+          method:"POST",
+          body:formData
+        });
+
+      if(!uploadResult || !uploadResult.url){
+        throw new Error("Image URL नहीं मिली।");
+      }
+
+      image = uploadResult.url;
+    }
+
+    if(!image){
+      throw new Error("Gallery photo चुनें।");
+    }
+
+    /* -----------------------------------------
+       Only URL is saved in gallery database.
+       Base64 is NOT saved anymore.
+       ----------------------------------------- */
+
+    await api(
+      id === null
+        ? "/api/gallery"
+        : "/api/gallery/" + id,
+      {
+        method:
+          id === null
+            ? "POST"
+            : "PUT",
+
+        body:JSON.stringify({
+          title:title,
+          description:description,
+          image:image
+        })
+      }
+    );
+
+    modal.remove();
+
+    await render();
+
+  }
+  catch(error){
+
+    const box =
+      document.getElementById("em");
+
+    if(box){
+      box.innerHTML =
+        `<div class="err">${esc(error.message)}</div>`;
+    }
+    else{
+      alert(error.message);
+    }
+
+  }
+
 }
 
 /* =========================================================
@@ -1218,44 +1311,23 @@ async function approveVolunteer(id){
       तो result का इस्तेमाल करेंगे।
     */
 
+    /*
+      Official ID, status और verification data
+      केवल backend से आएगा।
+      Admin panel अब कोई official ID
+      खुद generate नहीं करता।
+    */
+
     if(!volunteer){
-
-      volunteer = {
-        id:id,
-        ...(result || {})
-      };
-
+      throw new Error(
+        "Approved volunteer record backend से नहीं मिला।"
+      );
     }
-
-    /*
-      सुनिश्चित करें कि status ACTIVE रहे
-    */
-
-    volunteer.status = "active";
-
-    /*
-      अगर backend ने Volunteer ID नहीं भेजी,
-      तो database ID से official ID बनाएंगे।
-    */
 
     if(!volunteer.volunteerId){
-
-      volunteer.volunteerId =
-        "NSF-V-" +
-        String(id).padStart(5,"0");
-
-    }
-
-    /*
-      Verification code backend से आना चाहिए।
-    */
-
-    if(result && result.verificationCode){
-      volunteer.verificationCode = result.verificationCode;
-    }
-
-    if(result && result.verificationUrl){
-      volunteer.verificationUrl = result.verificationUrl;
+      throw new Error(
+        "Backend ने official Volunteer ID जारी नहीं की।"
+      );
     }
 
 
