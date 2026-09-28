@@ -6,56 +6,138 @@ const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
-const { readDB, writeDB, nextId, pool } = require('./db');
-const { createClient } = require('@supabase/supabase-js');
+
+const {
+  readDB,
+  writeDB,
+  nextId,
+  pool
+} = require('./db');
+
+const {
+  createClient
+} = require('@supabase/supabase-js');
+
+
+/* =========================================================
+   SUPABASE
+   ========================================================= */
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+
+/* =========================================================
+   APP CONFIG
+   ========================================================= */
+
 const app = express();
 
-const PORT = process.env.PORT || 4000;
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'change-this-password';
+const PORT =
+  process.env.PORT || 4000;
+
+const ADMIN_USERNAME =
+  process.env.ADMIN_USERNAME || 'admin';
+
+const ADMIN_PASSWORD =
+  process.env.ADMIN_PASSWORD ||
+  'change-this-password';
 
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
   'https://nisha-seva-backend.onrender.com';
 
+
+/* =========================================================
+   MIDDLEWARE
+   ========================================================= */
+
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-/* ---------- Uploads ---------- */
+app.use(
+  express.json({
+    limit: '10mb'
+  })
+);
 
-const uploadsDir = path.join(__dirname, 'uploads');
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '10mb'
+  })
+);
+
+
+/* =========================================================
+   LOCAL UPLOADS
+   ========================================================= */
+
+const uploadsDir =
+  path.join(
+    __dirname,
+    'uploads'
+  );
 
 if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  fs.mkdirSync(
+    uploadsDir,
+    {
+      recursive: true
+    }
+  );
 }
 
-app.use('/uploads', express.static(uploadsDir));
-app.use('/admin', express.static(path.join(__dirname, 'admin')));
+app.use(
+  '/uploads',
+  express.static(uploadsDir)
+);
+
+app.use(
+  '/admin',
+  express.static(
+    path.join(
+      __dirname,
+      'admin'
+    )
+  )
+);
 
 
-/* ---------- Admin Auth ---------- */
+/* =========================================================
+   ADMIN AUTH
+   ========================================================= */
 
-const sessions = new Map();
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const sessions =
+  new Map();
 
-function requireAdmin(req, res, next) {
+const SESSION_TTL_MS =
+  12 * 60 * 60 * 1000;
 
-  const header = req.headers.authorization || '';
 
-  const token = header.startsWith('Bearer ')
-    ? header.slice(7)
-    : null;
+function requireAdmin(
+  req,
+  res,
+  next
+) {
 
-  const expiry = token && sessions.get(token);
+  const header =
+    req.headers.authorization || '';
 
-  if (!expiry || expiry < Date.now()) {
+  const token =
+    header.startsWith('Bearer ')
+      ? header.slice(7)
+      : null;
+
+  const expiry =
+    token &&
+    sessions.get(token);
+
+  if (
+    !expiry ||
+    expiry < Date.now()
+  ) {
 
     return res.status(401).json({
       error: 'Unauthorized'
@@ -67,84 +149,130 @@ function requireAdmin(req, res, next) {
 }
 
 
-/* ---------- Admin Login ---------- */
+/* =========================================================
+   ADMIN LOGIN
+   ========================================================= */
 
-app.post('/api/admin/login', (req, res) => {
+app.post(
+  '/api/admin/login',
+  (req, res) => {
 
-  const { username, password } = req.body || {};
-
-  if (
-    username === ADMIN_USERNAME &&
-    password === ADMIN_PASSWORD
-  ) {
-
-    const token =
-      crypto.randomBytes(24).toString('hex');
-
-    sessions.set(
-      token,
-      Date.now() + SESSION_TTL_MS
-    );
-
-    return res.json({
-      token
-    });
-  }
-
-  res.status(401).json({
-    error: 'Invalid username or password'
-  });
-});
-
-
-/* ---------- Admin Logout ---------- */
-
-app.post('/api/admin/logout', requireAdmin, (req, res) => {
-
-  const token =
-    req.headers.authorization.slice(7);
-
-  sessions.delete(token);
-
-  res.json({
-    ok: true
-  });
-
-});
-
-
-/* ---------- File Upload ---------- */
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-
-  limits: {
-    fileSize: 5 * 1024 * 1024
-  },
-
-  fileFilter: (req, file, cb) => {
+    const {
+      username,
+      password
+    } = req.body || {};
 
     if (
-      file.mimetype &&
-      file.mimetype.startsWith('image/')
+      username === ADMIN_USERNAME &&
+      password === ADMIN_PASSWORD
     ) {
 
-      cb(null, true);
+      const token =
+        crypto.randomBytes(24)
+          .toString('hex');
 
-    } else {
-
-      cb(
-        new Error(
-          'Only image files are allowed'
-        )
+      sessions.set(
+        token,
+        Date.now() +
+        SESSION_TTL_MS
       );
+
+      return res.json({
+        token
+      });
 
     }
 
+    res.status(401).json({
+      error:
+        'Invalid username or password'
+    });
+
   }
+);
 
-});
 
+/* =========================================================
+   ADMIN LOGOUT
+   ========================================================= */
+
+app.post(
+  '/api/admin/logout',
+  requireAdmin,
+  (req, res) => {
+
+    const header =
+      req.headers.authorization || '';
+
+    const token =
+      header.startsWith('Bearer ')
+        ? header.slice(7)
+        : null;
+
+    if (token) {
+      sessions.delete(token);
+    }
+
+    res.json({
+      ok: true
+    });
+
+  }
+);
+
+
+/* =========================================================
+   IMAGE UPLOAD
+   SUPABASE STORAGE
+   ========================================================= */
+
+const upload =
+  multer({
+
+    storage:
+      multer.memoryStorage(),
+
+    limits: {
+      fileSize:
+        5 * 1024 * 1024
+    },
+
+    fileFilter:
+      (req, file, cb) => {
+
+        const allowedTypes = [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'image/gif'
+        ];
+
+        if (
+          allowedTypes.includes(
+            file.mimetype
+          )
+        ) {
+
+          cb(null, true);
+
+        } else {
+
+          cb(
+            new Error(
+              'Only JPG, PNG, WEBP and GIF images are allowed'
+            )
+          );
+
+        }
+
+      }
+
+  });
+
+
+/* =========================================================
+   UPLOAD API
+   ========================================================= */
 
 app.post(
   '/api/upload',
@@ -152,39 +280,77 @@ app.post(
   upload.single('file'),
   async (req, res) => {
 
+    let uploadedFileName =
+      null;
+
     try {
 
       if (!req.file) {
 
         return res.status(400).json({
-          error: 'No file uploaded'
+          error:
+            'No file uploaded'
         });
 
       }
 
-      const ext =
-        (
-          req.file.originalname
-            .split('.')
-            .pop() || 'jpg'
-        )
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '');
 
-      const fileName =
+      /*
+       * Get extension
+       */
+
+      let ext =
+        path.extname(
+          req.file.originalname
+        )
+        .replace(
+          '.',
+          ''
+        )
+        .toLowerCase();
+
+      if (!ext) {
+
+        ext =
+          req.file.mimetype
+            .split('/')
+            .pop() || 'jpg';
+
+      }
+
+
+      /*
+       * Safe unique file name
+       */
+
+      uploadedFileName =
         `gallery/${Date.now()}-${crypto.randomUUID()}.${ext}`;
 
-      const { error } =
+
+      /*
+       * Upload to Supabase
+       */
+
+      const {
+        error
+      } =
         await supabase.storage
           .from('gallery')
           .upload(
-            fileName,
+            uploadedFileName,
             req.file.buffer,
             {
-              contentType: req.file.mimetype,
-              upsert: false
+              contentType:
+                req.file.mimetype,
+
+              cacheControl:
+                '3600',
+
+              upsert:
+                false
             }
           );
+
 
       if (error) {
 
@@ -194,30 +360,117 @@ app.post(
         );
 
         return res.status(500).json({
-          error: 'Image upload failed'
+          error:
+            'Image upload failed',
+          details:
+            error.message
         });
 
       }
 
-      const { data } =
+
+      /*
+       * Generate public URL
+       */
+
+      const {
+        data: publicUrlData
+      } =
         supabase.storage
           .from('gallery')
-          .getPublicUrl(fileName);
+          .getPublicUrl(
+            uploadedFileName
+          );
 
-      res.json({
+
+      const imageUrl =
+        publicUrlData &&
+        publicUrlData.publicUrl
+          ? publicUrlData.publicUrl
+          : null;
+
+
+      if (!imageUrl) {
+
+        /*
+         * Cleanup if URL was not generated
+         */
+
+        await supabase.storage
+          .from('gallery')
+          .remove([
+            uploadedFileName
+          ]);
+
+        return res.status(500).json({
+          error:
+            'Could not generate image URL'
+        });
+
+      }
+
+
+      /*
+       * Return URL to Admin Panel
+       */
+
+      return res.json({
+
         ok: true,
-        url: data.publicUrl
+
+        url:
+          imageUrl,
+
+        image:
+          imageUrl,
+
+        path:
+          uploadedFileName
+
       });
+
 
     } catch (error) {
 
       console.error(
-        'POST /api/upload',
+        'POST /api/upload:',
         error
       );
 
-      res.status(500).json({
-        error: 'Upload failed'
+
+      /*
+       * Cleanup uploaded file
+       * if something failed afterwards
+       */
+
+      if (uploadedFileName) {
+
+        try {
+
+          await supabase.storage
+            .from('gallery')
+            .remove([
+              uploadedFileName
+            ]);
+
+        } catch (
+          cleanupError
+        ) {
+
+          console.error(
+            'Upload cleanup error:',
+            cleanupError
+          );
+
+        }
+
+      }
+
+
+      return res.status(500).json({
+        error:
+          error.message ||
+          'Upload failed'
       });
 
     }
@@ -226,11 +479,16 @@ app.post(
 );
 
 
-/* ---------- Generic CRUD Routes ---------- */
+/* =========================================================
+   GENERIC CRUD ROUTES
+   ========================================================= */
 
 function crudRoutes(name) {
 
-  /* Public read */
+
+  /* -------------------------------------------------------
+     PUBLIC READ
+     ------------------------------------------------------- */
 
   app.get(
     `/api/${name}`,
@@ -238,11 +496,54 @@ function crudRoutes(name) {
 
       try {
 
-        const db = await readDB();
+        const db =
+          await readDB();
 
-        res.json(
-          db[name] || []
-        );
+        let items =
+          Array.isArray(db[name])
+            ? db[name]
+            : [];
+
+
+        /*
+         * Gallery compatibility:
+         *
+         * Old records may contain:
+         * image
+         * imageUrl
+         * url
+         * photo
+         *
+         * Normalize everything to image.
+         */
+
+        if (
+          name === 'gallery'
+        ) {
+
+          items =
+            items.map(
+              item => {
+
+                const image =
+                  item.image ||
+                  item.imageUrl ||
+                  item.url ||
+                  item.photo ||
+                  '';
+
+                return {
+                  ...item,
+                  image
+                };
+
+              }
+            );
+
+        }
+
+
+        res.json(items);
 
       } catch (error) {
 
@@ -252,7 +553,8 @@ function crudRoutes(name) {
         );
 
         res.status(500).json({
-          error: 'Database error'
+          error:
+            'Database error'
         });
 
       }
@@ -261,7 +563,9 @@ function crudRoutes(name) {
   );
 
 
-  /* Admin create */
+  /* -------------------------------------------------------
+     ADMIN CREATE
+     ------------------------------------------------------- */
 
   app.post(
     `/api/${name}`,
@@ -270,22 +574,72 @@ function crudRoutes(name) {
 
       try {
 
-        const db = await readDB();
+        const db =
+          await readDB();
 
-        if (!Array.isArray(db[name])) {
+
+        if (
+          !Array.isArray(
+            db[name]
+          )
+        ) {
+
           db[name] = [];
+
         }
 
+
+        let body =
+          {
+            ...(req.body || {})
+          };
+
+
+        /*
+         * Gallery image normalization
+         */
+
+        if (
+          name === 'gallery'
+        ) {
+
+          const image =
+            body.image ||
+            body.imageUrl ||
+            body.url ||
+            body.photo ||
+            '';
+
+          body.image =
+            image;
+
+        }
+
+
         const item = {
-          id: nextId(db[name]),
-          ...req.body
+
+          id:
+            nextId(
+              db[name]
+            ),
+
+          ...body
+
         };
 
-        db[name].push(item);
+
+        db[name].push(
+          item
+        );
+
 
         await writeDB(db);
 
-        res.status(201).json(item);
+
+        res.status(201).json(
+          item
+        );
+
 
       } catch (error) {
 
@@ -295,7 +649,8 @@ function crudRoutes(name) {
         );
 
         res.status(500).json({
-          error: 'Database error'
+          error:
+            'Database error'
         });
 
       }
@@ -304,7 +659,9 @@ function crudRoutes(name) {
   );
 
 
-  /* Admin update */
+  /* -------------------------------------------------------
+     ADMIN UPDATE
+     ------------------------------------------------------- */
 
   app.put(
     `/api/${name}/:id`,
@@ -313,40 +670,92 @@ function crudRoutes(name) {
 
       try {
 
-        const db = await readDB();
+        const db =
+          await readDB();
 
         const id =
-          Number(req.params.id);
+          Number(
+            req.params.id
+          );
 
-        if (!Array.isArray(db[name])) {
+
+        if (
+          !Array.isArray(
+            db[name]
+          )
+        ) {
+
           db[name] = [];
+
         }
+
 
         const idx =
           db[name].findIndex(
             item =>
-              Number(item.id) === id
+              Number(
+                item.id
+              ) === id
           );
+
 
         if (idx === -1) {
 
-          return res.status(404).json({
-            error: 'Not found'
-          });
+          return res.status(404)
+            .json({
+              error:
+                'Not found'
+            });
 
         }
 
+
+        let body =
+          {
+            ...(req.body || {})
+          };
+
+
+        /*
+         * Gallery normalization
+         */
+
+        if (
+          name === 'gallery'
+        ) {
+
+          const image =
+            body.image ||
+            body.imageUrl ||
+            body.url ||
+            body.photo ||
+            db[name][idx].image ||
+            '';
+
+          body.image =
+            image;
+
+        }
+
+
         db[name][idx] = {
+
           ...db[name][idx],
-          ...req.body,
+
+          ...body,
+
           id
+
         };
 
+
         await writeDB(db);
+
 
         res.json(
           db[name][idx]
         );
+
 
       } catch (error) {
 
@@ -356,7 +765,8 @@ function crudRoutes(name) {
         );
 
         res.status(500).json({
-          error: 'Database error'
+          error:
+            'Database error'
         });
 
       }
@@ -365,7 +775,9 @@ function crudRoutes(name) {
   );
 
 
-  /* Admin delete */
+  /* -------------------------------------------------------
+     ADMIN DELETE
+     ------------------------------------------------------- */
 
   app.delete(
     `/api/${name}/:id`,
@@ -374,26 +786,99 @@ function crudRoutes(name) {
 
       try {
 
-        const db = await readDB();
+        const db =
+          await readDB();
 
         const id =
-          Number(req.params.id);
+          Number(
+            req.params.id
+          );
 
-        if (!Array.isArray(db[name])) {
+
+        if (
+          !Array.isArray(
+            db[name]
+          )
+        ) {
+
           db[name] = [];
+
         }
+
+
+        const existing =
+          db[name].find(
+            item =>
+              Number(
+                item.id
+              ) === id
+          );
+
+
+        /*
+         * If Gallery item has a Supabase
+         * image path, delete image too.
+         */
+
+        if (
+          name === 'gallery' &&
+          existing
+        ) {
+
+          try {
+
+            const imagePath =
+              existing.path ||
+              extractSupabaseGalleryPath(
+                existing.image ||
+                existing.imageUrl ||
+                existing.url ||
+                existing.photo ||
+                ''
+              );
+
+
+            if (imagePath) {
+
+              await supabase
+                .storage
+                .from('gallery')
+                .remove([
+                  imagePath
+                ]);
+
+            }
+
+          } catch (
+            storageError
+          ) {
+
+            console.error(
+              'Gallery storage delete error:',
+              storageError
+            );
+
+          }
+
+        }
+
 
         db[name] =
           db[name].filter(
             item =>
-              Number(item.id) !== id
+              Number(
+                item.id
+              ) !== id
           );
 
+
         await writeDB(db);
+
 
         res.json({
           ok: true
         });
+
 
       } catch (error) {
 
@@ -403,7 +888,8 @@ function crudRoutes(name) {
         );
 
         res.status(500).json({
-          error: 'Database error'
+          error:
+            'Database error'
         });
 
       }
@@ -414,7 +900,62 @@ function crudRoutes(name) {
 }
 
 
-/* ---------- Admin Collections ---------- */
+/* =========================================================
+   SUPABASE GALLERY PATH HELPER
+   ========================================================= */
+
+function extractSupabaseGalleryPath(
+  url
+) {
+
+  if (
+    !url ||
+    typeof url !== 'string'
+  ) {
+
+    return null;
+
+  }
+
+
+  try {
+
+    const marker =
+      '/storage/v1/object/public/gallery/';
+
+
+    const index =
+      url.indexOf(marker);
+
+
+    if (
+      index === -1
+    ) {
+
+      return null;
+
+    }
+
+
+    return decodeURIComponent(
+      url.slice(
+        index +
+        marker.length
+      )
+    );
+
+  } catch (error) {
+
+    return null;
+
+  }
+
+}
+
+
+/* =========================================================
+   ADMIN COLLECTIONS
+   ========================================================= */
 
 [
   'programs',
@@ -422,10 +963,14 @@ function crudRoutes(name) {
   'gallery',
   'documents',
   'donors'
-].forEach(crudRoutes);
+].forEach(
+  crudRoutes
+);
 
 
-/* ---------- Submission Tables ---------- */
+/* =========================================================
+   SUBMISSION TABLES
+   ========================================================= */
 
 const submissionTables = {
 
@@ -444,12 +989,17 @@ const submissionTables = {
 };
 
 
-/* ---------- Submission Routes ---------- */
+/* =========================================================
+   SUBMISSION ROUTES
+   ========================================================= */
 
-function submissionRoutes(name) {
+function submissionRoutes(
+  name
+) {
 
   const table =
     submissionTables[name];
+
 
   if (!table) {
 
@@ -458,10 +1008,13 @@ function submissionRoutes(name) {
     );
 
     return;
+
   }
 
 
-  /* Public form submission */
+  /* -------------------------------------------------------
+     PUBLIC FORM SUBMISSION
+     ------------------------------------------------------- */
 
   app.post(
     `/api/${name}`,
@@ -480,7 +1033,9 @@ function submissionRoutes(name) {
          * always start as pending.
          */
 
-        if (name === 'volunteers') {
+        if (
+          name === 'volunteers'
+        ) {
 
           submissionData.status =
             'pending';
@@ -533,7 +1088,8 @@ function submissionRoutes(name) {
 
           ok: true,
 
-          id: row.id
+          id:
+            row.id
 
         });
 
@@ -558,7 +1114,9 @@ function submissionRoutes(name) {
   );
 
 
-  /* Admin read */
+  /* -------------------------------------------------------
+     ADMIN READ
+     ------------------------------------------------------- */
 
   app.get(
     `/api/${name}`,
@@ -616,7 +1174,9 @@ function submissionRoutes(name) {
   );
 
 
-  /* Admin delete */
+  /* -------------------------------------------------------
+     ADMIN DELETE
+     ------------------------------------------------------- */
 
   app.delete(
     `/api/${name}/:id`,
@@ -626,17 +1186,22 @@ function submissionRoutes(name) {
       try {
 
         const id =
-          Number(req.params.id);
+          Number(
+            req.params.id
+          );
 
 
-        if (!Number.isInteger(id)) {
+        if (
+          !Number.isInteger(id)
+        ) {
 
-          return res.status(400).json({
+          return res.status(400)
+            .json({
 
-            error:
-              'Invalid ID'
+              error:
+                'Invalid ID'
 
-          });
+            });
 
         }
 
@@ -679,11 +1244,27 @@ function submissionRoutes(name) {
 
 
 /* =========================================================
+   REGISTER SUBMISSION ROUTES
+   ========================================================= */
+
+[
+  'volunteers',
+  'members',
+  'contactMessages',
+  'newsletter'
+].forEach(
+  submissionRoutes
+);
+
+
+/* =========================================================
    VOLUNTEER ID SYSTEM
    ========================================================= */
 
 
-/* ---------- Approve & Issue ID ---------- */
+/* ---------------------------------------------------------
+   APPROVE VOLUNTEER
+   --------------------------------------------------------- */
 
 app.post(
   '/api/volunteers/:id/approve',
@@ -693,17 +1274,22 @@ app.post(
     try {
 
       const id =
-        Number(req.params.id);
+        Number(
+          req.params.id
+        );
 
 
-      if (!Number.isInteger(id)) {
+      if (
+        !Number.isInteger(id)
+      ) {
 
-        return res.status(400).json({
+        return res.status(400)
+          .json({
 
-          error:
-            'Invalid volunteer ID'
+            error:
+              'Invalid volunteer ID'
 
-        });
+          });
 
       }
 
@@ -721,14 +1307,17 @@ app.post(
         );
 
 
-      if (!result.rows.length) {
+      if (
+        !result.rows.length
+      ) {
 
-        return res.status(404).json({
+        return res.status(404)
+          .json({
 
-          error:
-            'Volunteer application not found'
+            error:
+              'Volunteer application not found'
 
-        });
+          });
 
       }
 
@@ -744,7 +1333,12 @@ app.post(
 
       const volunteerId =
         data.volunteerId ||
-        `NSF-V-${String(row.id).padStart(5, '0')}`;
+        `NSF-V-${String(
+          row.id
+        ).padStart(
+          5,
+          '0'
+        )}`;
 
 
       const verificationCode =
@@ -755,11 +1349,15 @@ app.post(
 
 
       const verificationUrl =
-        `${PUBLIC_BASE_URL.replace(/\/$/, '')}/verify/volunteer/${verificationCode}`;
+        `${PUBLIC_BASE_URL.replace(
+          /\/$/,
+          ''
+        )}/verify/volunteer/${verificationCode}`;
 
 
       const now =
-        new Date().toISOString();
+        new Date()
+          .toISOString();
 
 
       data.status =
@@ -775,10 +1373,12 @@ app.post(
         verificationUrl;
 
       data.approvedAt =
-        data.approvedAt || now;
+        data.approvedAt ||
+        now;
 
       data.issuedAt =
-        data.issuedAt || now;
+        data.issuedAt ||
+        now;
 
       data.rejectedAt =
         null;
@@ -796,7 +1396,9 @@ app.post(
            RETURNING id, data, created_at`,
 
           [
-            JSON.stringify(data),
+            JSON.stringify(
+              data
+            ),
             id
           ]
 
@@ -855,7 +1457,9 @@ app.post(
 );
 
 
-/* ---------- Reject Volunteer ---------- */
+/* ---------------------------------------------------------
+   REJECT VOLUNTEER
+   --------------------------------------------------------- */
 
 app.post(
   '/api/volunteers/:id/reject',
@@ -865,17 +1469,22 @@ app.post(
     try {
 
       const id =
-        Number(req.params.id);
+        Number(
+          req.params.id
+        );
 
 
-      if (!Number.isInteger(id)) {
+      if (
+        !Number.isInteger(id)
+      ) {
 
-        return res.status(400).json({
+        return res.status(400)
+          .json({
 
-          error:
-            'Invalid volunteer ID'
+            error:
+              'Invalid volunteer ID'
 
-        });
+          });
 
       }
 
@@ -893,14 +1502,17 @@ app.post(
         );
 
 
-      if (!result.rows.length) {
+      if (
+        !result.rows.length
+      ) {
 
-        return res.status(404).json({
+        return res.status(404)
+          .json({
 
-          error:
-            'Volunteer application not found'
+            error:
+              'Volunteer application not found'
 
-        });
+          });
 
       }
 
@@ -914,7 +1526,8 @@ app.post(
         'rejected';
 
       data.rejectedAt =
-        new Date().toISOString();
+        new Date()
+          .toISOString();
 
       data.revokedAt =
         null;
@@ -929,7 +1542,9 @@ app.post(
            RETURNING id, data, created_at`,
 
           [
-            JSON.stringify(data),
+            JSON.stringify(
+              data
+            ),
             id
           ]
 
@@ -982,7 +1597,9 @@ app.post(
 );
 
 
-/* ---------- Revoke Volunteer ID ---------- */
+/* =========================================================
+   REVOKE VOLUNTEER
+   ========================================================= */
 
 app.post(
   '/api/volunteers/:id/revoke',
@@ -992,17 +1609,22 @@ app.post(
     try {
 
       const id =
-        Number(req.params.id);
+        Number(
+          req.params.id
+        );
 
 
-      if (!Number.isInteger(id)) {
+      if (
+        !Number.isInteger(id)
+      ) {
 
-        return res.status(400).json({
+        return res.status(400)
+          .json({
 
-          error:
-            'Invalid volunteer ID'
+            error:
+              'Invalid volunteer ID'
 
-        });
+          });
 
       }
 
@@ -1020,14 +1642,17 @@ app.post(
         );
 
 
-      if (!result.rows.length) {
+      if (
+        !result.rows.length
+      ) {
 
-        return res.status(404).json({
+        return res.status(404)
+          .json({
 
-          error:
-            'Volunteer application not found'
+            error:
+              'Volunteer application not found'
 
-        });
+          });
 
       }
 
@@ -1041,7 +1666,8 @@ app.post(
         'revoked';
 
       data.revokedAt =
-        new Date().toISOString();
+        new Date()
+          .toISOString();
 
 
       const updated =
@@ -1053,7 +1679,9 @@ app.post(
            RETURNING id, data, created_at`,
 
           [
-            JSON.stringify(data),
+            JSON.stringify(
+              data
+            ),
             id
           ]
 
@@ -1096,7 +1724,7 @@ app.post(
       res.status(500).json({
 
         error:
-          'Could not revoke volunteer ID'
+          'Could not revoke volunteer'
 
       });
 
@@ -1106,7 +1734,9 @@ app.post(
 );
 
 
-/* ---------- Public Verification API ---------- */
+/* =========================================================
+   VOLUNTEER VERIFICATION API
+   ========================================================= */
 
 app.get(
   '/api/volunteers/verify/:code',
@@ -1122,15 +1752,16 @@ app.get(
 
       if (!code) {
 
-        return res.status(400).json({
+        return res.status(400)
+          .json({
 
-          verified:
-            false,
+            verified:
+              false,
 
-          error:
-            'Verification code is required'
+            status:
+              'INVALID'
 
-        });
+          });
 
       }
 
@@ -1148,18 +1779,17 @@ app.get(
         );
 
 
-      if (!result.rows.length) {
+      if (
+        !result.rows.length
+      ) {
 
-        return res.status(404).json({
+        return res.json({
 
           verified:
             false,
 
           status:
-            'not_found',
-
-          message:
-            'Volunteer ID could not be verified'
+            'NOT FOUND'
 
         });
 
@@ -1174,63 +1804,38 @@ app.get(
         row.data || {};
 
 
-      const status =
-        data.status || 'pending';
-
-
       const verified =
-        status === 'active';
+        data.status ===
+        'active';
 
 
       res.json({
 
         verified,
 
-        status,
+        status:
+          data.status ||
+          'pending',
 
         volunteerId:
-          data.volunteerId || null,
+          data.volunteerId ||
+          null,
 
         name:
-          data.vName ||
           data.name ||
-          '',
+          null,
 
         city:
-          data.vCity ||
           data.city ||
-          '',
+          null,
 
         area:
-          data.vArea ||
           data.area ||
-          '',
+          null,
 
         skills:
-          data.vSkills ||
           data.skills ||
-          '',
-
-        approvedAt:
-          data.approvedAt ||
-          null,
-
-        issuedAt:
-          data.issuedAt ||
-          null,
-
-        revokedAt:
-          data.revokedAt ||
-          null,
-
-        rejectedAt:
-          data.rejectedAt ||
-          null,
-
-        message:
-          verified
-            ? 'Volunteer ID is valid and active'
-            : `Volunteer ID status: ${status}`
+          null
 
       });
 
@@ -1247,8 +1852,8 @@ app.get(
         verified:
           false,
 
-        error:
-          'Verification service error'
+        status:
+          'SERVICE ERROR'
 
       });
 
@@ -1258,23 +1863,18 @@ app.get(
 );
 
 
-/* ---------- Public QR Verification Page ---------- */
+/* =========================================================
+   VOLUNTEER VERIFICATION PAGE
+   ========================================================= */
 
 app.get(
   '/verify/volunteer/:code',
   (req, res) => {
 
     const code =
-      String(
-        req.params.code || ''
-      )
-      .replace(
-        /[^a-zA-Z0-9_-]/g,
-        ''
+      encodeURIComponent(
+        req.params.code
       );
-
-
-    res.type('html');
 
 
     res.send(`<!DOCTYPE html>
@@ -1291,14 +1891,10 @@ app.get(
 >
 
 <title>
-Volunteer ID Verification
+Nisha Seva Foundation - Volunteer Verification
 </title>
 
 <style>
-
-* {
-  box-sizing: border-box;
-}
 
 body {
 
@@ -1312,39 +1908,32 @@ body {
 
   justify-content: center;
 
-  padding: 20px;
-
-  font-family:
-    Arial,
-    Helvetica,
-    sans-serif;
-
   background:
     #f1f5f9;
 
-  color:
-    #1e293b;
+  font-family:
+    Arial,
+    sans-serif;
 
 }
 
 .card {
 
-  width: 100%;
-
-  max-width: 520px;
+  width:
+    min(92%, 600px);
 
   background:
     white;
 
-  border-radius:
-    20px;
-
   padding:
     30px;
 
+  border-radius:
+    18px;
+
   box-shadow:
-    0 10px 40px
-    rgba(0,0,0,.12);
+    0 10px 30px
+    rgba(0,0,0,0.08);
 
 }
 
@@ -1354,10 +1943,7 @@ body {
     center;
 
   font-size:
-    30px;
-
-  margin-bottom:
-    8px;
+    42px;
 
 }
 
@@ -1539,6 +2125,7 @@ This page verifies the volunteer ID issued by Nisha Seva Foundation.
       'details'
     );
 
+
   try {
 
     const response =
@@ -1546,11 +2133,14 @@ This page verifies the volunteer ID issued by Nisha Seva Foundation.
         '/api/volunteers/verify/${code}'
       );
 
+
     const data =
       await response.json();
 
 
-    if (data.verified) {
+    if (
+      data.verified
+    ) {
 
       statusElement.className =
         'status active';
@@ -1626,6 +2216,7 @@ This page verifies the volunteer ID issued by Nisha Seva Foundation.
         }
       ).join('');
 
+
   }
 
   catch (error) {
@@ -1639,7 +2230,9 @@ This page verifies the volunteer ID issued by Nisha Seva Foundation.
   }
 
 
-  function escapeHTML(value) {
+  function escapeHTML(
+    value
+  ) {
 
     return String(value)
 
@@ -1683,19 +2276,9 @@ This page verifies the volunteer ID issued by Nisha Seva Foundation.
 );
 
 
-/* ---------- Website Form Collections ---------- */
-
-[
-  'volunteers',
-  'members',
-  'contactMessages',
-  'newsletter'
-].forEach(
-  submissionRoutes
-);
-
-
-/* ---------- Main Website ---------- */
+/* =========================================================
+   MAIN WEBSITE
+   ========================================================= */
 
 app.get(
   '/',
@@ -1712,6 +2295,10 @@ app.get(
 );
 
 
+/* =========================================================
+   LOGO
+   ========================================================= */
+
 app.get(
   '/logo.jpeg',
   (req, res) => {
@@ -1726,6 +2313,10 @@ app.get(
   }
 );
 
+
+/* =========================================================
+   DONATION QR
+   ========================================================= */
 
 app.get(
   '/donation-qr.jpg',
@@ -1742,19 +2333,32 @@ app.get(
 );
 
 
-/* ---------- Error Handler ---------- */
+/* =========================================================
+   ERROR HANDLER
+   ========================================================= */
 
 app.use(
-  (err, req, res, next) => {
+  (
+    err,
+    req,
+    res,
+    next
+  ) => {
 
     console.error(
       'SERVER ERROR:',
       err
     );
 
-    if (res.headersSent) {
+
+    if (
+      res.headersSent
+    ) {
+
       return next(err);
+
     }
+
 
     res.status(500).json({
 
@@ -1768,7 +2372,9 @@ app.use(
 );
 
 
-/* ---------- Start Server ---------- */
+/* =========================================================
+   START SERVER
+   ========================================================= */
 
 app.listen(
   PORT,
