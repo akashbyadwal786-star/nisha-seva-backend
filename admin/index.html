@@ -570,7 +570,7 @@ async function render(){
           ?
           `<button
              class="primary"
-             onclick="editor()"
+             onclick="current === 'gallery' ? galleryEditor() : editor()"
            >
              + Add
            </button>`
@@ -619,6 +619,21 @@ async function render(){
    ========================================================= */
 
 function card(x){
+
+  if(current === "gallery"){
+    const title=x.title||x.caption||x.name||("Gallery #"+x.id);
+    const image=x.image||x.imageUrl||x.url||x.photo||"";
+    return `
+      <div class="item"><div class="row">
+        <div style="display:flex;gap:14px;align-items:center;">
+          ${image?`<img src="${esc(image)}" alt="${esc(title)}" style="width:110px;height:80px;object-fit:cover;border-radius:10px;border:1px solid #ddd">`:`<div style="width:110px;height:80px;border-radius:10px;background:#eef2f7;display:grid;place-items:center">📷</div>`}
+          <div><b>${esc(title)}</b><div class="small">ID: ${esc(x.id)}</div></div>
+        </div>
+        <div class="actions"><button class="muted" onclick='galleryEditor(${JSON.stringify(x).replace(/'/g,"&#39;")})'>Edit</button><button class="danger" onclick="del(${x.id})">Delete</button></div>
+      </div>
+      ${x.description?`<p style="margin:12px 0 0;">${esc(x.description)}</p>`:""}</div>`;
+  }
+
 
   const title =
     x.title ||
@@ -670,6 +685,51 @@ function card(x){
 
 }
 
+
+/* =========================================================
+   GALLERY PHOTO EDITOR
+   ========================================================= */
+function galleryEditor(x){
+  x=x||{title:'',description:'',image:''};
+  document.body.insertAdjacentHTML('beforeend',`
+    <div class="modal" id="modal"><div class="modalbox">
+      <h2>📷 Gallery Photo</h2>
+      <label><b>Photo</b></label>
+      <input type="file" id="galleryPhoto" accept="image/jpeg,image/png,image/webp" style="margin:8px 0 14px" onchange="previewGalleryPhoto(this)">
+      <div id="galleryPhotoPreview" style="margin:8px 0 16px;text-align:center">
+        ${(x.image||x.imageUrl||x.photo)?`<img src="${esc(x.image||x.imageUrl||x.photo)}" style="max-width:100%;max-height:280px;border-radius:12px;border:1px solid #ddd;object-fit:contain">`:`<div class="small">Photo preview यहाँ दिखाई देगा</div>`}
+      </div>
+      <label><b>Title</b></label>
+      <input id="galleryTitle" value="${esc(x.title||x.caption||x.name||'')}" placeholder="Gallery photo title">
+      <br><br>
+      <label><b>Description</b></label>
+      <textarea id="galleryDescription" rows="5" placeholder="Photo description">${esc(x.description||'')}</textarea>
+      <input type="hidden" id="galleryExistingImage" value="${esc(x.image||x.imageUrl||x.photo||'')}">
+      <div id="em"></div><br>
+      <div class="row"><button class="muted" onclick="modal.remove()">Cancel</button><button class="primary" onclick="saveGallery(${x.id===undefined?'null':x.id})">💾 Save Gallery</button></div>
+    </div></div>`);
+}
+function previewGalleryPhoto(input){
+  const file=input.files&&input.files[0]; if(!file)return;
+  if(file.size>6*1024*1024){alert('Photo 6MB से कम रखें।');input.value='';return;}
+  const reader=new FileReader(); reader.onload=e=>{const box=document.getElementById('galleryPhotoPreview');if(box)box.innerHTML=`<img src="${e.target.result}" style="max-width:100%;max-height:280px;border-radius:12px;border:1px solid #ddd;object-fit:contain">`;}; reader.readAsDataURL(file);
+}
+async function saveGallery(id){
+  try{
+    const title=document.getElementById('galleryTitle').value.trim();
+    const description=document.getElementById('galleryDescription').value.trim();
+    const input=document.getElementById('galleryPhoto'); const existing=document.getElementById('galleryExistingImage').value||'';
+    if(!title)throw new Error('Gallery title डालें।');
+    let image=existing;
+    if(input&&input.files&&input.files[0]){
+      const file=input.files[0]; if(file.size>6*1024*1024)throw new Error('Photo 6MB से कम रखें।');
+      image=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Photo read नहीं हो सकी।'));r.readAsDataURL(file);});
+    }
+    if(!image)throw new Error('Gallery photo चुनें।');
+    await api(id===null?'/api/gallery':'/api/gallery/'+id,{method:id===null?'POST':'PUT',body:JSON.stringify({title,description,image})});
+    modal.remove(); render();
+  }catch(error){const box=document.getElementById('em');if(box)box.innerHTML=`<div class="err">${esc(error.message)}</div>`;else alert(error.message);}
+}
 
 /* =========================================================
    NORMAL EDITOR
