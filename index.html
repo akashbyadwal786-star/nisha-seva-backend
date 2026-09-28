@@ -561,7 +561,7 @@
      Replace this URL with your live Node/Express backend URL.
      Example: https://nisha-seva-backend.onrender.com
   */
-  const API_BASE = window.NISHA_API_URL || 'https://nisha-seva-backend.onrender.com';
+  const API_BASE = window.NISHA_API_URL || window.location.origin;
   const apiUrl = (path) => API_BASE.replace(/\/$/, '') + path;
 
   async function apiFetch(path, options = {}) {
@@ -928,7 +928,46 @@ if (contactForm) {
 
 
 // Load live content from Supabase-backed API
-  /* ---------- Volunteer Form ---------- */
+  
+/* ---------- Membership Form ---------- */
+const memberForm = document.getElementById('memberForm');
+
+if (memberForm) {
+  memberForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const data = {
+      name: document.getElementById('mName').value.trim(),
+      phone: document.getElementById('mPhone').value.trim(),
+      email: document.getElementById('mEmail').value.trim(),
+      city: document.getElementById('mCity').value.trim(),
+      area: document.getElementById('mArea').value
+    };
+
+    try {
+      const response = await fetch(apiUrl('/api/members'), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Submission failed');
+      }
+
+      alert('Membership application successfully submit ho gayi!');
+      memberForm.reset();
+
+    } catch (error) {
+      console.error('Membership form error:', error);
+      alert('Membership application submit nahi hui: ' + error.message);
+    }
+  });
+}
+
+/* ---------- Volunteer Form ---------- */
 
 const volunteerForm = document.getElementById('volForm');
 
@@ -1141,6 +1180,17 @@ document.getElementById('donatePopup').addEventListener('click', function(e){
     closeDonatePopup();
   }
 });
+// Load live content from the same backend used by the admin panel.
+loadDynamicContent().catch(err => console.warn('Live content load failed:', err));
+
+// Keep the public site usable even if a non-critical image/API request fails.
+window.addEventListener('error', (event) => {
+  if (event.target && event.target.tagName === 'IMG') {
+    event.target.style.visibility = 'hidden';
+  }
+}, true);
+
+
 </script>
 </body>
 </html>
