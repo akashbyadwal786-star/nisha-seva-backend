@@ -246,7 +246,7 @@
      Replace this URL with your live Node/Express backend URL.
      Example: https://nisha-seva-backend.onrender.com
   */
-  const API_BASE = window.NISHA_API_URL || location.origin;
+  const API_BASE = window.NISHA_API_URL || 'https://nisha-seva-backend.onrender.com';
   const apiUrl = (path) => API_BASE.replace(/\/$/, '') + path;
 
   async function apiFetch(path, options = {}) {
