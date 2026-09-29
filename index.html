@@ -276,15 +276,6 @@
     });
   }
 
-  function registerEvent(title){
-    const subject = document.getElementById('cSubject');
-    if(subject){
-      subject.value = 'Event Registration: ' + String(title || '').slice(0, 180);
-    }
-    const form = document.getElementById('contactform');
-    if(form) form.scrollIntoView({behavior:'smooth', block:'start'});
-  }
-
   async function loadDynamicContent(){
   if (API_BASE.includes('YOUR-BACKEND-URL')) {
     console.info('Set API_BASE to your live backend URL to enable dynamic content.');
@@ -377,39 +368,22 @@
 
         row.className = 'event-row';
 
-        const eventTitle = first(e, ['title', 'name'], 'Event');
-        const eventImage = first(e, ['image', 'imageUrl', 'photo', 'url'], '');
-        const eventLocation = first(e, ['location', 'city'], '');
-        const eventTime = first(e, ['time', 'eventTime'], '');
-
         row.innerHTML = `
-          ${eventImage ? `
-            <img
-              src="${esc(eventImage)}"
-              alt="${esc(eventTitle)}"
-              style="width:92px;height:72px;object-fit:cover;border-radius:12px;border:1px solid var(--line);flex:none;"
-              loading="lazy"
-            >
-          ` : ''}
-
           <div class="event-date">
             ${esc(day)}
             <small>${esc(mon)}</small>
           </div>
 
           <div class="event-info">
-            <h4>${esc(eventTitle)}</h4>
+            <h4>${esc(first(e, ['title', 'name'], 'Event'))}</h4>
+
             <span>
-              ${esc(eventLocation)}
-              ${eventTime ? ' · ' + esc(eventTime) : ''}
+              ${esc(first(e, ['location', 'city'], ''))}
+              ${first(e, ['time']) ? ' · ' + esc(e.time) : ''}
             </span>
           </div>
 
-          <a
-            href="#contactform"
-            class="btn-ghost"
-            onclick="registerEvent(${JSON.stringify(String(eventTitle))})"
-          >
+          <a href="#contactform" class="btn-ghost">
             Register
           </a>
         `;
@@ -518,7 +492,7 @@
               <button
                 type="button"
                 class="docBtn"
-                data-download="${url ? esc(url) : ''}">
+                ${url ? `data-url="${esc(url)}"` : ''}>
                 Download
               </button>
 
@@ -531,23 +505,16 @@
 
       dg.querySelectorAll('.docBtn').forEach(b => {
         b.onclick = () => {
-          const url = b.dataset.url || b.dataset.download || '';
-          if (!url) {
-            alert('Document link admin panel se add karein.');
-            return;
-          }
-
-          if (b.dataset.download) {
-            const a = document.createElement('a');
-            a.href = b.dataset.download;
-            a.target = '_blank';
-            a.rel = 'noopener';
-            a.download = '';
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
+          if (b.dataset.url) {
+            window.open(
+              b.dataset.url,
+              '_blank',
+              'noopener'
+            );
           } else {
-            window.open(url, '_blank', 'noopener');
+            showToast(
+              'Document link admin panel se add karein.'
+            );
           }
         };
       });
@@ -558,47 +525,53 @@
   }
 
 
- // DONORS
-try {
-  const donors = await apiFetch('/api/donors');
+  // DONORS
+  try {
+    const donors = await apiFetch('/api/donors');
 
-  const dl = document.querySelector('#donors .donor-list');
+    const dl = document.querySelector('#donors .donor-list');
 
-  if (dl && Array.isArray(donors) && donors.length) {
+    if (dl && Array.isArray(donors) && donors.length) {
 
-    dl.innerHTML = donors.map(d => {
+      dl.innerHTML = donors.map(d => {
 
-      const donorName = first(
-        d,
-        ['title', 'name', 'donorName'],
-        'Anonymous Donor'
-      );
+        return `
+          <div class="donor-row">
+            <b>
+              ${esc(
+                first(
+                  d,
+                  ['title', 'name', 'donorName'],
+                  'Anonymous Donor'
+                )
+              )}
+            </b>
 
-      const donationAmount = first(
-        d,
-        ['amount', 'donation', 'value'],
-        d.description || 0
-      );
+            <span>
+              ${money(
+                first(
+                  d,
+                  ['amount', 'donation', 'value'],
+                  d.description || ''
+                )
+              )}
+            </span>
+          </div>
+        `;
 
-      return `
-        <div class="donor-row">
-          <b>
-            ${esc(donorName)}
-          </b>
+      }).join('');
+    }
 
-          <span>
-            ${money(donationAmount)}
-          </span>
-        </div>
-      `;
-
-    }).join('');
+  } catch (err) {
+    console.warn('Donors could not load:', err);
   }
-
-} catch (err) {
-  console.warn('Donors could not load:', err);
 }
-  // Load live content from Supabase-backed API
+
+  // Load live content from the Render backend after the page DOM is ready.
+  document.addEventListener('DOMContentLoaded', () => {
+    loadDynamicContent();
+  });
+
   /* ---------- Contact Form ---------- */
 
 const contactForm = document.getElementById('contactFormEl');
@@ -730,15 +703,6 @@ if (volunteerForm) {
   });
 }
 
-  // Start dynamic content after the page markup is ready.
-  // The current Admin Panel/server expose these public collections:
-  // programs, events, gallery, documents and donors.
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', loadDynamicContent);
-  } else {
-    loadDynamicContent();
-  }
-
 </script><!-- Donation QR Popup <div id="donatePopup" class="donate-popup"><div class="donate-box"><button class="donate-close" onclick="closeDonatePopup()"> &times; </button><h2>❤️ Support Nisha Seva Foundation</h2><p class="donate-text"> आपका छोटा सा सहयोग जरूरतमंद लोगों के जीवन में बड़ा बदलाव ला सकता है। </p><h3>Scan & Donate</h3><img src="donation-qr.jpg" alt="Nisha Seva Foundation Donation QR Code" class="donation-qr" ><p class="donate-note"> किसी भी UPI / Banking App से QR Code scan करके donation करें। </p><button class="donate-close-btn" onclick="closeDonatePopup()"> Close </button></div></div><style>
 .donate-popup{
   display:none;
@@ -828,5 +792,4 @@ document.getElementById('donatePopup').addEventListener('click', function(e){
     closeDonatePopup();
   }
 });
-  loadDynamicContent();
 </script><script>(function(){const f=document.getElementById('memberForm');if(!f)return;const apiBase=(window.NISHA_API_URL||location.origin).replace(/\/$/,'');f.addEventListener('submit',async e=>{e.preventDefault();const b=f.querySelector('button[type="submit"]'),old=b?b.textContent:'';if(b){b.disabled=true;b.textContent='Submitting...'}try{const payload={fullName:mName.value.trim(),phone:mPhone.value.trim(),email:mEmail.value.trim(),city:mCity.value.trim(),area:mArea.value};const r=await fetch(apiBase+'/api/members',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'HTTP '+r.status);const w=document.getElementById('idcardWrap'),c=document.getElementById('idcanvas');if(w&&c){w.style.display='flex';const x=c.getContext('2d');x.fillStyle='#0F5132';x.fillRect(0,0,c.width,c.height);x.fillStyle='#fff';x.font='bold 18px Arial';x.fillText('NISHA SEVA FOUNDATION',18,32);x.font='bold 16px Arial';x.fillText(payload.fullName.slice(0,28),18,72);x.font='13px Arial';x.fillText('Member • '+payload.area,18,98);x.fillText(payload.city+' • '+payload.phone,18,121);x.font='12px Arial';x.fillText('Application ID: '+(d.id||'Pending'),18,151);x.fillText('Membership Application Submitted',18,177);const dl=document.getElementById('dlIdBtn');if(dl)dl.onclick=()=>{const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='Nisha-Seva-Member-Card.png';a.click()}}alert('Membership application successfully submitted.');f.reset()}catch(err){alert('Membership submission failed: '+err.message)}finally{if(b){b.disabled=false;b.textContent=old}}})})();</script></body></html>
