@@ -246,7 +246,7 @@
      Replace this URL with your live Node/Express backend URL.
      Example: https://nisha-seva-backend.onrender.com
   */
-  const API_BASE = window.NISHA_API_URL || 'https://nisha-seva-backend.onrender.com';
+  const API_BASE = window.NISHA_API_URL || location.origin;
   const apiUrl = (path) => API_BASE.replace(/\/$/, '') + path;
 
   async function apiFetch(path, options = {}) {
@@ -788,4 +788,4 @@ document.getElementById('donatePopup').addEventListener('click', function(e){
     closeDonatePopup();
   }
 });
-</script></body></html>
+</script><script>(function(){const f=document.getElementById('memberForm');if(!f)return;const apiBase=(window.NISHA_API_URL||location.origin).replace(/\/$/,'');f.addEventListener('submit',async e=>{e.preventDefault();const b=f.querySelector('button[type="submit"]'),old=b?b.textContent:'';if(b){b.disabled=true;b.textContent='Submitting...'}try{const payload={fullName:mName.value.trim(),phone:mPhone.value.trim(),email:mEmail.value.trim(),city:mCity.value.trim(),area:mArea.value};const r=await fetch(apiBase+'/api/members',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}),d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'HTTP '+r.status);const w=document.getElementById('idcardWrap'),c=document.getElementById('idcanvas');if(w&&c){w.style.display='flex';const x=c.getContext('2d');x.fillStyle='#0F5132';x.fillRect(0,0,c.width,c.height);x.fillStyle='#fff';x.font='bold 18px Arial';x.fillText('NISHA SEVA FOUNDATION',18,32);x.font='bold 16px Arial';x.fillText(payload.fullName.slice(0,28),18,72);x.font='13px Arial';x.fillText('Member • '+payload.area,18,98);x.fillText(payload.city+' • '+payload.phone,18,121);x.font='12px Arial';x.fillText('Application ID: '+(d.id||'Pending'),18,151);x.fillText('Membership Application Submitted',18,177);const dl=document.getElementById('dlIdBtn');if(dl)dl.onclick=()=>{const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='Nisha-Seva-Member-Card.png';a.click()}}alert('Membership application successfully submitted.');f.reset()}catch(err){alert('Membership submission failed: '+err.message)}finally{if(b){b.disabled=false;b.textContent=old}}})})();</script></body></html>
