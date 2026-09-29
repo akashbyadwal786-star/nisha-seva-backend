@@ -276,6 +276,15 @@
     });
   }
 
+  function registerEvent(title){
+    const subject = document.getElementById('cSubject');
+    if(subject){
+      subject.value = 'Event Registration: ' + String(title || '').slice(0, 180);
+    }
+    const form = document.getElementById('contactform');
+    if(form) form.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
   async function loadDynamicContent(){
   if (API_BASE.includes('YOUR-BACKEND-URL')) {
     console.info('Set API_BASE to your live backend URL to enable dynamic content.');
@@ -368,22 +377,39 @@
 
         row.className = 'event-row';
 
+        const eventTitle = first(e, ['title', 'name'], 'Event');
+        const eventImage = first(e, ['image', 'imageUrl', 'photo', 'url'], '');
+        const eventLocation = first(e, ['location', 'city'], '');
+        const eventTime = first(e, ['time', 'eventTime'], '');
+
         row.innerHTML = `
+          ${eventImage ? `
+            <img
+              src="${esc(eventImage)}"
+              alt="${esc(eventTitle)}"
+              style="width:92px;height:72px;object-fit:cover;border-radius:12px;border:1px solid var(--line);flex:none;"
+              loading="lazy"
+            >
+          ` : ''}
+
           <div class="event-date">
             ${esc(day)}
             <small>${esc(mon)}</small>
           </div>
 
           <div class="event-info">
-            <h4>${esc(first(e, ['title', 'name'], 'Event'))}</h4>
-
+            <h4>${esc(eventTitle)}</h4>
             <span>
-              ${esc(first(e, ['location', 'city'], ''))}
-              ${first(e, ['time']) ? ' · ' + esc(e.time) : ''}
+              ${esc(eventLocation)}
+              ${eventTime ? ' · ' + esc(eventTime) : ''}
             </span>
           </div>
 
-          <a href="#contactform" class="btn-ghost">
+          <a
+            href="#contactform"
+            class="btn-ghost"
+            onclick="registerEvent(${JSON.stringify(String(eventTitle))})"
+          >
             Register
           </a>
         `;
@@ -492,7 +518,7 @@
               <button
                 type="button"
                 class="docBtn"
-                ${url ? `data-url="${esc(url)}"` : ''}>
+                data-download="${url ? esc(url) : ''}">
                 Download
               </button>
 
@@ -505,16 +531,23 @@
 
       dg.querySelectorAll('.docBtn').forEach(b => {
         b.onclick = () => {
-          if (b.dataset.url) {
-            window.open(
-              b.dataset.url,
-              '_blank',
-              'noopener'
-            );
+          const url = b.dataset.url || b.dataset.download || '';
+          if (!url) {
+            alert('Document link admin panel se add karein.');
+            return;
+          }
+
+          if (b.dataset.download) {
+            const a = document.createElement('a');
+            a.href = b.dataset.download;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.download = '';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
           } else {
-            showToast(
-              'Document link admin panel se add karein.'
-            );
+            window.open(url, '_blank', 'noopener');
           }
         };
       });
@@ -698,6 +731,15 @@ if (volunteerForm) {
     }
   });
 }
+
+  // Start dynamic content after the page markup is ready.
+  // The current Admin Panel/server expose these public collections:
+  // programs, events, gallery, documents and donors.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadDynamicContent);
+  } else {
+    loadDynamicContent();
+  }
 
 </script><!-- Donation QR Popup <div id="donatePopup" class="donate-popup"><div class="donate-box"><button class="donate-close" onclick="closeDonatePopup()"> &times; </button><h2>❤️ Support Nisha Seva Foundation</h2><p class="donate-text"> आपका छोटा सा सहयोग जरूरतमंद लोगों के जीवन में बड़ा बदलाव ला सकता है। </p><h3>Scan & Donate</h3><img src="donation-qr.jpg" alt="Nisha Seva Foundation Donation QR Code" class="donation-qr" ><p class="donate-note"> किसी भी UPI / Banking App से QR Code scan करके donation करें। </p><button class="donate-close-btn" onclick="closeDonatePopup()"> Close </button></div></div><style>
 .donate-popup{
