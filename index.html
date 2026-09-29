@@ -558,48 +558,46 @@
   }
 
 
-  // DONORS
-  try {
-    const donors = await apiFetch('/api/donors');
+ // DONORS
+try {
+  const donors = await apiFetch('/api/donors');
 
-    const dl = document.querySelector('#donors .donor-list');
+  const dl = document.querySelector('#donors .donor-list');
 
-    if (dl && Array.isArray(donors) && donors.length) {
+  if (dl && Array.isArray(donors) && donors.length) {
 
-      dl.innerHTML = donors.map(d => {
+    dl.innerHTML = donors.map(d => {
 
-        return `
-          <div class="donor-row">
-            <b>
-              ${esc(
-                first(
-                  d,
-                  ['name', 'donorName'],
-                  'Anonymous Donor'
-                )
-              )}
-            </b>
+      const donorName = first(
+        d,
+        ['title', 'name', 'donorName'],
+        'Anonymous Donor'
+      );
 
-            <span>
-              ${money(
-                first(
-                  d,
-                  ['amount', 'donation', 'value'],
-                  ''
-                )
-              )}
-            </span>
-          </div>
-        `;
+      const donationAmount = first(
+        d,
+        ['amount', 'donation', 'value'],
+        d.description || 0
+      );
 
-      }).join('');
-    }
+      return `
+        <div class="donor-row">
+          <b>
+            ${esc(donorName)}
+          </b>
 
-  } catch (err) {
-    console.warn('Donors could not load:', err);
+          <span>
+            ${money(donationAmount)}
+          </span>
+        </div>
+      `;
+
+    }).join('');
   }
-}
 
+} catch (err) {
+  console.warn('Donors could not load:', err);
+}
   // Load live content from Supabase-backed API
   /* ---------- Contact Form ---------- */
 
