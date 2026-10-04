@@ -253,6 +253,7 @@ pre{
     grid-template-columns:1fr;
   }
 }
+.internship-admin-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}.internship-admin-grid .info-box{min-height:66px}.offer-preview{background:#fffdf7;border:1px solid #e4d8bd;border-radius:14px;padding:24px;margin:18px 0;font-family:Georgia,serif;line-height:1.7}.offer-preview .offer-top{text-align:center;border-bottom:2px solid #123b6d;padding-bottom:14px;margin-bottom:18px}.offer-preview h1{margin:0;color:#123b6d;font-size:25px}.offer-preview h2{margin:5px 0;color:#9b6b1d;font-size:16px}.offer-preview .offer-title{text-align:center;font-weight:700;font-size:19px;text-decoration:underline;margin:18px 0}.offer-preview .offer-sign{display:flex;justify-content:space-between;gap:30px;margin-top:35px}@media(max-width:700px){.internship-admin-grid{grid-template-columns:1fr}.offer-preview .offer-sign{flex-direction:column}}
 </style>
 </head>
 
@@ -284,6 +285,7 @@ const tabs = [
   ["documents","Documents"],
   ["donors","Donors"],
   ["volunteers","Volunteers"],
+  ["internships","Student Internships"],
   ["members","Members"],
   ["contactMessages","Messages"],
   ["newsletter","Newsletter"]
@@ -529,6 +531,14 @@ async function render(){
     if(current === "volunteers"){
 
       await renderVolunteers();
+
+      return;
+
+    }
+
+    if(current === "internships"){
+
+      await renderInternships();
 
       return;
 
@@ -962,6 +972,30 @@ async function del(id){
 
 }
 
+
+/* =========================================================
+   STUDENT INTERNSHIPS
+   ========================================================= */
+let internshipCache={};
+async function renderInternships(){
+ content.innerHTML='<h2>Student Internship Applications</h2><p>Loading internship applications...</p>';
+ try{const data=await api('/api/internships');const rows=Array.isArray(data)?data:[];internshipCache={};rows.forEach(x=>internshipCache[x.id]=x);let html=`<div class="row"><div><h2>BA Internship Applications</h2><span class="small">${rows.length} application(s)</span></div></div>`;html+=rows.length?rows.map(internshipCard).join(''):'<div class="ok">अभी कोई Student Internship application नहीं है।</div>';content.innerHTML=html;}catch(e){content.innerHTML=`<div class="err">${esc(e.message)}</div>`;}}
+function internshipCard(x){
+ const status=String(x.status||'pending').toLowerCase(),cls=['pending','active','rejected','revoked'].includes(status)?status:'pending';let actions='';
+ if(status==='pending')actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button><button class="danger" onclick="rejectInternship(${x.id})">✕ Reject</button>`;
+ else if(status==='active')actions=`<button class="primary" onclick="showOfferLetterById(${x.id})">📄 Offer Letter</button><button class="warning" onclick="revokeInternship(${x.id})">Revoke Approval</button>`;
+ else actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button>`;
+ const interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'-');
+ return `<div class="item"><div class="row"><div><h3 style="margin:0 0 6px">${esc(x.studentName||x.name||'Student')}</h3><span class="status ${cls}">${esc(status.toUpperCase())}</span></div><div class="actions">${actions}</div></div><div class="internship-admin-grid">
+ <div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId||'Not issued')}</div><div class="info-box"><strong>Application ID</strong>${esc(x.id)}</div><div class="info-box"><strong>Father / Mother</strong>${esc(x.parentName||'-')}</div><div class="info-box"><strong>Mobile</strong>${esc(x.mobile||x.phone||'-')}</div><div class="info-box"><strong>Email</strong>${esc(x.email||'-')}</div><div class="info-box"><strong>College</strong>${esc(x.collegeName||x.educationCollege||'-')}</div><div class="info-box"><strong>University</strong>${esc(x.university||'-')}</div><div class="info-box"><strong>Class / Year</strong>${esc((x.className||'BA')+' / '+(x.yearSemester||'-'))}</div><div class="info-box"><strong>Enrollment / Roll</strong>${esc(x.enrollmentRoll||'-')}</div><div class="info-box"><strong>Previous %</strong>${esc(x.previousPercentage||'-')}%</div><div class="info-box"><strong>Duration</strong>${esc(x.duration||'-')}</div><div class="info-box"><strong>Availability</strong>${esc(x.availability||'-')}</div><div class="info-box"><strong>Preferred Area</strong>${esc(x.preferredPlace||'-')}</div><div class="info-box"><strong>Application Date</strong>${esc(x.applicationDate||'-')}</div></div><div style="margin-top:12px"><b>Internship Interest:</b> ${esc(interests)}</div>${x.otherInterest?`<div style="margin-top:7px"><b>Other:</b> ${esc(x.otherInterest)}</div>`:''}${x.address?`<div style="margin-top:7px"><b>Address:</b> ${esc(x.address)}</div>`:''}${x.studentNote?`<div style="margin-top:7px"><b>Student Note:</b> ${esc(x.studentNote)}</div>`:''}${x.recommendation?`<div style="margin-top:7px"><b>College Recommendation:</b> ${esc(x.recommendation)}</div>`:''}</div>`;
+}
+async function approveInternship(id){if(!confirm('क्या आप इस BA Internship application को Approve करके Official Internship ID और Offer Letter जारी करना चाहते हैं?'))return;try{const result=await api('/api/internships/'+id+'/approve',{method:'POST'});let list=await api('/api/internships');list=Array.isArray(list)?list:[];let item=list.find(x=>Number(x.id)===Number(id));if(!item&&result&&result.id)item=result;if(!item)throw new Error('Approved internship record backend से नहीं मिला।');if(!item.internshipId)item.internshipId=result?.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(id).padStart(4,'0'));if(!item.status||item.status==='pending')item.status='active';internshipCache[id]=item;alert('Internship application approved. अब Premium Offer Letter तैयार है।');showOfferLetter(item);renderInternships();}catch(e){alert('Approval नहीं हो सकी:\n\n'+e.message);}}
+async function rejectInternship(id){if(!confirm('क्या आप इस Internship application को Reject करना चाहते हैं?'))return;try{await api('/api/internships/'+id+'/reject',{method:'POST'});alert('Internship application rejected.');renderInternships();}catch(e){alert(e.message);}}
+async function revokeInternship(id){if(!confirm('क्या आप इस Internship approval को Revoke करना चाहते हैं?'))return;try{await api('/api/internships/'+id+'/revoke',{method:'POST'});alert('Internship approval revoked.');renderInternships();}catch(e){alert(e.message);}}
+function showOfferLetterById(id){const x=internshipCache[id];if(!x){alert('Internship record नहीं मिला। कृपया list refresh करें।');return;}showOfferLetter(x);}
+function offerLetterHtml(x){const iid=x.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(x.id||0).padStart(4,'0')),student=x.studentName||x.name||'Student',college=x.collegeName||x.educationCollege||'College',date=x.approvedAt?new Date(x.approvedAt).toLocaleDateString('en-IN'):(x.applicationDate||new Date().toLocaleDateString('en-IN')),interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'Social service and educational activities');return `<div class="offer-preview" id="offerPrintable"><div class="offer-top"><h1>NISHA SEVA FOUNDATION</h1><h2>Student Internship Programme</h2><div style="font-size:12px;color:#555">Internship ID: <b>${esc(iid)}</b> &nbsp; | &nbsp; Date: <b>${esc(date)}</b></div></div><div class="offer-title">INTERNSHIP OFFER LETTER</div><p>Dear <b>${esc(student)}</b>,</p><p>We are pleased to offer you an internship opportunity with <b>Nisha Seva Foundation</b> under the <b>BA Internship Program</b>, subject to the terms and guidelines of the Foundation.</p><p><b>College:</b> ${esc(college)}<br><b>University:</b> ${esc(x.university||'-')}<br><b>Programme:</b> ${esc(x.className||'BA')} · ${esc(x.yearSemester||'-')}<br><b>Internship Duration:</b> ${esc(x.duration||'-')}<br><b>Preferred Area:</b> ${esc(x.preferredPlace||'-')}<br><b>Focus Areas:</b> ${esc(interests)}</p><p>During the internship, you are expected to maintain discipline, confidentiality, punctuality and professional conduct, and to responsibly complete the activities assigned by the Foundation or its coordinator.</p><p>This offer letter is issued on the basis of the information submitted in your Internship Registration Form and the approval recorded by the Foundation.</p><p>We welcome your participation and wish you a meaningful and productive internship experience.</p><div class="offer-sign"><div><b>Authorized Signatory</b><br>Nisha Seva Foundation<br><span style="font-size:12px">Official Internship Programme</span></div><div><b>Student</b><br>${esc(student)}<br><span style="font-size:12px">Internship ID: ${esc(iid)}</span></div></div></div>`;}
+function showOfferLetter(x){const old=document.getElementById('offerModal');if(old)old.remove();document.body.insertAdjacentHTML('beforeend',`<div class="modal" id="offerModal"><div class="modalbox" style="max-width:920px"><div class="row"><div><h2>🎓 Premium Internship Offer Letter</h2><div class="small">${esc(x.studentName||x.name||'Student')} · ${esc(x.internshipId||'')}</div></div><button class="muted" onclick="offerModal.remove()">✕ Close</button></div>${offerLetterHtml(x)}<div class="row"><button class="primary" onclick="downloadOfferLetterPDF()">📄 Download Premium PDF</button><button class="muted" onclick="window.print()">🖨 Print</button></div></div></div>`);window.currentInternshipOffer=x;}
+function downloadOfferLetterPDF(){const x=window.currentInternshipOffer;if(!x)return;const {jsPDF}=window.jspdf,pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'}),W=pdf.internal.pageSize.getWidth(),H=pdf.internal.pageSize.getHeight(),m=18;iid=x.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(x.id||0).padStart(4,'0')),student=x.studentName||x.name||'Student',college=x.collegeName||x.educationCollege||'-',interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'-'),date=x.approvedAt?new Date(x.approvedAt).toLocaleDateString('en-IN'):(x.applicationDate||new Date().toLocaleDateString('en-IN'));pdf.setFillColor(18,59,109);pdf.rect(0,0,W,25,'F');pdf.setTextColor(255,255,255);pdf.setFont('helvetica','bold');pdf.setFontSize(18);pdf.text('NISHA SEVA FOUNDATION',W/2,11,{align:'center'});pdf.setFontSize(10);pdf.setFont('helvetica','normal');pdf.text('Student Internship Programme',W/2,18,{align:'center'});pdf.setTextColor(155,107,29);pdf.setFont('helvetica','bold');pdf.setFontSize(15);pdf.text('INTERNSHIP OFFER LETTER',W/2,38,{align:'center'});pdf.setTextColor(30,30,30);pdf.setFontSize(10.5);let y=49;pdf.text('Internship ID: '+iid,m,y);pdf.text('Date: '+date,W-m,y,{align:'right'});y+=12;const paras=[`Dear ${student},`,`We are pleased to offer you an internship opportunity with Nisha Seva Foundation under the BA Internship Program, subject to the terms and guidelines of the Foundation.`,`College: ${college}\nUniversity: ${x.university||'-'}\nProgramme: ${x.className||'BA'} · ${x.yearSemester||'-'}\nInternship Duration: ${x.duration||'-'}\nPreferred Area: ${x.preferredPlace||'-'}\nFocus Areas: ${interests}`,`During the internship, you are expected to maintain discipline, confidentiality, punctuality and professional conduct, and to responsibly complete the activities assigned by the Foundation or its coordinator.`,`This offer letter is issued on the basis of the information submitted in your Internship Registration Form and the approval recorded by the Foundation.`,`We welcome your participation and wish you a meaningful and productive internship experience.`];for(const para of paras){const lines=pdf.splitTextToSize(para,W-m*2);pdf.text(lines,m,y);y+=lines.length*5.2+5;if(y>H-55){pdf.addPage();y=25;}}y=Math.min(y,H-38);pdf.setFont('helvetica','bold');pdf.text('Authorized Signatory',m,y);pdf.text('Student',W-m-28,y);pdf.setFont('helvetica','normal');pdf.text('Nisha Seva Foundation',m,y+7);pdf.text(student,W-m-28,y+7);pdf.setFontSize(8);pdf.setTextColor(100,100,100);pdf.text('Digitally generated internship offer letter · Nisha Seva Foundation',W/2,H-8,{align:'center'});pdf.save('Nisha-Seva-Internship-Offer-'+student.replace(/[^a-z0-9]/gi,'_')+'.pdf');}
 
 /* =========================================================
    VOLUNTEERS
