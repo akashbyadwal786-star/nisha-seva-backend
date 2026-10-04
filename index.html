@@ -763,6 +763,62 @@ setupImagePreview('iStudentPhoto','iStudentPhotoPreview');
 setupImagePreview('iStudentSign','iStudentSignPreview');
 setupImagePreview('iParentSign','iParentSignPreview');
 
+
+function downloadSubmittedInternshipForm(data){
+  const escPdf = (v) => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const interestsText = Array.isArray(data.interests) ? data.interests.join(', ') : (data.interests || '-');
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Nisha Seva Foundation - Internship Application</title>
+  <style>
+    @page{size:A4;margin:14mm}body{font-family:Arial,sans-serif;color:#222;line-height:1.45}
+    .page{border:2px solid #c89b3c;padding:18px;min-height:255mm;position:relative}
+    .page:before,.page:after{content:"✿";position:absolute;color:#c89b3c;font-size:28px}
+    .page:before{top:8px;left:10px}.page:after{bottom:8px;right:10px}
+    h1{text-align:center;margin:0;color:#123b6d;font-size:23px}h2{text-align:center;margin:4px 0 18px;color:#9b6b1d;font-size:15px}
+    .title{text-align:center;font-weight:700;font-size:18px;border-top:1px solid #ddd;border-bottom:1px solid #ddd;padding:9px;margin:12px 0 18px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 18px}.item{border-bottom:1px solid #ddd;padding:6px 0}.full{grid-column:1/-1}
+    .label{font-size:10px;color:#777}.value{font-weight:600}.declaration{margin-top:18px;background:#faf5e8;border:1px solid #e5d3a4;padding:12px}
+    .photo{width:85px;height:105px;object-fit:cover;border:1px solid #bbb}.sign{max-width:210px;max-height:70px;object-fit:contain;border:1px solid #ddd}
+    .foot{margin-top:20px;text-align:center;font-size:10px;color:#777}
+  </style></head><body><div class="page">
+  <h1>NISHA SEVA FOUNDATION</h1><h2>Student Internship Programme</h2>
+  <div class="title">STUDENT INTERNSHIP REGISTRATION FORM</div>
+  <div class="grid">
+  <div class="item"><div class="label">Programme</div><div class="value">${escPdf(data.program)}</div></div>
+  <div class="item"><div class="label">Internship Duration</div><div class="value">${escPdf(data.duration)}</div></div>
+  <div class="item"><div class="label">College</div><div class="value">${escPdf(data.collegeName)}</div></div>
+  <div class="item"><div class="label">Application Date</div><div class="value">${escPdf(data.applicationDate)}</div></div>
+  <div class="item"><div class="label">Student Name</div><div class="value">${escPdf(data.studentName)}</div></div>
+  <div class="item"><div class="label">Parent Name</div><div class="value">${escPdf(data.parentName)}</div></div>
+  <div class="item"><div class="label">Date of Birth</div><div class="value">${escPdf(data.dob)}</div></div>
+  <div class="item"><div class="label">Mobile</div><div class="value">${escPdf(data.mobile)}</div></div>
+  <div class="item"><div class="label">Email</div><div class="value">${escPdf(data.email)}</div></div>
+  <div class="item"><div class="label">University</div><div class="value">${escPdf(data.university)}</div></div>
+  <div class="item full"><div class="label">Address</div><div class="value">${escPdf(data.address)}</div></div>
+  <div class="item"><div class="label">Class</div><div class="value">${escPdf(data.className)}</div></div>
+  <div class="item"><div class="label">Year / Semester</div><div class="value">${escPdf(data.yearSemester)}</div></div>
+  <div class="item"><div class="label">Enrollment / Roll No.</div><div class="value">${escPdf(data.enrollmentRoll)}</div></div>
+  <div class="item"><div class="label">Previous Percentage</div><div class="value">${escPdf(data.previousPercentage)}</div></div>
+  <div class="item full"><div class="label">Focus Areas</div><div class="value">${escPdf(interestsText)}</div></div>
+  <div class="item"><div class="label">Preferred Area</div><div class="value">${escPdf(data.preferredPlace)}</div></div>
+  <div class="item"><div class="label">Availability</div><div class="value">${escPdf(data.availability)}</div></div>
+  <div class="item full"><div class="label">Student Note</div><div class="value">${escPdf(data.studentNote || '-')}</div></div>
+  <div class="item"><div class="label">Student Photo</div><div class="value">${data.studentPhoto ? '<img class="photo" src="'+data.studentPhoto+'">' : '-'}</div></div>
+  <div class="item"><div class="label">Student Signature</div><div class="value">${data.studentSignature ? '<img class="sign" src="'+data.studentSignature+'">' : '-'}</div></div>
+  <div class="item"><div class="label">Parent Signature</div><div class="value">${data.parentSignature ? '<img class="sign" src="'+data.parentSignature+'">' : '-'}</div></div>
+  <div class="item"><div class="label">College Coordinator</div><div class="value">${escPdf(data.coordinatorName || '-')}</div></div>
+  <div class="item full"><div class="label">College Recommendation</div><div class="value">${escPdf(data.recommendation || '-')}</div></div>
+  </div>
+  <div class="declaration">✓ <b>Declaration:</b> मैं घोषणा करता/करती हूँ कि ऊपर दी गई सभी जानकारी मेरे ज्ञान के अनुसार सही है। मैं Nisha Seva Foundation द्वारा निर्धारित Internship कार्यक्रम, सामाजिक गतिविधियों एवं संस्था के नियमों का पालन करूंगा/करूंगी।</div>
+  <div class="foot">Submitted through Nisha Seva Foundation Student Internship Programme</div></div>
+  <script>window.onload=()=>setTimeout(()=>window.print(),500)</script></body></html>`;
+  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url;
+  a.download='Nisha-Seva-Internship-Application-'+String(data.studentName||'Student').replace(/[^a-z0-9]/gi,'_')+'.html';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+}
+
 internshipForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const interests = [...document.querySelectorAll('input[name="iInterest"]:checked')].map(x => x.value);
@@ -806,7 +862,9 @@ internshipForm.addEventListener('submit', async (e) => {
       if (dateInput) dateInput.value = today;
       const box = document.getElementById('internshipSuccess');
       box.style.display='block';
-      box.innerHTML='<b>Application successfully submit हो गई।</b><br>आपका आवेदन verification और approval के लिए Nisha Seva Foundation Admin Panel में भेज दिया गया है। Approval के बाद Premium Offer Letter उपलब्ध होगा।';
+      box.innerHTML='<b>Application successfully submit हो गई।</b><br>आपका आवेदन verification और approval के लिए Nisha Seva Foundation Admin Panel में भेज दिया गया है। Approval के बाद Premium Offer Letter उपलब्ध होगा.<div style="margin-top:14px"><button type="button" class="btn-primary" id="downloadInternshipFormBtn">📄 Download Submitted Form</button></div>';
+      const downloadBtn = document.getElementById('downloadInternshipFormBtn');
+      if(downloadBtn) downloadBtn.addEventListener('click', () => downloadSubmittedInternshipForm(data));
       box.scrollIntoView({behavior:'smooth',block:'center'});
     } catch (error) {
       console.error('Internship form error:', error);
