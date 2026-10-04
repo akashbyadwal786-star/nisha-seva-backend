@@ -298,12 +298,33 @@
 
       <div class="field full"><h3 style="margin:8px 0 0;">4. विद्यार्थी की घोषणा</h3></div>
       <div class="field full"><label for="iStudentNote">घोषणा / अतिरिक्त जानकारी</label><textarea id="iStudentNote" rows="4" placeholder="यदि कोई अतिरिक्त जानकारी देना चाहते हैं तो लिखें"></textarea></div>
-      <div class="field"><label for="iStudentSign">विद्यार्थी का नाम (हस्ताक्षर हेतु)</label><input id="iStudentSign" required></div>
-      <div class="field"><label for="iParentSign">अभिभावक का नाम (हस्ताक्षर हेतु)</label><input id="iParentSign" required></div>
+      <div class="field">
+        <label for="iStudentPhoto">विद्यार्थी का फोटो</label>
+        <input id="iStudentPhoto" type="file" accept="image/*" capture="environment" required>
+        <small style="display:block;margin-top:6px;color:#667085;">Gallery से फोटो चुनें या मोबाइल कैमरे से फोटो लें</small>
+        <img id="iStudentPhotoPreview" alt="Student photo preview" style="display:none;margin-top:10px;width:90px;height:110px;object-fit:cover;border-radius:10px;border:1px solid var(--line);">
+      </div>
+      <div class="field">
+        <label for="iStudentSign">विद्यार्थी के हस्ताक्षर</label>
+        <input id="iStudentSign" type="file" accept="image/*" capture="environment" required>
+        <small style="display:block;margin-top:6px;color:#667085;">हस्ताक्षर की फोटो Gallery से upload करें</small>
+        <img id="iStudentSignPreview" alt="Student signature preview" style="display:none;margin-top:10px;max-width:220px;height:70px;object-fit:contain;border-radius:8px;border:1px solid var(--line);">
+      </div>
+      <div class="field">
+        <label for="iParentSign">अभिभावक के हस्ताक्षर</label>
+        <input id="iParentSign" type="file" accept="image/*" capture="environment" required>
+        <small style="display:block;margin-top:6px;color:#667085;">अभिभावक के हस्ताक्षर की फोटो Gallery से upload करें</small>
+        <img id="iParentSignPreview" alt="Parent signature preview" style="display:none;margin-top:10px;max-width:220px;height:70px;object-fit:contain;border-radius:8px;border:1px solid var(--line);">
+      </div>
       <div class="field full"><label for="iCoordinator">कॉलेज Coordinator का नाम</label><input id="iCoordinator" placeholder="यदि उपलब्ध हो तो भरें"></div>
       <div class="field full"><label for="iRecommendation">कॉलेज की टिप्पणी / Recommendation</label><textarea id="iRecommendation" rows="3" placeholder="College Coordinator की recommendation"></textarea></div>
     </div>
-    <div class="internship-declaration">मैं घोषणा करता/करती हूँ कि ऊपर दी गई सभी जानकारी मेरे ज्ञान के अनुसार सही है। मैं Nisha Seva Foundation द्वारा निर्धारित Internship कार्यक्रम, सामाजिक गतिविधियों एवं संस्था के नियमों का पालन करूंगा/करूंगी। Internship के दौरान दिए गए कार्यों की जिम्मेदारी से पूर्ति करूंगा/करूंगी।</div>
+    <div class="internship-declaration">
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-weight:600;">
+        <input id="iDeclaration" type="checkbox" checked required style="margin-top:5px;accent-color:var(--green);width:18px;height:18px;">
+        <span>✓ मैं घोषणा करता/करती हूँ कि ऊपर दी गई सभी जानकारी मेरे ज्ञान के अनुसार सही है। मैं Nisha Seva Foundation द्वारा निर्धारित Internship कार्यक्रम, सामाजिक गतिविधियों एवं संस्था के नियमों का पालन करूंगा/करूंगी। Internship के दौरान दिए गए कार्यों की जिम्मेदारी से पूर्ति करूंगा/करूंगी।</span>
+      </label>
+    </div>
     <button type="submit" class="btn-primary">🎓 Submit Internship Application</button>
     <div id="internshipSuccess" class="internship-success"></div>
   </form>
@@ -708,7 +729,41 @@ if (internshipForm) {
   const dateInput = document.getElementById('iDate');
   if (dateInput && !dateInput.value) dateInput.value = today;
 
-  internshipForm.addEventListener('submit', async (e) => {
+  
+function fileToDataURL(file){
+  return new Promise((resolve,reject)=>{
+    if(!file) return resolve("");
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function setupImagePreview(inputId, previewId){
+  const input = document.getElementById(inputId);
+  const preview = document.getElementById(previewId);
+  if(!input || !preview) return;
+  input.addEventListener('change', ()=>{
+    const file = input.files && input.files[0];
+    if(!file){ preview.style.display='none'; preview.removeAttribute('src'); return; }
+    if(!file.type.startsWith('image/')){
+      alert('कृपया केवल image file upload करें।');
+      input.value = '';
+      preview.style.display='none';
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    preview.src = url;
+    preview.style.display = 'block';
+  });
+}
+
+setupImagePreview('iStudentPhoto','iStudentPhotoPreview');
+setupImagePreview('iStudentSign','iStudentSignPreview');
+setupImagePreview('iParentSign','iParentSignPreview');
+
+internshipForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const interests = [...document.querySelectorAll('input[name="iInterest"]:checked')].map(x => x.value);
     const time = document.querySelector('input[name="iTime"]:checked')?.value || '';
@@ -736,8 +791,9 @@ if (internshipForm) {
         preferredPlace: document.getElementById('iPlace').value.trim(),
         availability: time,
         studentNote: document.getElementById('iStudentNote').value.trim(),
-        studentSignatureName: document.getElementById('iStudentSign').value.trim(),
-        parentSignatureName: document.getElementById('iParentSign').value.trim(),
+        studentPhoto: await fileToDataURL(document.getElementById('iStudentPhoto').files[0]),
+        studentSignature: await fileToDataURL(document.getElementById('iStudentSign').files[0]),
+        parentSignature: await fileToDataURL(document.getElementById('iParentSign').files[0]),
         coordinatorName: document.getElementById('iCoordinator').value.trim(),
         recommendation: document.getElementById('iRecommendation').value.trim()
       };
