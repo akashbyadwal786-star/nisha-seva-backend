@@ -984,7 +984,10 @@ const submissionTables = {
     'contact_messages',
 
   newsletter:
-    'newsletter'
+    'newsletter',
+
+  internships:
+    'internships'
 
 };
 
@@ -1022,6 +1025,10 @@ function submissionRoutes(
 
       try {
 
+        if (name === 'internships') {
+          await internshipTableReady;
+        }
+
         const submissionData =
           {
             ...(req.body || {})
@@ -1047,6 +1054,37 @@ function submissionRoutes(
             null;
 
           submissionData.verificationUrl =
+            null;
+
+          submissionData.approvedAt =
+            null;
+
+          submissionData.issuedAt =
+            null;
+
+          submissionData.revokedAt =
+            null;
+
+          submissionData.rejectedAt =
+            null;
+
+        }
+
+        /*
+         * Student Internship applications
+         * always start as pending.
+         * System-controlled approval fields are
+         * overwritten here so a public form cannot
+         * self-approve or issue an Internship ID.
+         */
+        if (
+          name === 'internships'
+        ) {
+
+          submissionData.status =
+            'pending';
+
+          submissionData.internshipId =
             null;
 
           submissionData.approvedAt =
@@ -1125,6 +1163,10 @@ function submissionRoutes(
 
       try {
 
+        if (name === 'internships') {
+          await internshipTableReady;
+        }
+
         const result =
           await pool.query(
 
@@ -1184,6 +1226,10 @@ function submissionRoutes(
     async (req, res) => {
 
       try {
+
+        if (name === 'internships') {
+          await internshipTableReady;
+        }
 
         const id =
           Number(
@@ -1251,9 +1297,427 @@ function submissionRoutes(
   'volunteers',
   'members',
   'contactMessages',
-  'newsletter'
+  'newsletter',
+  'internships'
 ].forEach(
   submissionRoutes
+);
+
+
+
+/* =========================================================
+   STUDENT INTERNSHIP APPROVAL SYSTEM
+   ========================================================= */
+
+/*
+ * Create the internships table automatically if it does not
+ * already exist. The rest of this server stores submission
+ * payloads in JSONB, so this follows the same pattern.
+ */
+const internshipTableReady =
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS internships (
+      id SERIAL PRIMARY KEY,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `)
+  .catch(error => {
+    console.error(
+      'INTERNSHIP TABLE INIT ERROR:',
+      error
+    );
+    throw error;
+  });
+
+
+/* ---------------------------------------------------------
+   APPROVE STUDENT INTERNSHIP
+   --------------------------------------------------------- */
+
+app.post(
+  '/api/internships/:id/approve',
+  requireAdmin,
+  async (req, res) => {
+
+    try {
+
+      await internshipTableReady;
+
+      const id =
+        Number(
+          req.params.id
+        );
+
+      if (
+        !Number.isInteger(id)
+      ) {
+
+        return res.status(400)
+          .json({
+            error:
+              'Invalid internship application ID'
+          });
+
+      }
+
+      const result =
+        await pool.query(
+          `SELECT id, data, created_at
+           FROM internships
+           WHERE id = $1
+           LIMIT 1`,
+          [id]
+        );
+
+      if (
+        !result.rows.length
+      ) {
+
+        return res.status(404)
+          .json({
+            error:
+              'Internship application not found'
+          });
+
+      }
+
+      const row =
+        result.rows[0];
+
+      const data = {
+        ...(row.data || {})
+      };
+
+      /*
+       * Keep an already-issued ID stable when an admin
+       * opens Approve again. Otherwise generate a new
+       * official ID based on the database application ID.
+       */
+      const internshipId =
+        data.internshipId ||
+        `NSF-INT-${new Date().getFullYear()}-${String(id).padStart(4, '0')}`;
+
+      const now =
+        new Date().toISOString();
+
+      data.status =
+        'active';
+
+      data.internshipId =
+        internshipId;
+
+      data.approvedAt =
+        data.approvedAt ||
+        now;
+
+      data.issuedAt =
+        data.issuedAt ||
+        now;
+
+      data.rejectedAt =
+        null;
+
+      data.revokedAt =
+        null;
+
+      const updated =
+        await pool.query(
+          `UPDATE internships
+           SET data = $1::jsonb
+           WHERE id = $2
+           RETURNING id, data, created_at`,
+          [
+            JSON.stringify(
+              data
+            ),
+            id
+          ]
+        );
+
+      const updatedRow =
+        updated.rows[0];
+
+      res.json({
+
+        ok: true,
+
+        message:
+          'Internship approved and Offer Letter enabled',
+
+        id,
+
+        internshipId,
+
+        internship: {
+
+          id:
+            updatedRow.id,
+
+          submittedAt:
+            updatedRow.created_at,
+
+          ...(updatedRow.data || {})
+
+        }
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        'APPROVE INTERNSHIP ERROR:',
+        error
+      );
+
+      res.status(500)
+        .json({
+          error:
+            'Could not approve internship application'
+        });
+
+    }
+
+  }
+);
+
+
+/* ---------------------------------------------------------
+   REJECT STUDENT INTERNSHIP
+   --------------------------------------------------------- */
+
+app.post(
+  '/api/internships/:id/reject',
+  requireAdmin,
+  async (req, res) => {
+
+    try {
+
+      await internshipTableReady;
+
+      const id =
+        Number(
+          req.params.id
+        );
+
+      if (
+        !Number.isInteger(id)
+      ) {
+
+        return res.status(400)
+          .json({
+            error:
+              'Invalid internship application ID'
+          });
+
+      }
+
+      const result =
+        await pool.query(
+          `SELECT id, data, created_at
+           FROM internships
+           WHERE id = $1
+           LIMIT 1`,
+          [id]
+        );
+
+      if (
+        !result.rows.length
+      ) {
+
+        return res.status(404)
+          .json({
+            error:
+              'Internship application not found'
+          });
+
+      }
+
+      const data = {
+        ...(result.rows[0].data || {})
+      };
+
+      data.status =
+        'rejected';
+
+      data.rejectedAt =
+        new Date().toISOString();
+
+      data.revokedAt =
+        null;
+
+      const updated =
+        await pool.query(
+          `UPDATE internships
+           SET data = $1::jsonb
+           WHERE id = $2
+           RETURNING id, data, created_at`,
+          [
+            JSON.stringify(
+              data
+            ),
+            id
+          ]
+        );
+
+      const row =
+        updated.rows[0];
+
+      res.json({
+
+        ok: true,
+
+        message:
+          'Internship application rejected',
+
+        internship: {
+
+          id:
+            row.id,
+
+          submittedAt:
+            row.created_at,
+
+          ...(row.data || {})
+
+        }
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        'REJECT INTERNSHIP ERROR:',
+        error
+      );
+
+      res.status(500)
+        .json({
+          error:
+            'Could not reject internship application'
+        });
+
+    }
+
+  }
+);
+
+
+/* ---------------------------------------------------------
+   REVOKE STUDENT INTERNSHIP APPROVAL
+   --------------------------------------------------------- */
+
+app.post(
+  '/api/internships/:id/revoke',
+  requireAdmin,
+  async (req, res) => {
+
+    try {
+
+      await internshipTableReady;
+
+      const id =
+        Number(
+          req.params.id
+        );
+
+      if (
+        !Number.isInteger(id)
+      ) {
+
+        return res.status(400)
+          .json({
+            error:
+              'Invalid internship application ID'
+          });
+
+      }
+
+      const result =
+        await pool.query(
+          `SELECT id, data, created_at
+           FROM internships
+           WHERE id = $1
+           LIMIT 1`,
+          [id]
+        );
+
+      if (
+        !result.rows.length
+      ) {
+
+        return res.status(404)
+          .json({
+            error:
+              'Internship application not found'
+          });
+
+      }
+
+      const data = {
+        ...(result.rows[0].data || {})
+      };
+
+      data.status =
+        'revoked';
+
+      data.revokedAt =
+        new Date().toISOString();
+
+      const updated =
+        await pool.query(
+          `UPDATE internships
+           SET data = $1::jsonb
+           WHERE id = $2
+           RETURNING id, data, created_at`,
+          [
+            JSON.stringify(
+              data
+            ),
+            id
+          ]
+        );
+
+      const row =
+        updated.rows[0];
+
+      res.json({
+
+        ok: true,
+
+        message:
+          'Internship approval revoked',
+
+        internship: {
+
+          id:
+            row.id,
+
+          submittedAt:
+            row.created_at,
+
+          ...(row.data || {})
+
+        }
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        'REVOKE INTERNSHIP ERROR:',
+        error
+      );
+
+      res.status(500)
+        .json({
+          error:
+            'Could not revoke internship approval'
+        });
+
+    }
+
+  }
 );
 
 
@@ -2376,13 +2840,16 @@ app.use(
    START SERVER
    ========================================================= */
 
-app.listen(
-  PORT,
-  () => {
+internshipTableReady
+  .then(() => {
 
-    console.log(
-      '======================================'
-    );
+    app.listen(
+      PORT,
+      () => {
+
+        console.log(
+          '======================================'
+        );
 
     console.log(
       'Nisha Seva backend running'
@@ -2396,13 +2863,29 @@ app.listen(
       'Admin panel: /admin'
     );
 
-    console.log(
-      `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
+        console.log(
+          `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
+        );
+
+        console.log(
+          'Student internship API: /api/internships'
+        );
+
+        console.log(
+          '======================================'
+        );
+
+      }
     );
 
-    console.log(
-      '======================================'
+  })
+  .catch(error => {
+
+    console.error(
+      'SERVER STARTUP FAILED:',
+      error
     );
 
-  }
-);
+    process.exit(1);
+
+  });
