@@ -253,7 +253,19 @@ pre{
     grid-template-columns:1fr;
   }
 }
-.internship-admin-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}.internship-admin-grid .info-box{min-height:66px}.offer-preview{background:#fffdf7;border:1px solid #e4d8bd;border-radius:14px;padding:24px;margin:18px 0;font-family:Georgia,serif;line-height:1.7}.offer-preview .offer-top{text-align:center;border-bottom:2px solid #123b6d;padding-bottom:14px;margin-bottom:18px}.offer-preview h1{margin:0;color:#123b6d;font-size:25px}.offer-preview h2{margin:5px 0;color:#9b6b1d;font-size:16px}.offer-preview .offer-title{text-align:center;font-weight:700;font-size:19px;text-decoration:underline;margin:18px 0}.offer-preview .offer-sign{display:flex;justify-content:space-between;gap:30px;margin-top:35px}@media(max-width:700px){.internship-admin-grid{grid-template-columns:1fr}.offer-preview .offer-sign{flex-direction:column}}
+.internship-admin-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}.internship-admin-grid .info-box{min-height:66px}
+.offer-preview{position:relative;background:#fffdf7;border:2px solid #c89b3c;border-radius:8px;padding:34px 38px;margin:18px 0;font-family:Georgia,serif;line-height:1.72;box-shadow:0 12px 35px rgba(0,0,0,.12);overflow:hidden}
+.offer-preview:before,.offer-preview:after{position:absolute;color:#c89b3c;font-size:30px;line-height:1;z-index:1}
+.offer-preview:before{content:"✿  ❀  ✿";top:10px;left:15px}.offer-preview:after{content:"✿  ❀  ✿";bottom:10px;right:15px}
+.offer-preview .flower-corner{position:absolute;color:#2a9d8f;font-size:24px}.offer-preview .flower-corner.tl{top:10px;right:15px}.offer-preview .flower-corner.br{bottom:10px;left:15px}
+.offer-preview .offer-top{text-align:center;border-bottom:2px solid #123b6d;padding:8px 0 16px;margin-bottom:18px;position:relative;z-index:2}
+.offer-preview h1{margin:0;color:#123b6d;font-size:25px;letter-spacing:.6px}.offer-preview h2{margin:5px 0;color:#9b6b1d;font-size:16px}
+.offer-preview .offer-title{text-align:center;font-weight:700;font-size:19px;color:#7a5312;text-decoration:underline;margin:18px 0}
+.offer-preview .offer-meta{display:flex;justify-content:space-between;gap:12px;background:#f8f0df;border:1px solid #ead7ae;padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:18px}
+.offer-preview .offer-details{background:#fbf8f0;border-left:4px solid #2a9d8f;padding:12px 14px;border-radius:6px}
+.offer-preview .offer-sign{display:flex;justify-content:space-between;gap:30px;margin-top:38px;padding-top:18px;border-top:1px solid #ddd}
+.offer-preview .offer-footer{text-align:center;font-size:10px;color:#777;margin-top:30px}
+@media(max-width:700px){.internship-admin-grid{grid-template-columns:1fr}.offer-preview{padding:28px 20px}.offer-preview .offer-sign{flex-direction:column}.offer-preview .offer-meta{flex-direction:column}}
 </style>
 </head>
 
@@ -993,10 +1005,57 @@ async function approveInternship(id){if(!confirm('क्या आप इस BA 
 async function rejectInternship(id){if(!confirm('क्या आप इस Internship application को Reject करना चाहते हैं?'))return;try{await api('/api/internships/'+id+'/reject',{method:'POST'});alert('Internship application rejected.');renderInternships();}catch(e){alert(e.message);}}
 async function revokeInternship(id){if(!confirm('क्या आप इस Internship approval को Revoke करना चाहते हैं?'))return;try{await api('/api/internships/'+id+'/revoke',{method:'POST'});alert('Internship approval revoked.');renderInternships();}catch(e){alert(e.message);}}
 function showOfferLetterById(id){const x=internshipCache[id];if(!x){alert('Internship record नहीं मिला। कृपया list refresh करें।');return;}showOfferLetter(x);}
-function offerLetterHtml(x){const iid=x.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(x.id||0).padStart(4,'0')),student=x.studentName||x.name||'Student',college=x.collegeName||x.educationCollege||'College',date=x.approvedAt?new Date(x.approvedAt).toLocaleDateString('en-IN'):(x.applicationDate||new Date().toLocaleDateString('en-IN')),interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'Social service and educational activities');return `<div class="offer-preview" id="offerPrintable"><div class="offer-top"><h1>NISHA SEVA FOUNDATION</h1><h2>Student Internship Programme</h2><div style="font-size:12px;color:#555">Internship ID: <b>${esc(iid)}</b> &nbsp; | &nbsp; Date: <b>${esc(date)}</b></div></div><div class="offer-title">INTERNSHIP OFFER LETTER</div><p>Dear <b>${esc(student)}</b>,</p><p>We are pleased to offer you an internship opportunity with <b>Nisha Seva Foundation</b> under the <b>BA Internship Program</b>, subject to the terms and guidelines of the Foundation.</p><p><b>College:</b> ${esc(college)}<br><b>University:</b> ${esc(x.university||'-')}<br><b>Programme:</b> ${esc(x.className||'BA')} · ${esc(x.yearSemester||'-')}<br><b>Internship Duration:</b> ${esc(x.duration||'-')}<br><b>Preferred Area:</b> ${esc(x.preferredPlace||'-')}<br><b>Focus Areas:</b> ${esc(interests)}</p><p>During the internship, you are expected to maintain discipline, confidentiality, punctuality and professional conduct, and to responsibly complete the activities assigned by the Foundation or its coordinator.</p><p>This offer letter is issued on the basis of the information submitted in your Internship Registration Form and the approval recorded by the Foundation.</p><p>We welcome your participation and wish you a meaningful and productive internship experience.</p><div class="offer-sign"><div><b>Authorized Signatory</b><br>Nisha Seva Foundation<br><span style="font-size:12px">Official Internship Programme</span></div><div><b>Student</b><br>${esc(student)}<br><span style="font-size:12px">Internship ID: ${esc(iid)}</span></div></div></div>`;}
+function offerLetterHtml(x){
+  const iid=x.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(x.id||0).padStart(4,'0')),
+        student=x.studentName||x.name||'Student',
+        college=x.collegeName||x.educationCollege||'College',
+        date=x.approvedAt?new Date(x.approvedAt).toLocaleDateString('en-IN'):(x.applicationDate||new Date().toLocaleDateString('en-IN')),
+        interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'Social service and educational activities');
+  return `<div class="offer-preview" id="offerPrintable">
+    <span class="flower-corner tl">✿</span><span class="flower-corner br">✿</span>
+    <div class="offer-top"><h1>NISHA SEVA FOUNDATION</h1><h2>Student Internship Programme</h2></div>
+    <div class="offer-meta"><span>Internship ID: <b>${esc(iid)}</b></span><span>Date: <b>${esc(date)}</b></span></div>
+    <div class="offer-title">INTERNSHIP OFFER LETTER</div>
+    <p>Dear <b>${esc(student)}</b>,</p>
+    <p>We are pleased to offer you an internship opportunity with <b>Nisha Seva Foundation</b> under the <b>BA Internship Program</b>, subject to the terms and guidelines of the Foundation.</p>
+    <div class="offer-details"><b>College:</b> ${esc(college)}<br><b>University:</b> ${esc(x.university||'-')}<br><b>Programme:</b> ${esc(x.className||'BA')} · ${esc(x.yearSemester||'-')}<br><b>Internship Duration:</b> ${esc(x.duration||'-')}<br><b>Preferred Area:</b> ${esc(x.preferredPlace||'-')}<br><b>Focus Areas:</b> ${esc(interests)}</div>
+    <p>During the internship, you are expected to maintain discipline, confidentiality, punctuality and professional conduct, and to responsibly complete the activities assigned by the Foundation or its coordinator.</p>
+    <p>This offer letter is issued on the basis of the information submitted in your Internship Registration Form and the approval recorded by the Foundation.</p>
+    <p>We welcome your participation and wish you a meaningful and productive internship experience.</p>
+    <div class="offer-sign"><div><b>Authorized Signatory</b><br>Nisha Seva Foundation<br><span style="font-size:12px">Official Internship Programme</span></div><div><b>Student</b><br>${esc(student)}<br><span style="font-size:12px">Internship ID: ${esc(iid)}</span></div></div>
+    <div class="offer-footer">✿ Digitally generated internship offer letter · Nisha Seva Foundation ✿</div>
+  </div>`;
+}
 function showOfferLetter(x){const old=document.getElementById('offerModal');if(old)old.remove();document.body.insertAdjacentHTML('beforeend',`<div class="modal" id="offerModal"><div class="modalbox" style="max-width:920px"><div class="row"><div><h2>🎓 Premium Internship Offer Letter</h2><div class="small">${esc(x.studentName||x.name||'Student')} · ${esc(x.internshipId||'')}</div></div><button class="muted" onclick="offerModal.remove()">✕ Close</button></div>${offerLetterHtml(x)}<div class="row"><button class="primary" onclick="downloadOfferLetterPDF()">📄 Download Premium PDF</button><button class="muted" onclick="window.print()">🖨 Print</button></div></div></div>`);window.currentInternshipOffer=x;}
-function downloadOfferLetterPDF(){const x=window.currentInternshipOffer;if(!x)return;const {jsPDF}=window.jspdf,pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'}),W=pdf.internal.pageSize.getWidth(),H=pdf.internal.pageSize.getHeight(),m=18;iid=x.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(x.id||0).padStart(4,'0')),student=x.studentName||x.name||'Student',college=x.collegeName||x.educationCollege||'-',interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'-'),date=x.approvedAt?new Date(x.approvedAt).toLocaleDateString('en-IN'):(x.applicationDate||new Date().toLocaleDateString('en-IN'));pdf.setFillColor(18,59,109);pdf.rect(0,0,W,25,'F');pdf.setTextColor(255,255,255);pdf.setFont('helvetica','bold');pdf.setFontSize(18);pdf.text('NISHA SEVA FOUNDATION',W/2,11,{align:'center'});pdf.setFontSize(10);pdf.setFont('helvetica','normal');pdf.text('Student Internship Programme',W/2,18,{align:'center'});pdf.setTextColor(155,107,29);pdf.setFont('helvetica','bold');pdf.setFontSize(15);pdf.text('INTERNSHIP OFFER LETTER',W/2,38,{align:'center'});pdf.setTextColor(30,30,30);pdf.setFontSize(10.5);let y=49;pdf.text('Internship ID: '+iid,m,y);pdf.text('Date: '+date,W-m,y,{align:'right'});y+=12;const paras=[`Dear ${student},`,`We are pleased to offer you an internship opportunity with Nisha Seva Foundation under the BA Internship Program, subject to the terms and guidelines of the Foundation.`,`College: ${college}\nUniversity: ${x.university||'-'}\nProgramme: ${x.className||'BA'} · ${x.yearSemester||'-'}\nInternship Duration: ${x.duration||'-'}\nPreferred Area: ${x.preferredPlace||'-'}\nFocus Areas: ${interests}`,`During the internship, you are expected to maintain discipline, confidentiality, punctuality and professional conduct, and to responsibly complete the activities assigned by the Foundation or its coordinator.`,`This offer letter is issued on the basis of the information submitted in your Internship Registration Form and the approval recorded by the Foundation.`,`We welcome your participation and wish you a meaningful and productive internship experience.`];for(const para of paras){const lines=pdf.splitTextToSize(para,W-m*2);pdf.text(lines,m,y);y+=lines.length*5.2+5;if(y>H-55){pdf.addPage();y=25;}}y=Math.min(y,H-38);pdf.setFont('helvetica','bold');pdf.text('Authorized Signatory',m,y);pdf.text('Student',W-m-28,y);pdf.setFont('helvetica','normal');pdf.text('Nisha Seva Foundation',m,y+7);pdf.text(student,W-m-28,y+7);pdf.setFontSize(8);pdf.setTextColor(100,100,100);pdf.text('Digitally generated internship offer letter · Nisha Seva Foundation',W/2,H-8,{align:'center'});pdf.save('Nisha-Seva-Internship-Offer-'+student.replace(/[^a-z0-9]/gi,'_')+'.pdf');}
+function downloadOfferLetterPDF(){
+  const x=window.currentInternshipOffer;if(!x)return;
+  const {jsPDF}=window.jspdf,pdf=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const W=pdf.internal.pageSize.getWidth(),H=pdf.internal.pageSize.getHeight(),m=18;
+  const iid=x.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(x.id||0).padStart(4,'0'));
+  const student=x.studentName||x.name||'Student',college=x.collegeName||x.educationCollege||'-';
+  const interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'-');
+  const date=x.approvedAt?new Date(x.approvedAt).toLocaleDateString('en-IN'):(x.applicationDate||new Date().toLocaleDateString('en-IN'));
 
+  pdf.setDrawColor(200,155,60);pdf.setLineWidth(.8);pdf.rect(8,8,W-16,H-16);
+  pdf.setLineWidth(.25);pdf.rect(11,11,W-22,H-22);
+  pdf.setTextColor(200,155,60);pdf.setFont('helvetica','bold');pdf.setFontSize(12);
+  pdf.text('*  *  *',18,19);pdf.text('*  *  *',W-18,19,{align:'right'});pdf.text('*  *  *',18,H-14);pdf.text('*  *  *',W-18,H-14,{align:'right'});
+  pdf.setFillColor(18,59,109);pdf.roundedRect(24,20,W-48,23,4,4,'F');
+  pdf.setTextColor(255,255,255);pdf.setFont('helvetica','bold');pdf.setFontSize(18);pdf.text('NISHA SEVA FOUNDATION',W/2,30,{align:'center'});
+  pdf.setFont('helvetica','normal');pdf.setFontSize(10);pdf.text('Student Internship Programme',W/2,37,{align:'center'});
+  pdf.setTextColor(122,83,18);pdf.setFont('helvetica','bold');pdf.setFontSize(15);pdf.text('INTERNSHIP OFFER LETTER',W/2,53,{align:'center'});
+  pdf.setDrawColor(200,155,60);pdf.line(55,56,W-55,56);
+  pdf.setTextColor(45,45,45);pdf.setFontSize(9.5);pdf.roundedRect(m,63,W-m*2,12,2,2,'S');
+  pdf.setFont('helvetica','bold');pdf.text('Internship ID: '+iid,m+4,70);pdf.text('Date: '+date,W-m-4,70,{align:'right'});
+  let y=86;
+  const paras=[`Dear ${student},`,`We are pleased to offer you an internship opportunity with Nisha Seva Foundation under the BA Internship Program, subject to the terms and guidelines of the Foundation.`,`College: ${college}\nUniversity: ${x.university||'-'}\nProgramme: ${x.className||'BA'} · ${x.yearSemester||'-'}\nInternship Duration: ${x.duration||'-'}\nPreferred Area: ${x.preferredPlace||'-'}\nFocus Areas: ${interests}`,`During the internship, you are expected to maintain discipline, confidentiality, punctuality and professional conduct, and to responsibly complete the activities assigned by the Foundation or its coordinator.`,`This offer letter is issued on the basis of the information submitted in your Internship Registration Form and the approval recorded by the Foundation.`,`We welcome your participation and wish you a meaningful and productive internship experience.`];
+  paras.forEach((para,index)=>{const lines=pdf.splitTextToSize(para,W-m*2);if(index===2){const h=Math.max(25,lines.length*5+8);pdf.setFillColor(250,247,238);pdf.setDrawColor(42,157,143);pdf.roundedRect(m,y-6,W-m*2,h,2,2,'FD');pdf.setDrawColor(42,157,143);pdf.setLineWidth(1.2);pdf.line(m,y-6,m,y-6+h);pdf.setTextColor(45,45,45)}pdf.text(lines,m+3,y);y+=lines.length*5+9;});
+  y=Math.min(y,H-55);pdf.setDrawColor(210,210,210);pdf.line(m,y-5,W-m,y-5);pdf.setTextColor(45,45,45);pdf.setFont('helvetica','bold');pdf.setFontSize(9.5);
+  pdf.text('Authorized Signatory',m,y+4);pdf.text('Student',W-m-28,y+4);pdf.setFont('helvetica','normal');pdf.text('Nisha Seva Foundation',m,y+11);pdf.text(student,W-m-28,y+11);
+  pdf.setFontSize(7.5);pdf.setTextColor(105,105,105);pdf.text('Digitally generated internship offer letter · Nisha Seva Foundation',W/2,H-20,{align:'center'});
+  pdf.setTextColor(200,155,60);pdf.setFontSize(10);pdf.text('*  *  *  NISHA SEVA FOUNDATION  *  *  *',W/2,H-12,{align:'center'});
+  pdf.save('Nisha-Seva-Premium-Internship-Offer-'+student.replace(/[^a-z0-9]/gi,'_')+'.pdf');
+}
 /* =========================================================
    VOLUNTEERS
    ========================================================= */
