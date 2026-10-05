@@ -286,7 +286,7 @@ pre{background:#f5f8fa;border:1px solid #e5ebf0}
    API
    ========================================================= */
 
-const API = location.origin;
+const API = (window.NISHA_API_URL || 'https://nisha-seva-backend.onrender.com').replace(/\/$/, '');
 
 let token = localStorage.getItem("nisha_token") || "";
 let current = "programs";
