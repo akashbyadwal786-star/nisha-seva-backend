@@ -1161,6 +1161,83 @@ function downloadOfferLetterPDF(){
     }catch(err){console.error(err);alert('Offer Letter PDF generate नहीं हो सकी: '+err.message);}
   })();
 }
+function renderVolunteers(){
+
+  content.innerHTML = `
+    <h2>Volunteers</h2>
+    <p>Loading volunteers...</p>
+  `;
+
+
+  try{
+
+    const data =
+      await api("/api/volunteers");
+
+    const volunteers =
+      Array.isArray(data)
+        ? data
+        : [];
+
+    volunteerCache = {};
+    volunteers.forEach(v => { volunteerCache[v.id] = v; });
+
+
+    let html = `
+
+      <div class="row">
+
+        <div>
+
+          <h2>Volunteer Applications</h2>
+
+          <span class="small">
+            ${volunteers.length} volunteer(s)
+          </span>
+
+        </div>
+
+      </div>
+
+    `;
+
+
+    if(!volunteers.length){
+
+      html += `
+        <div class="ok">
+          अभी कोई volunteer application नहीं है।
+        </div>
+      `;
+
+    }
+    else{
+
+      html += volunteers
+        .map(volunteerCard)
+        .join("");
+
+    }
+
+
+    content.innerHTML = html;
+
+  }
+  catch(error){
+
+    content.innerHTML =
+      `<div class="err">${esc(error.message)}</div>`;
+
+  }
+
+}
+
+
+/* =========================================================
+   VOLUNTEER CARD
+   ========================================================= */
+
+
 function volunteerCard(v){
 
   const status =
