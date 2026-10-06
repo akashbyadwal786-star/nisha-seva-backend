@@ -1161,7 +1161,7 @@ function downloadOfferLetterPDF(){
     }catch(err){console.error(err);alert('Offer Letter PDF generate नहीं हो सकी: '+err.message);}
   })();
 }
-function renderVolunteers(){
+async function renderVolunteers(){
 
   content.innerHTML = `
     <h2>Volunteers</h2>
