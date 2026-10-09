@@ -2857,6 +2857,56 @@ app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
   }
 });
 
+
+/* ---------------------------------------------------------
+   ADMIN REVIEW: APPROVE OR REJECT A STUDENT PROJECT
+   --------------------------------------------------------- */
+app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) => {
+  try {
+    await projectSubmissionTableReady;
+    const id = Number(req.params.id);
+    const status = String((req.body || {}).status || '').toLowerCase();
+
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Invalid project submission ID.' });
+    }
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be approved or rejected.' });
+    }
+
+    const reviewData = {
+      status,
+      statusUpdatedAt: new Date().toISOString()
+    };
+    const result = await pool.query(
+      `UPDATE project_submissions
+       SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb
+       WHERE id = $1
+       RETURNING id, data, created_at`,
+      [id, JSON.stringify(reviewData)]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ error: 'Project submission not found.' });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      ok: true,
+      id: row.id,
+      status,
+      submission: {
+        id: row.id,
+        submittedAt: row.created_at,
+        ...(row.data || {})
+      }
+    });
+  } catch (error) {
+    console.error('POST /api/projectSubmissions/:id/review:', error);
+    return res.status(500).json({ error: 'Could not update project review status.' });
+  }
+});
+
 app.delete('/api/projectSubmissions/:id', requireAdmin, async (req, res) => {
   try {
     await projectSubmissionTableReady;
