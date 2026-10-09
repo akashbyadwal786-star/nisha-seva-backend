@@ -670,7 +670,7 @@ footer#contact a{opacity:.94;} footer#contact a:hover{opacity:1;}
         <div class="field full"><label for="pTitle">Project Title</label><input id="pTitle" required></div>
         <div class="field full"><label for="pDescription">Project / Work Description</label><textarea id="pDescription" rows="5" required placeholder="Describe your project, objective, work, and outcome"></textarea></div>
         <div class="field full"><label for="pLink">Project Link (optional)</label><input id="pLink" type="url" placeholder="Google Drive / GitHub / website link"></div>
-        <div class="field full"><label for="pFile">Project File (optional)</label><input id="pFile" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.zip"><small class="small">Maximum 6 MB</small></div>
+        <div class="field full"><label for="pFile">Project File (optional)</label><input id="pFile" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.zip"><small class="small">Maximum 20 MB</small></div>
       </div>
       <div class="internship-declaration"><label class="declaration-check"><input id="pDeclaration" type="checkbox" checked required><span>I declare that this is my own submitted work and that the information provided is accurate.</span></label></div>
       <button type="submit" class="btn-primary">✅ Submit Project Work</button>
@@ -1303,11 +1303,40 @@ if (volunteerForm) {
 }
 
 
+
+/* FAQ accordion: make every question clickable and reveal its existing answer. */
+(function initFaqAccordion(){
+  function setupFaq(){
+    document.querySelectorAll('#faqList .faq-item').forEach(function(item){
+      const question = item.querySelector('.faq-q');
+      const answer = item.querySelector('.faq-a');
+      if(!question || !answer || question.dataset.faqReady === '1') return;
+      question.dataset.faqReady = '1';
+      question.setAttribute('aria-expanded', 'false');
+      answer.style.maxHeight = '0px';
+      answer.style.overflow = 'hidden';
+      question.addEventListener('click', function(){
+        const opening = !item.classList.contains('open');
+        item.classList.toggle('open', opening);
+        question.setAttribute('aria-expanded', String(opening));
+        answer.style.maxHeight = opening ? (answer.scrollHeight + 'px') : '0px';
+      });
+    });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupFaq);
+  else setupFaq();
+  window.addEventListener('resize', function(){
+    document.querySelectorAll('#faqList .faq-item.open .faq-a').forEach(function(answer){
+      answer.style.maxHeight = answer.scrollHeight + 'px';
+    });
+  });
+})();
+
 /* ---------- Student Project Submission ---------- */
 function projectFileToDataURL(file){
   return new Promise((resolve,reject)=>{
     if(!file) return resolve({name:'',type:'',data:''});
-    if(file.size > 6*1024*1024) return reject(new Error('Project file must be smaller than 6 MB.'));
+    if(file.size > 20*1024*1024) return reject(new Error('Project file must be smaller than 20 MB.'));
     const reader=new FileReader();
     reader.onload=()=>resolve({name:file.name,type:file.type||'application/octet-stream',data:reader.result});
     reader.onerror=()=>reject(new Error('Project file could not be read.'));
