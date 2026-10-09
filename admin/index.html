@@ -305,6 +305,7 @@ const tabs = [
   ["donors","Donors"],
   ["volunteers","Volunteers"],
   ["internships","Student Internships"],
+  ["projectSubmissions","Student Projects"],
   ["members","Members"],
   ["contactMessages","Messages"],
   ["newsletter","Newsletter"]
@@ -558,6 +559,14 @@ async function render(){
     if(current === "internships"){
 
       await renderInternships();
+
+      return;
+
+    }
+
+    if(current === "projectSubmissions"){
+
+      await renderProjectSubmissions();
 
       return;
 
@@ -989,6 +998,75 @@ async function del(id){
 
   }
 
+}
+
+
+
+/* =========================================================
+   STUDENT PROJECT SUBMISSIONS
+   ========================================================= */
+async function renderProjectSubmissions(){
+  content.innerHTML = '<h2>📤 Student Project Submissions</h2><p>Loading submitted student projects...</p>';
+  try{
+    const data = await api('/api/projectSubmissions');
+    const rows = Array.isArray(data) ? data : [];
+    let html = `<div class="row">
+      <div><h2>📤 Student Project Submissions</h2><span class="small">${rows.length} submission(s) received</span></div>
+      <button class="primary" onclick="renderProjectSubmissions()">↻ Refresh</button>
+    </div>`;
+    if(!rows.length){
+      html += '<div class="ok">अभी कोई Student Project submission नहीं मिला। नया project submit होने के बाद यहाँ दिखाई देगा।</div>';
+    }else{
+      html += rows.map(projectSubmissionCard).join('');
+    }
+    content.innerHTML = html;
+  }catch(error){
+    content.innerHTML = `<div class="err"><b>Project submissions load नहीं हो सके।</b><br>${esc(error.message)}<p class="small">Backend में /api/projectSubmissions route और admin login token की जाँच करें।</p><button class="primary" onclick="renderProjectSubmissions()">Retry</button></div>`;
+  }
+}
+
+function projectSubmissionCard(x){
+  const file = x.projectFile && typeof x.projectFile === 'object' ? x.projectFile : null;
+  const fileData = file && typeof file.data === 'string' ? file.data : '';
+  const fileName = file && file.name ? file.name : 'project-file';
+  const fileType = file && file.type ? file.type : 'application/octet-stream';
+  const status = String(x.status || 'pending').toLowerCase();
+  const statusClass = status === 'approved' || status === 'reviewed' ? 'active' : (status === 'rejected' ? 'rejected' : 'pending');
+  const submitted = x.submittedAt || x.created_at || x.createdAt || '';
+  const projectLink = String(x.projectLink || '').trim();
+  const safeLink = /^https?:\/\//i.test(projectLink) ? projectLink : '';
+  const downloadMarkup = fileData
+    ? `<a class="primary" style="display:inline-block;text-decoration:none;border-radius:8px;padding:9px 13px;color:#fff;font-weight:600" href="${esc(fileData)}" download="${esc(fileName)}">⬇ Download ${esc(fileName)}</a>`
+    : '<span class="small">No project file attached</span>';
+  return `<div class="item">
+    <div class="row">
+      <div><h3 style="margin:0 0 6px">${esc(x.title || 'Untitled project')}</h3><span class="status ${statusClass}">${esc(status.toUpperCase())}</span><div class="small">Submission ID: ${esc(x.id)}${submitted ? ' · Submitted: '+esc(new Date(submitted).toLocaleString('en-IN')) : ''}</div></div>
+      <div class="actions"><button class="danger" onclick="deleteProjectSubmission(${Number(x.id)})">Delete</button></div>
+    </div>
+    <div class="internship-admin-grid">
+      <div class="info-box"><strong>Student Name</strong>${esc(x.studentName || '-')}</div>
+      <div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId || '-')}</div>
+      <div class="info-box"><strong>Email</strong>${esc(x.email || '-')}</div>
+      <div class="info-box"><strong>Mobile</strong>${esc(x.phone || '-')}</div>
+      <div class="info-box"><strong>College</strong>${esc(x.college || '-')}</div>
+      <div class="info-box"><strong>Category</strong>${esc(x.category || '-')}</div>
+    </div>
+    <div style="margin-top:12px"><b>Project Description</b><p style="white-space:pre-wrap">${esc(x.description || '-')}</p></div>
+    <div class="actions" style="margin-top:12px;align-items:center">
+      ${safeLink ? `<a class="muted" style="display:inline-block;text-decoration:none;border-radius:8px;padding:9px 13px;color:#172033;font-weight:600" href="${esc(safeLink)}" target="_blank" rel="noopener noreferrer">🔗 Open Project Link</a>` : (projectLink ? `<span class="small">Project link saved but is not a valid http/https URL.</span>` : '<span class="small">No external project link provided</span>')}
+      ${downloadMarkup}
+    </div>
+  </div>`;
+}
+
+async function deleteProjectSubmission(id){
+  if(!confirm('क्या आप इस Student Project submission को delete करना चाहते हैं?')) return;
+  try{
+    await api('/api/projectSubmissions/' + id, {method:'DELETE'});
+    await renderProjectSubmissions();
+  }catch(error){
+    alert('Project submission delete नहीं हो सकी: ' + error.message);
+  }
 }
 
 
