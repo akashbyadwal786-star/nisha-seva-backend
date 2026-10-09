@@ -58,14 +58,14 @@ app.use(cors());
 
 app.use(
   express.json({
-    limit: '10mb'
+    limit: '30mb'
   })
 );
 
 app.use(
   express.urlencoded({
     extended: true,
-    limit: '10mb'
+    limit: '30mb'
   })
 );
 
@@ -2797,6 +2797,81 @@ app.get(
 );
 
 
+
+/* =========================================================
+   STUDENT PROJECT SUBMISSIONS
+   Public POST + Admin GET/DELETE
+   ========================================================= */
+const projectSubmissionTableReady = pool.query(`
+  CREATE TABLE IF NOT EXISTS project_submissions (
+    id SERIAL PRIMARY KEY,
+    data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`).catch(error => {
+  console.error('PROJECT SUBMISSIONS TABLE INIT ERROR:', error);
+  throw error;
+});
+
+app.post('/api/projectSubmissions', async (req, res) => {
+  try {
+    await projectSubmissionTableReady;
+    const body = req.body || {};
+    if (!body.studentName || !body.email || !body.phone || !body.college ||
+        !body.title || !body.description || body.declarationAccepted !== true) {
+      return res.status(400).json({ error: 'Please complete all required fields and accept the declaration.' });
+    }
+    const fileData = body.projectFile;
+    if (fileData && fileData.data) {
+      const match = /^data:([^;,]+)?;base64,([A-Za-z0-9+/=\s]+)$/.exec(fileData.data);
+      if (!match) return res.status(400).json({ error: 'Project file format is invalid. Please choose the file again.' });
+      const base64 = match[2].replace(/\s/g, '');
+      const approxBytes = Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+      if (approxBytes > 20 * 1024 * 1024) {
+        return res.status(413).json({ error: 'Project file must be 20 MB or smaller.' });
+      }
+    }
+    const submission = { ...body, status: 'pending', submittedAt: new Date().toISOString() };
+    const result = await pool.query(
+      'INSERT INTO project_submissions (data) VALUES ($1::jsonb) RETURNING id',
+      [JSON.stringify(submission)]
+    );
+    return res.status(201).json({ ok: true, id: result.rows[0].id, message: 'Project submitted successfully.' });
+  } catch (error) {
+    console.error('POST /api/projectSubmissions:', error);
+    if (error && error.type === 'entity.too.large') {
+      return res.status(413).json({ error: 'Request too large. Please submit a project file of 20 MB or smaller.' });
+    }
+    return res.status(500).json({ error: 'Project submission could not be saved. Please try again later.' });
+  }
+});
+
+app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
+  try {
+    await projectSubmissionTableReady;
+    const result = await pool.query('SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC');
+    return res.json(result.rows.map(row => ({ id: row.id, submittedAt: row.created_at, ...(row.data || {}) })));
+  } catch (error) {
+    console.error('GET /api/projectSubmissions:', error);
+    return res.status(500).json({ error: 'Could not load project submissions.' });
+  }
+});
+
+app.delete('/api/projectSubmissions/:id', requireAdmin, async (req, res) => {
+  try {
+    await projectSubmissionTableReady;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid project submission ID.' });
+    const result = await pool.query('DELETE FROM project_submissions WHERE id = $1 RETURNING id', [id]);
+    if (!result.rowCount) return res.status(404).json({ error: 'Project submission not found.' });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('DELETE /api/projectSubmissions:', error);
+    return res.status(500).json({ error: 'Could not delete project submission.' });
+  }
+});
+
+
 /* =========================================================
    ERROR HANDLER
    ========================================================= */
@@ -2840,7 +2915,7 @@ app.use(
    START SERVER
    ========================================================= */
 
-internshipTableReady
+Promise.all([internshipTableReady, projectSubmissionTableReady])
   .then(() => {
 
     app.listen(
