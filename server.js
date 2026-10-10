@@ -109,43 +109,50 @@ app.use(
    ADMIN AUTH
    ========================================================= */
 
-const sessions =
-  new Map();
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
-const SESSION_TTL_MS =
-  12 * 60 * 60 * 1000;
+// Persist admin sessions in PostgreSQL so valid logins survive Render restarts.
+const adminSessionsReady = pool.query(`
+  CREATE TABLE IF NOT EXISTS admin_sessions (
+    token_hash TEXT PRIMARY KEY,
+    expires_at TIMESTAMPTZ NOT NULL
+  )
+`).catch(error => {
+  console.error('ADMIN SESSIONS TABLE INIT ERROR:', error);
+  throw error;
+});
 
+function hashAdminToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
-function requireAdmin(
-  req,
-  res,
-  next
-) {
+async function requireAdmin(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
 
-  const header =
-    req.headers.authorization || '';
-
-  const token =
-    header.startsWith('Bearer ')
-      ? header.slice(7)
-      : null;
-
-  const expiry =
-    token &&
-    sessions.get(token);
-
-  if (
-    !expiry ||
-    expiry < Date.now()
-  ) {
-
-    return res.status(401).json({
-      error: 'Unauthorized'
-    });
-
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  next();
+  try {
+    await adminSessionsReady;
+    const result = await pool.query(
+      `SELECT token_hash
+       FROM admin_sessions
+       WHERE token_hash = $1 AND expires_at > NOW()
+       LIMIT 1`,
+      [hashAdminToken(token)]
+    );
+
+    if (!result.rowCount) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    return next();
+  } catch (error) {
+    console.error('ADMIN AUTH CHECK ERROR:', error);
+    return res.status(500).json({ error: 'Could not verify admin session.' });
+  }
 }
 
 
@@ -155,7 +162,7 @@ function requireAdmin(
 
 app.post(
   '/api/admin/login',
-  (req, res) => {
+  async (req, res) => {
 
     const {
       username,
@@ -167,19 +174,19 @@ app.post(
       password === ADMIN_PASSWORD
     ) {
 
-      const token =
-        crypto.randomBytes(24)
-          .toString('hex');
+      await adminSessionsReady;
 
-      sessions.set(
-        token,
-        Date.now() +
-        SESSION_TTL_MS
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+
+      await pool.query(
+        `INSERT INTO admin_sessions (token_hash, expires_at)
+         VALUES ($1, $2)
+         ON CONFLICT (token_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at`,
+        [hashAdminToken(token), expiresAt]
       );
 
-      return res.json({
-        token
-      });
+      return res.json({ token });
 
     }
 
@@ -199,23 +206,19 @@ app.post(
 app.post(
   '/api/admin/logout',
   requireAdmin,
-  (req, res) => {
+  async (req, res) => {
 
-    const header =
-      req.headers.authorization || '';
-
-    const token =
-      header.startsWith('Bearer ')
-        ? header.slice(7)
-        : null;
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
 
     if (token) {
-      sessions.delete(token);
+      await pool.query(
+        'DELETE FROM admin_sessions WHERE token_hash = $1',
+        [hashAdminToken(token)]
+      );
     }
 
-    res.json({
-      ok: true
-    });
+    res.json({ ok: true });
 
   }
 );
@@ -2965,7 +2968,7 @@ app.use(
    START SERVER
    ========================================================= */
 
-Promise.all([internshipTableReady, projectSubmissionTableReady])
+Promise.all([internshipTableReady, projectSubmissionTableReady, adminSessionsReady])
   .then(() => {
 
     app.listen(
