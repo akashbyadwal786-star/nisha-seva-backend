@@ -914,12 +914,10 @@ async function downloadSubmittedInternshipForm(data){
     dp.drawText('NISHA SEVA FOUNDATION',{x:36,y:dh-82,size:11.5,font:bold,color:dgreen,maxWidth:dw-72});
     dp.drawText('STUDENT DECLARATION',{x:36,y:dh-101,size:9,font:bold,color:dpink,maxWidth:dw-72});
     dp.drawText('Internship Rules & Guidelines',{x:36,y:dh-116,size:7.5,font:regular,color:dgreen,maxWidth:dw-72});
-    // Light, border-free accent under the heading and a small botanical flourish.
-    dp.drawRectangle({x:36,y:dh-124,width:dw-72,height:2,color:dgold});
+    // Minimal printed look: no frame or divider border; only logo, title and soft botanical accents.
     const dleaf=(x,y,w,h,rot,color)=>dp.drawEllipse({x,y,width:w,height:h,rotate:degrees(rot),color,borderColor:color,borderWidth:.2});
     dleaf(42,dh-45,7,16,-35,rgb(.10,.43,.27)); dleaf(dw-49,dh-45,7,16,35,rgb(.10,.43,.27));
     dp.drawText('NISHA SEVA FOUNDATION',{x:36,y:28,size:6.5,font:bold,color:dgreen});
-    dp.drawText('STUDENT DECLARATION',{x:dw-125,y:28,size:6.5,font:regular,color:dgreen});
 
     // PAGE 3: border-free premium digital certificate, with clearer typography and whitespace.
     page=out.addPage([W,H]);
@@ -931,10 +929,7 @@ async function downloadSubmittedInternshipForm(data){
     };
     const green=rgb(.04,.31,.23), gold=rgb(.79,.60,.27), ink2=rgb(.12,.16,.14), pink=rgb(.89,.25,.46), muted2=rgb(.38,.43,.41), pale2=rgb(.94,.97,.94);
     page.drawRectangle({x:0,y:0,width:W,height:H,color:rgb(1,1,1)});
-    // Soft top/bottom colour washes instead of a frame.
-    page.drawRectangle({x:0,y:H-9,width:W,height:9,color:green});
-    page.drawRectangle({x:0,y:H-13,width:W,height:4,color:gold});
-    page.drawRectangle({x:0,y:0,width:W,height:7,color:green});
+    // Clean certificate paper: no border, no top/bottom bars; only light botanical corner artwork.
     leaf(24,H-42,1.1,-38,rgb(.08,.42,.27)); leaf(39,H-59,.9,35,rgb(.22,.58,.36));
     leaf(W-24,H-42,1.1,38,rgb(.08,.42,.27)); leaf(W-39,H-59,.9,-35,rgb(.22,.58,.36));
     flower(28,34,.85); leaf(48,27,.85,-45,rgb(.13,.48,.30)); flower(W-28,34,.85); leaf(W-48,27,.85,45,rgb(.13,.48,.30));
@@ -943,18 +938,16 @@ async function downloadSubmittedInternshipForm(data){
     page.drawText('Registration No. U96091RJ2025NPL108344',{x:margin,y:H-111,size:6.6,font:bold,color:pink,maxWidth:W-2*margin});
     page.drawText('Plot No. 4-5, Vinayak Vihar Colony, Jamwaramgarh, Jaipur - 303109',{x:margin,y:H-122,size:6.1,font:regular,color:muted2,maxWidth:W-2*margin});
     page.drawText('Mob. 7568660017  |  Email: nishasevafoundation@gmail.com',{x:margin,y:H-132,size:6.1,font:regular,color:muted2,maxWidth:W-2*margin});
-    page.drawRectangle({x:margin,y:H-143,width:W-2*margin,height:1.2,color:gold});
-    page.drawText('INTERNSHIP OFFER LETTER',{x:margin,y:H-164,size:15,font:bold,color:green,maxWidth:W-2*margin});
-    page.drawText('OFFER / ACCEPTANCE',{x:margin,y:H-178,size:7.2,font:bold,color:pink,maxWidth:W-2*margin});
-    page.drawText('Ref. No. NSF/INT/'+String(data.enrollmentRoll||'2026'),{x:margin,y:H-195,size:7,font:bold,color:ink2});
-    page.drawText('Date: '+dateFmt(data.applicationDate),{x:W-margin-115,y:H-195,size:7,font:bold,color:ink2});
-    page.drawText('This is to confirm that',{x:margin,y:H-226,size:8.5,font:regular,color:muted2,maxWidth:W-2*margin});
+    page.drawText('INTERNSHIP OFFER LETTER',{x:margin,y:H-164,size:16,font:bold,color:green,maxWidth:W-2*margin});
+    page.drawText('STUDENT INTERNSHIP PROGRAMME',{x:margin,y:H-179,size:7.3,font:bold,color:pink,maxWidth:W-2*margin});
+    page.drawText('Reference: NSF/INT/'+String(data.enrollmentRoll||'2026'),{x:margin,y:H-198,size:7,font:bold,color:ink2});
+    page.drawText('Issue date: '+dateFmt(data.applicationDate),{x:W-margin-130,y:H-198,size:7,font:bold,color:ink2});
+    page.drawText('Proudly welcoming',{x:margin,y:H-229,size:8.5,font:regular,color:muted2,maxWidth:W-2*margin});
     // Student name is the visual focal point of the certificate.
-    page.drawText(safe(data.studentName),{x:margin,y:H-258,size:18,font:bold,color:green,maxWidth:W-2*margin});
-    page.drawRectangle({x:margin,y:H-268,width:100,height:2,color:pink});
-    page.drawText('has been accepted for the Student Internship Programme at Nisha Seva Foundation.',{x:margin,y:H-289,size:8.2,font:regular,color:ink2,maxWidth:W-2*margin});
-    page.drawText('STUDENT & PROGRAMME DETAILS',{x:margin,y:H-321,size:7.5,font:bold,color:pink,maxWidth:W-2*margin});
-    // Two-column typography with subtle horizontal separators; no boxes or table borders.
+    page.drawText(safe(data.studentName),{x:margin,y:H-260,size:20,font:bold,color:green,maxWidth:W-2*margin});
+    page.drawText('has been selected for an internship with Nisha Seva Foundation.',{x:margin,y:H-290,size:8.5,font:regular,color:ink2,maxWidth:W-2*margin});
+    page.drawText('STUDENT & PROGRAMME DETAILS',{x:margin,y:H-322,size:7.5,font:bold,color:pink,maxWidth:W-2*margin});
+    // Two-column typography with generous whitespace; no boxes, rules, or table borders.
     const infoRows=[
       ['COURSE / PROGRAMME',data.className||data.program||'—','INSTITUTION',data.collegeName||data.educationCollege||'—'],
       ['ROLL / ENROLLMENT NO.',data.enrollmentRoll||'—','DURATION',data.duration||'As per programme'],
@@ -968,17 +961,14 @@ async function downloadSubmittedInternshipForm(data){
       txt(page,r[1],leftX,yy-13,8.1,bold,ink2,colW);
       page.drawText(r[2],{x:rightX,y:yy,size:6.1,font:bold,color:muted2,maxWidth:colW});
       txt(page,r[3],rightX,yy-13,8.1,bold,ink2,colW);
-      if(i<infoRows.length-1) page.drawRectangle({x:margin,y:yy-29,width:W-2*margin,height:.45,color:pale2});
     });
     page.drawText('OUR EXPECTATIONS',{x:margin,y:H-552,size:7.2,font:bold,color:pink,maxWidth:W-2*margin});
     txt(page,'We encourage you to follow the Foundation’s guidelines, maintain discipline and confidentiality, complete assigned activities, and submit your project or report on time.',margin,H-568,7.1,regular,ink2,W-2*margin);
     page.drawText('We wish you a successful and meaningful learning experience.',{x:margin,y:H-604,size:7.5,font:bold,color:green,maxWidth:W-2*margin});
     // Signature and stamp areas remain intentionally open for official authorization.
     const offerSignY=104;
-    page.drawRectangle({x:margin,y:offerSignY+26,width:145,height:1,color:gold});
     page.drawText('AUTHORIZED SIGNATORY',{x:margin,y:offerSignY+12,size:6.2,font:bold,color:green});
     page.drawText('Nisha Seva Foundation',{x:margin,y:offerSignY,size:6.1,font:regular,color:muted2});
-    page.drawRectangle({x:W-margin-120,y:offerSignY+26,width:120,height:1,color:gold});
     page.drawText('OFFICIAL STAMP / SEAL',{x:W-margin-120,y:offerSignY+12,size:6.2,font:bold,color:green});
     page.drawText('Date of Issue: '+dateFmt(data.applicationDate),{x:W-margin-120,y:offerSignY,size:6.1,font:regular,color:muted2});
     page.drawText('NISHA SEVA FOUNDATION',{x:margin,y:24,size:6.1,font:bold,color:green});
