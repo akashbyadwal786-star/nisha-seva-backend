@@ -274,6 +274,47 @@ pre{background:#f5f8fa;border:1px solid #e5ebf0}
 .info-box{background:linear-gradient(180deg,#fff,#f7fafc);border:1px solid #e6edf2}
 .offer-preview{box-shadow:0 20px 50px rgba(7,26,43,.12)!important;border:2px solid #d8ad4c!important;border-radius:18px!important}
 </style>
+
+<style id="nsf-admin-easy-premium">
+:root{--nsf-ink:#12263a;--nsf-navy:#0b2035;--nsf-green:#0f7657;--nsf-gold:#f5b52e;--nsf-bg:#f3f7fb;--nsf-border:#dfe8f0}
+body{background:linear-gradient(135deg,#f4f8fc 0%,#edf5f2 100%);color:var(--nsf-ink)}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 95% 0,rgba(245,181,46,.12),transparent 24%),radial-gradient(circle at 0 55%,rgba(15,118,87,.08),transparent 30%);z-index:-1}
+header{border-radius:0 0 20px 20px;box-shadow:0 12px 32px rgba(11,32,53,.16);padding:18px 26px}
+.wrap{max-width:1440px;margin:24px auto;display:grid;grid-template-columns:250px minmax(0,1fr);gap:22px;align-items:start}
+.tabs{display:flex;flex-direction:column;gap:8px;margin:0;position:sticky;top:112px;background:rgba(255,255,255,.9);border:1px solid var(--nsf-border);padding:14px;border-radius:20px;box-shadow:0 14px 35px rgba(11,32,53,.07)}
+.tabs:before{content:"CONTENT MANAGER";font-size:11px;letter-spacing:.14em;font-weight:900;color:#738397;padding:6px 10px 12px}
+.tabs button{width:100%;text-align:left;display:flex;align-items:center;gap:10px;padding:13px 14px;border:1px solid transparent;border-radius:12px;background:transparent;color:#405267;font-weight:750;transition:all .18s}
+.tabs button:before{content:"›";font-size:20px;color:#8a9bad;line-height:12px}
+.tabs button:hover{background:#f1f7f5;border-color:#d9eae3;transform:translateX(2px)}
+.tabs button.active{background:linear-gradient(100deg,#0b3a32,#116b52);color:white;box-shadow:0 8px 20px rgba(15,118,87,.2)}
+.tabs button.active:before{color:#ffd36a}
+#content{min-width:0;padding:28px;border:1px solid var(--nsf-border);border-radius:22px;box-shadow:0 16px 42px rgba(11,32,53,.08);background:rgba(255,255,255,.96)}
+#content h2{font-size:25px;letter-spacing:-.03em;color:#102c42}
+#content .row:first-child{padding-bottom:18px;margin-bottom:16px;border-bottom:1px solid #e9eef3}
+#content .small{color:#728197}
+.item{border:1px solid #e2eaf1;border-radius:16px;padding:20px;background:#fff;box-shadow:0 5px 18px rgba(11,32,53,.035);margin:14px 0}
+.item:hover{border-color:#c5dfd4}
+button{min-height:40px}
+button.primary{background:linear-gradient(120deg,#0b3a32,#14795b)!important;color:#fff!important;box-shadow:0 7px 16px rgba(15,118,87,.16)}
+button.success{background:#16845e!important;color:white!important}
+button.danger{background:#c53c4a!important;color:white!important}
+button.warning{background:#f6bd3b!important;color:#202020!important}
+input,textarea,select{border-radius:11px!important;padding:12px!important}
+.modalbox{padding:28px!important;border-radius:22px!important}
+.modalbox h2{margin-bottom:16px;color:#102c42}
+#content .actions{gap:8px}
+#content .actions button{min-width:82px}
+#content .item pre{max-height:260px}
+.easy-help{padding:14px 16px;border-radius:14px;background:#edf8f3;border:1px solid #d2eee1;color:#245947;margin:12px 0 18px;font-size:14px;line-height:1.55}
+.easy-action-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0 20px}
+.easy-action{display:flex;align-items:center;gap:13px;text-align:left;padding:16px;border-radius:15px;border:1px solid #e0e9ef;background:#fff;color:#17334a;box-shadow:0 5px 15px rgba(11,32,53,.04);min-height:76px}
+.easy-action:hover{border-color:#a9d7c4;background:#f8fffb}
+.easy-action .ea-icon{width:42px;height:42px;border-radius:12px;background:#e5f5ed;display:grid;place-items:center;font-size:21px;flex:none}
+.easy-action b{display:block;font-size:14px}.easy-action small{display:block;color:#708094;margin-top:3px;font-weight:500}
+@media(max-width:900px){.wrap{grid-template-columns:1fr;margin:14px auto}.tabs{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.tabs:before{grid-column:1/-1}.tabs button{font-size:13px;padding:11px 9px}.tabs button:before{display:none}#content{padding:18px}}
+@media(max-width:520px){.tabs{grid-template-columns:1fr 1fr}.easy-action-grid{grid-template-columns:1fr}#content h2{font-size:21px}.wrap{padding:0 10px}}
+</style>
+
 </head>
 
 <body>
@@ -584,6 +625,22 @@ async function render(){
 
 
     let html = `
+
+      <div class="easy-help">✨ <b>आसान तरीका:</b> नीचे दिए गए बटन से नया कंटेंट जोड़ें, फोटो चुनें और Save करें। कोड लिखने की जरूरत नहीं है। केवल वही बदलाव सेव करें जिन्हें आप वेबसाइट पर दिखाना चाहते हैं।</div>
+
+      <div class="easy-action-grid">
+        ${current === "programs" ? `<button class="easy-action" onclick="editor()"><span class="ea-icon">➕</span><span><b>नया Program जोड़ें</b><small>नाम और विवरण भरकर Save करें</small></span></button>` : ""}
+        ${current === "events" ? `<button class="easy-action" onclick="editor()"><span class="ea-icon">📅</span><span><b>नया Event जोड़ें</b><small>Event की जानकारी जोड़ें</small></span></button>` : ""}
+        ${current === "gallery" ? `<button class="easy-action" onclick="galleryEditor()"><span class="ea-icon">📷</span><span><b>फोटो अपलोड करें</b><small>कंप्यूटर से फोटो चुनें</small></span></button>` : ""}
+        ${current === "documents" ? `<button class="easy-action" onclick="editor()"><span class="ea-icon">📄</span><span><b>Document की जानकारी जोड़ें</b><small>मौजूदा document रिकॉर्ड संपादित करें</small></span></button>` : ""}
+        ${current === "donors" ? `<button class="easy-action" onclick="editor()"><span class="ea-icon">🤝</span><span><b>Donor रिकॉर्ड जोड़ें</b><small>नाम और योगदान की जानकारी</small></span></button>` : ""}
+        ${current === "volunteers" ? `<div class="easy-action"><span class="ea-icon">🧑‍🤝‍🧑</span><span><b>Volunteer Management</b><small>रिकॉर्ड खोलें और उपलब्ध action buttons इस्तेमाल करें</small></span></div>` : ""}
+        ${current === "internships" ? `<div class="easy-action"><span class="ea-icon">🎓</span><span><b>Student Internship</b><small>आवेदन खोलें, review करें और approval actions इस्तेमाल करें</small></span></div>` : ""}
+        ${current === "projectSubmissions" ? `<div class="easy-action"><span class="ea-icon">📚</span><span><b>Student Projects</b><small>प्रोजेक्ट खोलें और submission review करें</small></span></div>` : ""}
+        ${current === "members" ? `<div class="easy-action"><span class="ea-icon">👥</span><span><b>Members</b><small>Member applications देखें</small></span></div>` : ""}
+        ${current === "contactMessages" ? `<div class="easy-action"><span class="ea-icon">✉️</span><span><b>Contact Messages</b><small>संदेश पढ़ें और रिकॉर्ड जाँचें</small></span></div>` : ""}
+        ${current === "newsletter" ? `<div class="easy-action"><span class="ea-icon">📨</span><span><b>Newsletter Subscribers</b><small>Subscriber रिकॉर्ड देखें</small></span></div>` : ""}
+      </div>
 
       <div class="row">
 
