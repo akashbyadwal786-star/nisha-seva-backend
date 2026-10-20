@@ -335,6 +335,17 @@ header .brand-mark{display:flex;align-items:center;gap:12px}header .brand-symbol
 @media(max-width:620px){.role-login-grid{grid-template-columns:1fr}.role-login{flex-direction:row;align-items:center}.brand-sub{display:none!important}}
 </style>
 
+
+<style id="nsf-admin-visible-icons-upload-tools">
+/* High-contrast sidebar icons: independent colour for every section */
+.tabs button{gap:11px!important;min-height:48px!important;position:relative!important;border-left:4px solid var(--item,#64748b)!important;padding-left:12px!important}
+.tabs button:before{content:attr(data-icon)!important;display:inline-grid!important;place-items:center!important;flex:0 0 34px!important;width:34px!important;height:34px!important;border-radius:11px!important;background:var(--item,#64748b)!important;color:#fff!important;font-size:18px!important;font-weight:900!important;line-height:1!important;box-shadow:0 4px 10px color-mix(in srgb,var(--item,#64748b) 25%,transparent)!important;margin:0 2px 0 0!important}
+.tabs button[data-section="programs"]{--item:#2563eb}.tabs button[data-section="events"]{--item:#7c3aed}.tabs button[data-section="gallery"]{--item:#db2777}.tabs button[data-section="documents"]{--item:#475569}.tabs button[data-section="donors"]{--item:#d97706}.tabs button[data-section="volunteers"]{--item:#059669}.tabs button[data-section="internships"]{--item:#0284c7}.tabs button[data-section="projectSubmissions"]{--item:#4f46e5}.tabs button[data-section="members"]{--item:#0d9488}.tabs button[data-section="contactMessages"]{--item:#ea580c}.tabs button[data-section="newsletter"]{--item:#9333ea}
+.tabs button.active{background:linear-gradient(100deg,#0b2035,#153b59)!important;color:#fff!important;border-left-color:var(--item)!important}.tabs button.active:before{background:#fff!important;color:var(--item)!important}
+.upload-tools{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0 22px}.upload-tool{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:12px!important;text-align:left!important;padding:15px!important;min-height:78px!important;border:1px solid #e0e8f0!important;border-radius:16px!important;color:#fff!important;box-shadow:0 8px 20px #102a4317!important;transition:transform .2s,box-shadow .2s!important}.upload-tool:hover{transform:translateY(-3px)!important;box-shadow:0 13px 25px #102a4325!important}.upload-tool .tool-icon{width:42px;height:42px;border-radius:12px;background:#ffffff2b;display:grid;place-items:center;flex:none;font-size:22px;font-weight:900;border:1px solid #ffffff50}.upload-tool b{display:block;font-size:14px}.upload-tool small{display:block;margin-top:4px;font-size:12px;color:#ffffffd9;font-weight:500}.picture-tool{background:linear-gradient(135deg,#0f766e,#0d9488)!important}.title-tool{background:linear-gradient(135deg,#1d4ed8,#4f46e5)!important}.description-tool{background:linear-gradient(135deg,#9333ea,#c026d3)!important}.upload-field{padding:14px;margin:12px 0;border:1px solid #e2eaf1;border-radius:14px;background:#fbfdff}.upload-field label{display:block;margin-bottom:8px;color:#23384d}.upload-field input,.upload-field textarea{background:#fff!important}
+@media(max-width:650px){.upload-tools{grid-template-columns:1fr}.upload-tool{min-height:66px!important}.tabs button{font-size:12px!important;padding:9px!important}.tabs button:before{flex-basis:30px!important;width:30px!important;height:30px!important}}
+</style>
+
 </head>
 
 <body>
@@ -572,6 +583,8 @@ async function render(){
         ${tabs.map(tab => `
 
           <button
+            data-section="${tab[0]}"
+            data-icon="${({programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▱",members:"♟",contactMessages:"☏",newsletter:"✉"})[tab[0]] || "◆"}"
             class="${tab[0] === current ? "active" : ""}"
             onclick="current='${tab[0]}';render()"
           >
@@ -799,17 +812,21 @@ function galleryEditor(x){
   x=x||{title:'',description:'',image:''};
   document.body.insertAdjacentHTML('beforeend',`
     <div class="modal" id="modal"><div class="modalbox">
-      <h2>📷 Gallery Photo</h2><div class="small" style="margin-bottom:12px">Photo सीधे server storage में upload होगी; database में केवल image URL save होगा।</div>
-      <label><b>Photo</b></label>
-      <input type="file" id="galleryPhoto" accept="image/jpeg,image/png,image/webp" style="margin:8px 0 14px" onchange="previewGalleryPhoto(this)">
+      <h2>📷 Gallery Content Studio</h2><div class="small" style="margin-bottom:16px">तीनों बटन से Picture, Title और Description सेक्शन पर जाएँ। फिर जानकारी भरकर Save करें।</div>
+      <div class="upload-tools">
+        <button type="button" class="upload-tool picture-tool" onclick="document.getElementById('galleryPhoto').click()"><span class="tool-icon">▧</span><span><b>Picture Upload</b><small>फोटो चुनें</small></span></button>
+        <button type="button" class="upload-tool title-tool" onclick="document.getElementById('galleryTitle').focus();document.getElementById('galleryTitle').scrollIntoView({behavior:'smooth',block:'center'})"><span class="tool-icon">T</span><span><b>Title</b><small>शीर्षक जोड़ें</small></span></button>
+        <button type="button" class="upload-tool description-tool" onclick="document.getElementById('galleryDescription').focus();document.getElementById('galleryDescription').scrollIntoView({behavior:'smooth',block:'center'})"><span class="tool-icon">≡</span><span><b>Description</b><small>विवरण लिखें</small></span></button>
+      </div>
+      <div class="upload-field picture-field"><label><b>🖼️ Picture</b></label>
+      <input type="file" id="galleryPhoto" accept="image/jpeg,image/png,image/webp" style="margin:8px 0 14px" onchange="previewGalleryPhoto(this)"></div>
       <div id="galleryPhotoPreview" style="margin:8px 0 16px;text-align:center">
         ${(x.image||x.imageUrl||x.photo)?`<img src="${esc(x.image||x.imageUrl||x.photo)}" style="max-width:100%;max-height:280px;border-radius:12px;border:1px solid #ddd;object-fit:contain">`:`<div class="small">Photo preview यहाँ दिखाई देगा</div>`}
       </div>
-      <label><b>Title</b></label>
-      <input id="galleryTitle" value="${esc(x.title||x.caption||x.name||'')}" placeholder="Gallery photo title">
-      <br><br>
-      <label><b>Description</b></label>
-      <textarea id="galleryDescription" rows="5" placeholder="Photo description">${esc(x.description||'')}</textarea>
+      <div class="upload-field title-field"><label><b>✍️ Title</b></label>
+      <input id="galleryTitle" value="${esc(x.title||x.caption||x.name||'')}" placeholder="Gallery photo title"></div>
+      <div class="upload-field description-field"><label><b>📝 Description</b></label>
+      <textarea id="galleryDescription" rows="5" placeholder="Photo description">${esc(x.description||'')}</textarea></div>
       <input type="hidden" id="galleryExistingImage" value="${esc(x.image||x.imageUrl||x.photo||'')}">
       <div id="em"></div><br>
       <div class="row"><button class="muted" onclick="modal.remove()">Cancel</button><button class="primary" onclick="saveGallery(${x.id===undefined?'null':x.id})">💾 Save Gallery</button></div>
