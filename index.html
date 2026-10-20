@@ -946,6 +946,11 @@ async function downloadSubmittedInternshipForm(data){
     dp.drawRectangle({x:0,y:0,width:dw,height:13,color:dcream});
     dp.drawRectangle({x:0,y:125,width:30,height:dh-305,color:dcream});
     dp.drawRectangle({x:dw-30,y:125,width:30,height:dh-305,color:dcream});
+    // Plain premium page: remove remaining decorative corner artwork while preserving the rules text.
+    dp.drawRectangle({x:0,y:dh-180,width:105,height:180,color:dcream});
+    dp.drawRectangle({x:dw-105,y:dh-180,width:105,height:180,color:dcream});
+    dp.drawRectangle({x:0,y:0,width:105,height:100,color:dcream});
+    dp.drawRectangle({x:dw-105,y:0,width:105,height:100,color:dcream});
     dp.drawImage(ngoLogo,{x:(dw-48)/2,y:dh-65,width:48,height:48});
     dp.drawText('NISHA SEVA FOUNDATION',{x:36,y:dh-82,size:11.5,font:bold,color:dgreen,maxWidth:dw-72});
     dp.drawText('STUDENT DECLARATION',{x:36,y:dh-101,size:9,font:bold,color:dpink,maxWidth:dw-72});
@@ -965,9 +970,6 @@ async function downloadSubmittedInternshipForm(data){
     const green=rgb(.04,.31,.23), gold=rgb(.79,.60,.27), ink2=rgb(.12,.16,.14), pink=rgb(.89,.25,.46), muted2=rgb(.38,.43,.41), pale2=rgb(.94,.97,.94);
     page.drawRectangle({x:0,y:0,width:W,height:H,color:rgb(1,1,1)});
     // Clean certificate paper: no border, no top/bottom bars; only light botanical corner artwork.
-    leaf(24,H-42,1.1,-38,rgb(.08,.42,.27)); leaf(39,H-59,.9,35,rgb(.22,.58,.36));
-    leaf(W-24,H-42,1.1,38,rgb(.08,.42,.27)); leaf(W-39,H-59,.9,-35,rgb(.22,.58,.36));
-    flower(28,34,.85); leaf(48,27,.85,-45,rgb(.13,.48,.30)); flower(W-28,34,.85); leaf(W-48,27,.85,45,rgb(.13,.48,.30));
     page.drawImage(ngoLogo,{x:(W-48)/2,y:H-67,width:48,height:48});
     page.drawText('NISHA SEVA FOUNDATION',{x:margin,y:H-82,size:11.5,font:bold,color:green,maxWidth:W-2*margin});
     page.drawText('Registration No. U96091RJ2025NPL108344',{x:margin,y:H-94,size:6.3,font:bold,color:pink,maxWidth:W-2*margin});
