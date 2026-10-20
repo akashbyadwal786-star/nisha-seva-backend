@@ -47,7 +47,7 @@ const ADMIN_PASSWORD =
 
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
-  'https://nishasevafoundation.org';
+  'https://nisha-seva-backend.onrender.com';
 
 
 /* =========================================================
@@ -109,50 +109,43 @@ app.use(
    ADMIN AUTH
    ========================================================= */
 
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const sessions =
+  new Map();
 
-// Persist admin sessions in PostgreSQL so valid logins survive Render restarts.
-const adminSessionsReady = pool.query(`
-  CREATE TABLE IF NOT EXISTS admin_sessions (
-    token_hash TEXT PRIMARY KEY,
-    expires_at TIMESTAMPTZ NOT NULL
-  )
-`).catch(error => {
-  console.error('ADMIN SESSIONS TABLE INIT ERROR:', error);
-  throw error;
-});
+const SESSION_TTL_MS =
+  12 * 60 * 60 * 1000;
 
-function hashAdminToken(token) {
-  return crypto.createHash('sha256').update(token).digest('hex');
-}
 
-async function requireAdmin(req, res, next) {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+function requireAdmin(
+  req,
+  res,
+  next
+) {
 
-  if (!token) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  const header =
+    req.headers.authorization || '';
+
+  const token =
+    header.startsWith('Bearer ')
+      ? header.slice(7)
+      : null;
+
+  const expiry =
+    token &&
+    sessions.get(token);
+
+  if (
+    !expiry ||
+    expiry < Date.now()
+  ) {
+
+    return res.status(401).json({
+      error: 'Unauthorized'
+    });
+
   }
 
-  try {
-    await adminSessionsReady;
-    const result = await pool.query(
-      `SELECT token_hash
-       FROM admin_sessions
-       WHERE token_hash = $1 AND expires_at > NOW()
-       LIMIT 1`,
-      [hashAdminToken(token)]
-    );
-
-    if (!result.rowCount) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    return next();
-  } catch (error) {
-    console.error('ADMIN AUTH CHECK ERROR:', error);
-    return res.status(500).json({ error: 'Could not verify admin session.' });
-  }
+  next();
 }
 
 
@@ -162,7 +155,7 @@ async function requireAdmin(req, res, next) {
 
 app.post(
   '/api/admin/login',
-  async (req, res) => {
+  (req, res) => {
 
     const {
       username,
@@ -174,19 +167,19 @@ app.post(
       password === ADMIN_PASSWORD
     ) {
 
-      await adminSessionsReady;
+      const token =
+        crypto.randomBytes(24)
+          .toString('hex');
 
-      const token = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-
-      await pool.query(
-        `INSERT INTO admin_sessions (token_hash, expires_at)
-         VALUES ($1, $2)
-         ON CONFLICT (token_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at`,
-        [hashAdminToken(token), expiresAt]
+      sessions.set(
+        token,
+        Date.now() +
+        SESSION_TTL_MS
       );
 
-      return res.json({ token });
+      return res.json({
+        token
+      });
 
     }
 
@@ -206,19 +199,23 @@ app.post(
 app.post(
   '/api/admin/logout',
   requireAdmin,
-  async (req, res) => {
+  (req, res) => {
 
-    const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+    const header =
+      req.headers.authorization || '';
+
+    const token =
+      header.startsWith('Bearer ')
+        ? header.slice(7)
+        : null;
 
     if (token) {
-      await pool.query(
-        'DELETE FROM admin_sessions WHERE token_hash = $1',
-        [hashAdminToken(token)]
-      );
+      sessions.delete(token);
     }
 
-    res.json({ ok: true });
+    res.json({
+      ok: true
+    });
 
   }
 );
@@ -334,41 +331,54 @@ app.post(
        * Upload to Supabase
        */
 
-      const {
-        error
-      } =
-        await supabase.storage
-          .from('gallery')
-          .upload(
-            uploadedFileName,
-            req.file.buffer,
-            {
-              contentType:
-                req.file.mimetype,
+      /*
+       * Upload to the dedicated Supabase Storage bucket.
+       * If the bucket is missing, create it once and retry.
+       * This requires SUPABASE_SERVICE_ROLE_KEY on the backend.
+       */
+      const bucketName = 'gallery';
+      const uploadOptions = {
+        contentType: req.file.mimetype,
+        cacheControl: '3600',
+        upsert: false
+      };
 
-              cacheControl:
-                '3600',
+      let uploadResponse = await supabase.storage
+        .from(bucketName)
+        .upload(uploadedFileName, req.file.buffer, uploadOptions);
 
-              upsert:
-                false
-            }
-          );
-
-
-      if (error) {
-
-        console.error(
-          'Supabase upload error:',
-          error
-        );
-
-        return res.status(500).json({
-          error:
-            'Image upload failed',
-          details:
-            error.message
+      if (uploadResponse.error && /bucket not found|not found/i.test(uploadResponse.error.message || '')) {
+        const createResponse = await supabase.storage.createBucket(bucketName, {
+          public: true,
+          fileSizeLimit: 5 * 1024 * 1024,
+          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
         });
 
+        // Ignore an already-existing bucket response; report other setup errors.
+        if (createResponse.error && !/already exists|duplicate/i.test(createResponse.error.message || '')) {
+          console.error('Supabase bucket creation error:', createResponse.error);
+          return res.status(500).json({
+            error: 'Supabase Storage bucket setup failed',
+            details: createResponse.error.message
+          });
+        }
+
+        uploadResponse = await supabase.storage
+          .from(bucketName)
+          .upload(uploadedFileName, req.file.buffer, uploadOptions);
+      }
+
+      if (uploadResponse.error) {
+        console.error('Supabase upload error:', uploadResponse.error);
+        const message = uploadResponse.error.message || 'Unknown Supabase Storage error';
+        const likelySetupIssue = /permission|unauthorized|forbidden|invalid.*key|jwt/i.test(message);
+        return res.status(500).json({
+          error: 'Image upload failed',
+          details: message,
+          hint: likelySetupIssue
+            ? 'Hostinger environment variables में SUPABASE_URL और SUPABASE_SERVICE_ROLE_KEY जाँचें।'
+            : 'Supabase Dashboard → Storage में gallery bucket और उसकी settings जाँचें।'
+        });
       }
 
 
@@ -1090,12 +1100,6 @@ function submissionRoutes(
           submissionData.internshipId =
             null;
 
-          submissionData.verificationCode =
-            null;
-
-          submissionData.verificationUrl =
-            null;
-
           submissionData.approvedAt =
             null;
 
@@ -1407,14 +1411,6 @@ app.post(
         data.internshipId ||
         `NSF-INT-${new Date().getFullYear()}-${String(id).padStart(4, '0')}`;
 
-      // Opaque, unguessable code used by the public verification page.
-      const verificationCode =
-        data.verificationCode ||
-        crypto.randomBytes(24).toString('hex');
-
-      const verificationUrl =
-        `${PUBLIC_BASE_URL.replace(/\/$/, '')}/verify/internship/${verificationCode}`;
-
       const now =
         new Date().toISOString();
 
@@ -1423,12 +1419,6 @@ app.post(
 
       data.internshipId =
         internshipId;
-
-      data.verificationCode =
-        verificationCode;
-
-      data.verificationUrl =
-        verificationUrl;
 
       data.approvedAt =
         data.approvedAt ||
@@ -1471,8 +1461,6 @@ app.post(
         id,
 
         internshipId,
-
-        verificationUrl,
 
         internship: {
 
@@ -1744,89 +1732,6 @@ app.post(
 
   }
 );
-
-
-
-/* =========================================================
-   STUDENT INTERNSHIP VERIFICATION
-   ========================================================= */
-
-// Public verification exposes only limited details. Code is issued on approval.
-app.get('/api/internships/verify/:code', async (req, res) => {
-  try {
-    await internshipTableReady;
-    const code = String(req.params.code || '').trim();
-    if (!code) return res.status(400).json({ verified: false, status: 'INVALID' });
-
-    const result = await pool.query(
-      `SELECT id, data, created_at FROM internships
-       WHERE data->>'verificationCode' = $1 LIMIT 1`,
-      [code]
-    );
-
-    if (!result.rows.length) {
-      return res.status(404).json({ verified: false, status: 'NOT FOUND' });
-    }
-
-    const row = result.rows[0];
-    const data = row.data || {};
-    const status = String(data.status || 'pending').toLowerCase();
-
-    return res.json({
-      verified: status === 'active',
-      status: status.toUpperCase(),
-      internshipId: data.internshipId || null,
-      name: data.name || data.studentName || data.fullName || null,
-      programme: data.programme || data.program || data.course || null,
-      college: data.college || data.collegeName || data.institution || null,
-      duration: data.duration || data.internshipDuration || null,
-      approvedAt: data.approvedAt || null,
-      issuedAt: data.issuedAt || null
-    });
-  } catch (error) {
-    console.error('VERIFY INTERNSHIP ERROR:', error);
-    return res.status(500).json({ verified: false, status: 'SERVICE ERROR' });
-  }
-});
-
-app.get('/verify/internship/:code', (req, res) => {
-  const code = encodeURIComponent(String(req.params.code || ''));
-  res.send(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nisha Seva Foundation — Internship Verification</title>
-<style>
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:#f2f6f4;color:#17354a;font-family:Arial,sans-serif}
-.card{width:min(100%,650px);background:#fff;border:1px solid #dce8e1;border-radius:18px;padding:28px;box-shadow:0 12px 36px #0c2d4014}
-.brand{text-align:center;color:#124c70;font-size:24px;font-weight:800}.sub{text-align:center;color:#5d737e;margin:8px 0 24px}
-.status{padding:14px;border-radius:10px;text-align:center;font-weight:800;margin-bottom:18px;background:#edf1f4;color:#334155}
-.good{background:#dcfce7;color:#166534}.bad{background:#fee2e2;color:#991b1b}
-.row{display:flex;justify-content:space-between;gap:18px;padding:12px 0;border-bottom:1px solid #e5ece8}
-.label{font-weight:700;color:#60727b}.value{text-align:right;overflow-wrap:anywhere}
-.footer{text-align:center;font-size:12px;color:#71828a;margin-top:22px}
-@media(max-width:480px){.card{padding:20px}.row{display:block}.value{text-align:left;margin-top:5px}}
-</style></head><body><main class="card">
-<div class="brand">NISHA SEVA FOUNDATION</div><div class="sub">Student Internship Verification</div>
-<div id="status" class="status">Checking verification record…</div><div id="details"></div>
-<div class="footer">This page shows the current verification status recorded by Nisha Seva Foundation.</div>
-</main><script>
-(async()=>{
- const statusEl=document.getElementById('status'), detailsEl=document.getElementById('details');
- try{
-   const response=await fetch('/api/internships/verify/${code}');
-   const data=await response.json();
-   if(!response.ok && response.status!==404) throw new Error('Verification service unavailable');
-   statusEl.className='status '+(data.verified?'good':'bad');
-   statusEl.textContent=data.verified?'✓ VERIFIED — ACTIVE INTERNSHIP':'✕ NOT VERIFIED — '+String(data.status||'NOT FOUND');
-   const rows=[['Internship ID',data.internshipId],['Student Name',data.name],
-   ['Programme / Course',data.programme],['College / Institution',data.college],
-   ['Internship Duration',data.duration],['Approval Date',data.approvedAt?new Date(data.approvedAt).toLocaleDateString():null]];
-   detailsEl.innerHTML=rows.filter(r=>r[1]).map(r=>'<div class="row"><div class="label">'+esc(r[0])+'</div><div class="value">'+esc(r[1])+'</div></div>').join('');
- }catch(e){statusEl.className='status bad';statusEl.textContent='Verification service unavailable';}
- function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-})();
-</script></body></html>`);
-});
 
 
 /* =========================================================
@@ -2965,56 +2870,6 @@ app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
   }
 });
 
-
-/* ---------------------------------------------------------
-   ADMIN REVIEW: APPROVE OR REJECT A STUDENT PROJECT
-   --------------------------------------------------------- */
-app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) => {
-  try {
-    await projectSubmissionTableReady;
-    const id = Number(req.params.id);
-    const status = String((req.body || {}).status || '').toLowerCase();
-
-    if (!Number.isInteger(id) || id < 1) {
-      return res.status(400).json({ error: 'Invalid project submission ID.' });
-    }
-    if (!['approved', 'rejected'].includes(status)) {
-      return res.status(400).json({ error: 'Status must be approved or rejected.' });
-    }
-
-    const reviewData = {
-      status,
-      statusUpdatedAt: new Date().toISOString()
-    };
-    const result = await pool.query(
-      `UPDATE project_submissions
-       SET data = COALESCE(data, '{}'::jsonb) || $2::jsonb
-       WHERE id = $1
-       RETURNING id, data, created_at`,
-      [id, JSON.stringify(reviewData)]
-    );
-
-    if (!result.rowCount) {
-      return res.status(404).json({ error: 'Project submission not found.' });
-    }
-
-    const row = result.rows[0];
-    return res.json({
-      ok: true,
-      id: row.id,
-      status,
-      submission: {
-        id: row.id,
-        submittedAt: row.created_at,
-        ...(row.data || {})
-      }
-    });
-  } catch (error) {
-    console.error('POST /api/projectSubmissions/:id/review:', error);
-    return res.status(500).json({ error: 'Could not update project review status.' });
-  }
-});
-
 app.delete('/api/projectSubmissions/:id', requireAdmin, async (req, res) => {
   try {
     await projectSubmissionTableReady;
@@ -3073,7 +2928,7 @@ app.use(
    START SERVER
    ========================================================= */
 
-Promise.all([internshipTableReady, projectSubmissionTableReady, adminSessionsReady])
+Promise.all([internshipTableReady, projectSubmissionTableReady])
   .then(() => {
 
     app.listen(
