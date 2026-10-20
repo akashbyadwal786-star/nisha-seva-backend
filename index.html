@@ -874,9 +874,7 @@ async function downloadSubmittedInternshipForm(data){
       page.drawText(title,{x:margin,y:H-91,size:14,font:bold,color:white,maxWidth:W-2*margin-12});
       const kickerWidth=bold.widthOfTextAtSize(kicker,7);
       page.drawText(kicker,{x:W-margin-kickerWidth,y:H-20,size:7,font:bold,color:gold});
-      page.drawLine({start:{x:margin,y:24},end:{x:W-margin,y:24},thickness:.7,color:line});
-      page.drawText('Nisha Seva Foundation  •  Student Internship Programme',{x:margin,y:12,size:7,font:regular,color:muted});
-      page.drawText('Page '+pageNo+' of 3',{x:W-margin-45,y:12,size:7,font:regular,color:muted});
+      // Keep page 1 clean: no extra footer line or text below the form.
     }
     function section(page,title,y){
       page.drawRectangle({x:margin,y:y-5,width:W-margin*2,height:22,color:mint,borderColor:line,borderWidth:.5});
@@ -960,15 +958,9 @@ async function downloadSubmittedInternshipForm(data){
 
     // PAGE 3: border-free premium digital certificate, with clearer typography and whitespace.
     page=out.addPage([W,H]);
-    const leaf=(x,y,scale,rot,color)=>page.drawEllipse({x,y,width:10*scale,height:23*scale,color,rotate:degrees(rot),borderColor:color,borderWidth:.3});
-    const flower=(x,y,scale)=>{
-      const fPink=rgb(.91,.25,.48), blush=rgb(1,.76,.79), fGold=rgb(.86,.65,.22);
-      for(let i=0;i<6;i++) page.drawEllipse({x:x+Math.cos(i*Math.PI/3)*7*scale,y:y+Math.sin(i*Math.PI/3)*7*scale,width:10*scale,height:6*scale,color:i%2?blush:fPink,rotate:degrees(i*60),borderColor:blush,borderWidth:.3});
-      page.drawCircle({x,y,size:3*scale,color:fGold});
-    };
     const green=rgb(.04,.31,.23), gold=rgb(.79,.60,.27), ink2=rgb(.12,.16,.14), pink=rgb(.89,.25,.46), muted2=rgb(.38,.43,.41), pale2=rgb(.94,.97,.94);
     page.drawRectangle({x:0,y:0,width:W,height:H,color:rgb(1,1,1)});
-    // Clean certificate paper: no border, no top/bottom bars; only light botanical corner artwork.
+    // Clean premium offer letter paper with no decorative corner artwork.
     page.drawImage(ngoLogo,{x:(W-48)/2,y:H-67,width:48,height:48});
     page.drawText('NISHA SEVA FOUNDATION',{x:margin,y:H-82,size:11.5,font:bold,color:green,maxWidth:W-2*margin});
     page.drawText('Registration No. U96091RJ2025NPL108344',{x:margin,y:H-94,size:6.3,font:bold,color:pink,maxWidth:W-2*margin});
@@ -992,16 +984,23 @@ async function downloadSubmittedInternshipForm(data){
       ['INTERNSHIP MODE',data.mode||'As assigned','MENTOR / CONTACT',data.mentorName||'To be assigned']
     ];
     const leftX=margin, rightX=315, colW=255, rowStart=H-317, rowGap=51;
+    const detailFill=rgb(.965,.98,.968), detailLine=rgb(.86,.91,.87);
     infoRows.forEach((r,i)=>{
       const yy=rowStart-i*rowGap;
-      page.drawText(r[0],{x:leftX,y:yy,size:6.1,font:bold,color:muted2,maxWidth:colW});
-      txt(page,r[1],leftX,yy-13,8.1,bold,ink2,colW);
-      page.drawText(r[2],{x:rightX,y:yy,size:6.1,font:bold,color:muted2,maxWidth:colW});
-      txt(page,r[3],rightX,yy-13,8.1,bold,ink2,colW);
+      // Soft, border-light information boxes keep every label and value aligned.
+      page.drawRectangle({x:leftX-7,y:yy-28,width:colW-1,height:43,color:detailFill,borderColor:detailLine,borderWidth:.45});
+      page.drawRectangle({x:rightX-7,y:yy-28,width:colW-1,height:43,color:detailFill,borderColor:detailLine,borderWidth:.45});
+      page.drawText(r[0],{x:leftX,y:yy+2,size:6.1,font:bold,color:muted2,maxWidth:colW-14});
+      txt(page,r[1],leftX,yy-12,8.1,bold,ink2,colW-14);
+      page.drawText(r[2],{x:rightX,y:yy+2,size:6.1,font:bold,color:muted2,maxWidth:colW-14});
+      txt(page,r[3],rightX,yy-12,8.1,bold,ink2,colW-14);
     });
     page.drawText('OUR EXPECTATIONS',{x:margin,y:H-526,size:8,font:bold,color:pink,maxWidth:W-2*margin});
     txt(page,'We encourage you to follow the Foundation’s guidelines, maintain discipline and confidentiality, complete assigned activities, and submit your project or report on time.',margin,H-542,7.1,regular,ink2,W-2*margin);
-    page.drawText('We wish you a successful and meaningful learning experience.',{x:margin,y:H-578,size:7.5,font:bold,color:green,maxWidth:W-2*margin});
+    // A dedicated best-wishes panel makes the closing warm and easy to notice.
+    page.drawRectangle({x:margin,y:H-610,width:W-2*margin,height:29,color:rgb(.93,.97,.93),borderColor:rgb(.84,.9,.84),borderWidth:.6});
+    page.drawText('BEST WISHES',{x:margin+12,y:H-592,size:7,font:bold,color:pink});
+    page.drawText('We wish you a successful, inspiring and meaningful learning journey!',{x:margin+92,y:H-592,size:7.5,font:bold,color:green,maxWidth:W-2*margin-105});
     // Signature and stamp areas remain intentionally open for official authorization.
     const offerSignY=104;
     page.drawText('AUTHORIZED SIGNATORY',{x:margin,y:offerSignY+12,size:6.2,font:bold,color:green});
