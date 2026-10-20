@@ -47,7 +47,7 @@ const ADMIN_PASSWORD =
 
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
-  'https://nisha-seva-backend.onrender.com';
+  'https://nishasevafoundation.org';
 
 
 /* =========================================================
@@ -1090,6 +1090,12 @@ function submissionRoutes(
           submissionData.internshipId =
             null;
 
+          submissionData.verificationCode =
+            null;
+
+          submissionData.verificationUrl =
+            null;
+
           submissionData.approvedAt =
             null;
 
@@ -1401,6 +1407,14 @@ app.post(
         data.internshipId ||
         `NSF-INT-${new Date().getFullYear()}-${String(id).padStart(4, '0')}`;
 
+      // Opaque, unguessable code used by the public verification page.
+      const verificationCode =
+        data.verificationCode ||
+        crypto.randomBytes(24).toString('hex');
+
+      const verificationUrl =
+        `${PUBLIC_BASE_URL.replace(/\/$/, '')}/verify/internship/${verificationCode}`;
+
       const now =
         new Date().toISOString();
 
@@ -1409,6 +1423,12 @@ app.post(
 
       data.internshipId =
         internshipId;
+
+      data.verificationCode =
+        verificationCode;
+
+      data.verificationUrl =
+        verificationUrl;
 
       data.approvedAt =
         data.approvedAt ||
@@ -1451,6 +1471,8 @@ app.post(
         id,
 
         internshipId,
+
+        verificationUrl,
 
         internship: {
 
@@ -1722,6 +1744,89 @@ app.post(
 
   }
 );
+
+
+
+/* =========================================================
+   STUDENT INTERNSHIP VERIFICATION
+   ========================================================= */
+
+// Public verification exposes only limited details. Code is issued on approval.
+app.get('/api/internships/verify/:code', async (req, res) => {
+  try {
+    await internshipTableReady;
+    const code = String(req.params.code || '').trim();
+    if (!code) return res.status(400).json({ verified: false, status: 'INVALID' });
+
+    const result = await pool.query(
+      `SELECT id, data, created_at FROM internships
+       WHERE data->>'verificationCode' = $1 LIMIT 1`,
+      [code]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({ verified: false, status: 'NOT FOUND' });
+    }
+
+    const row = result.rows[0];
+    const data = row.data || {};
+    const status = String(data.status || 'pending').toLowerCase();
+
+    return res.json({
+      verified: status === 'active',
+      status: status.toUpperCase(),
+      internshipId: data.internshipId || null,
+      name: data.name || data.studentName || data.fullName || null,
+      programme: data.programme || data.program || data.course || null,
+      college: data.college || data.collegeName || data.institution || null,
+      duration: data.duration || data.internshipDuration || null,
+      approvedAt: data.approvedAt || null,
+      issuedAt: data.issuedAt || null
+    });
+  } catch (error) {
+    console.error('VERIFY INTERNSHIP ERROR:', error);
+    return res.status(500).json({ verified: false, status: 'SERVICE ERROR' });
+  }
+});
+
+app.get('/verify/internship/:code', (req, res) => {
+  const code = encodeURIComponent(String(req.params.code || ''));
+  res.send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nisha Seva Foundation — Internship Verification</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:20px;background:#f2f6f4;color:#17354a;font-family:Arial,sans-serif}
+.card{width:min(100%,650px);background:#fff;border:1px solid #dce8e1;border-radius:18px;padding:28px;box-shadow:0 12px 36px #0c2d4014}
+.brand{text-align:center;color:#124c70;font-size:24px;font-weight:800}.sub{text-align:center;color:#5d737e;margin:8px 0 24px}
+.status{padding:14px;border-radius:10px;text-align:center;font-weight:800;margin-bottom:18px;background:#edf1f4;color:#334155}
+.good{background:#dcfce7;color:#166534}.bad{background:#fee2e2;color:#991b1b}
+.row{display:flex;justify-content:space-between;gap:18px;padding:12px 0;border-bottom:1px solid #e5ece8}
+.label{font-weight:700;color:#60727b}.value{text-align:right;overflow-wrap:anywhere}
+.footer{text-align:center;font-size:12px;color:#71828a;margin-top:22px}
+@media(max-width:480px){.card{padding:20px}.row{display:block}.value{text-align:left;margin-top:5px}}
+</style></head><body><main class="card">
+<div class="brand">NISHA SEVA FOUNDATION</div><div class="sub">Student Internship Verification</div>
+<div id="status" class="status">Checking verification record…</div><div id="details"></div>
+<div class="footer">This page shows the current verification status recorded by Nisha Seva Foundation.</div>
+</main><script>
+(async()=>{
+ const statusEl=document.getElementById('status'), detailsEl=document.getElementById('details');
+ try{
+   const response=await fetch('/api/internships/verify/${code}');
+   const data=await response.json();
+   if(!response.ok && response.status!==404) throw new Error('Verification service unavailable');
+   statusEl.className='status '+(data.verified?'good':'bad');
+   statusEl.textContent=data.verified?'✓ VERIFIED — ACTIVE INTERNSHIP':'✕ NOT VERIFIED — '+String(data.status||'NOT FOUND');
+   const rows=[['Internship ID',data.internshipId],['Student Name',data.name],
+   ['Programme / Course',data.programme],['College / Institution',data.college],
+   ['Internship Duration',data.duration],['Approval Date',data.approvedAt?new Date(data.approvedAt).toLocaleDateString():null]];
+   detailsEl.innerHTML=rows.filter(r=>r[1]).map(r=>'<div class="row"><div class="label">'+esc(r[0])+'</div><div class="value">'+esc(r[1])+'</div></div>').join('');
+ }catch(e){statusEl.className='status bad';statusEl.textContent='Verification service unavailable';}
+ function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+})();
+</script></body></html>`);
+});
 
 
 /* =========================================================
