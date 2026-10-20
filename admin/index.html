@@ -315,6 +315,26 @@ input,textarea,select{border-radius:11px!important;padding:12px!important}
 @media(max-width:520px){.tabs{grid-template-columns:1fr 1fr}.easy-action-grid{grid-template-columns:1fr}#content h2{font-size:21px}.wrap{padding:0 10px}}
 </style>
 
+
+<style id="nsf-admin-icons-roles">
+:root{--nsf-navy:#071d32;--nsf-gold:#f5c044;--nsf-border:#e3eaf1}
+.tabs button{position:relative;padding-left:15px!important;border-left:4px solid transparent!important}
+.tabs button[data-section="programs"]{--item:#3b82f6}.tabs button[data-section="events"]{--item:#8b5cf6}.tabs button[data-section="gallery"]{--item:#ec4899}.tabs button[data-section="documents"]{--item:#64748b}.tabs button[data-section="donors"]{--item:#f59e0b}.tabs button[data-section="volunteers"]{--item:#10b981}.tabs button[data-section="internships"]{--item:#0ea5e9}.tabs button[data-section="projectSubmissions"]{--item:#6366f1}.tabs button[data-section="members"]{--item:#14b8a6}.tabs button[data-section="contactMessages"]{--item:#f97316}.tabs button[data-section="newsletter"]{--item:#a855f7}
+.tabs button:before{content:attr(data-icon)!important;display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;background:color-mix(in srgb,var(--item,#64748b) 14%,white);color:var(--item,#64748b);font-size:17px;line-height:1;margin-right:2px}
+.tabs button:hover,.tabs button.active{border-left-color:var(--item,#f5c044)!important}.tabs button.active:before{background:var(--item,#f5c044);color:#fff}
+button{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+button.primary{background:linear-gradient(135deg,#1769e0,#174b9b)!important;color:white!important}
+button.success{background:linear-gradient(135deg,#159b69,#08764c)!important;color:white!important}
+button.danger{background:linear-gradient(135deg,#ed4654,#b91c32)!important;color:white!important}
+button.warning{background:linear-gradient(135deg,#ffc83d,#ed9d00)!important;color:#18212b!important}
+button.muted{background:#e9eff6!important;color:#26394d!important}
+.actions button:nth-child(5n+1){--btn:#1769e0} .actions button:nth-child(5n+2){--btn:#159b69} .actions button:nth-child(5n+3){--btn:#e34b5b} .actions button:nth-child(5n+4){--btn:#8b5cf6} .actions button:nth-child(5n+5){--btn:#d97706}
+.easy-action{border-top:3px solid var(--ea,#0f7657)}.easy-action:nth-child(6n+1){--ea:#1769e0}.easy-action:nth-child(6n+2){--ea:#8b5cf6}.easy-action:nth-child(6n+3){--ea:#ec4899}.easy-action:nth-child(6n+4){--ea:#f59e0b}.easy-action:nth-child(6n+5){--ea:#10b981}.easy-action:nth-child(6n){--ea:#0ea5e9}.easy-action .ea-icon{background:color-mix(in srgb,var(--ea) 13%,white);color:var(--ea)}
+.role-login-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0}.role-login{padding:13px 8px;border:1px solid #dfe7ef;background:#fff;color:#20354a;border-radius:13px;display:flex;flex-direction:column;gap:6px}.role-login span{font-size:24px}.role-login.active{background:#0b2035;color:white;border-color:#f5b52e;box-shadow:0 7px 18px #071d3220}.role-note{font-size:12px;color:#718096;line-height:1.5;margin-top:10px}
+header .brand-mark{display:flex;align-items:center;gap:12px}header .brand-symbol{font-size:34px;color:#ffd45d}header .brand-title{font-weight:900;letter-spacing:.08em;color:#ffd45d;font-size:clamp(14px,2vw,22px)}header .brand-sub{font-size:11px;letter-spacing:.12em;color:#dce6ef}
+@media(max-width:620px){.role-login-grid{grid-template-columns:1fr}.role-login{flex-direction:row;align-items:center}.brand-sub{display:none!important}}
+</style>
+
 </head>
 
 <body>
@@ -351,6 +371,7 @@ const tabs = [
   ["contactMessages","Messages"],
   ["newsletter","Newsletter"]
 ];
+const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉"};
 
 
 /* =========================================================
@@ -417,52 +438,33 @@ function esc(value){
    LOGIN
    ========================================================= */
 
-function login(){
-
-  app.innerHTML = `
-
-    <div class="wrap">
-
-      <div class="card"
-           style="max-width:420px;margin:80px auto">
-
-        <h2>🌿 Nisha Seva Foundation</h2>
-
-        <p>
-          <b>Admin Panel Login</b>
-        </p>
-
-        <input
-          id="user"
-          placeholder="Username"
-        >
-
-        <br><br>
-
-        <input
-          id="pass"
-          type="password"
-          placeholder="Password"
-        >
-
-        <br><br>
-
-        <button
-          class="primary"
-          onclick="doLogin()"
-        >
-          Login
-        </button>
-
-        <div id="msg"></div>
-
-      </div>
-
-    </div>
-
-  `;
+let selectedLoginRole="admin";
+function selectLoginRole(role){
+  selectedLoginRole=role;
+  document.querySelectorAll(".role-login").forEach(b=>b.classList.toggle("active",b.dataset.role===role));
+  const heading=document.getElementById("loginHeading"); if(heading)heading.textContent=({admin:"Admin Panel Login",manager:"Manager Login",coordinator:"Coordinator Login"})[role];
+  const msg=document.getElementById("msg"); if(msg)msg.innerHTML="";
 }
-
+function login(){
+  app.innerHTML = `
+    <div class="wrap" style="display:block;max-width:560px">
+      <div class="card" style="max-width:520px;margin:55px auto;padding:28px">
+        <div style="text-align:center;margin-bottom:16px"><div style="font-size:42px">🌿</div><h2 style="margin:6px 0;color:#0b2035">Nisha Seva Foundation</h2><p class="small">Service · Education · Environment · Empowerment</p></div>
+        <div class="role-login-grid">
+          <button class="role-login active" data-role="admin" onclick="selectLoginRole('admin')"><span>🛡️</span><b>Admin Login</b></button>
+          <button class="role-login" data-role="manager" onclick="selectLoginRole('manager')"><span>📋</span><b>Manager Login</b></button>
+          <button class="role-login" data-role="coordinator" onclick="selectLoginRole('coordinator')"><span>🎓</span><b>Coordinator Login</b></button>
+        </div>
+        <h3 id="loginHeading">Admin Panel Login</h3>
+        <label for="user"><b>Username</b></label><input id="user" autocomplete="username" placeholder="Enter username">
+        <br><br><label for="pass"><b>Password</b></label><input id="pass" type="password" autocomplete="current-password" placeholder="Enter password">
+        <br><br><button class="primary" style="width:100%;padding:13px" onclick="doLogin()">🔐 Login Securely</button>
+        <div id="msg"></div>
+        <div class="role-note">Manager और Coordinator के लिए अलग-अलग सुरक्षित login तभी काम करेगा जब backend में उनके अलग authentication endpoints और permissions configure हों। अभी मौजूदा Admin login सुरक्षित रखने के लिए केवल Admin login endpoint इस्तेमाल होगा।</div>
+      </div>
+    </div>`;
+  selectLoginRole("admin");
+}
 
 /* =========================================================
    DO LOGIN
@@ -470,6 +472,11 @@ function login(){
 
 async function doLogin(){
 
+  if(selectedLoginRole !== "admin"){
+    const msgBox=document.getElementById("msg");
+    if(msgBox) msgBox.innerHTML=`<div class="err"><b>${selectedLoginRole === "manager" ? "Manager" : "Coordinator"} login अभी backend में configured नहीं है।</b><br>इस role के लिए अलग API authentication और permission rules जोड़ने होंगे। Admin credentials को इन roles में इस्तेमाल नहीं किया गया है।</div>`;
+    return;
+  }
   try{
 
     const data = await api(
