@@ -54,7 +54,21 @@ const PUBLIC_BASE_URL =
    MIDDLEWARE
    ========================================================= */
 
-app.use(cors());
+const corsOptions = {
+  origin: true,
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  credentials: false,
+  optionsSuccessStatus: 204
+};
+app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
+
+// Simple health endpoint to distinguish a live backend from a frontend/CORS issue.
+app.get('/health', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok: true, service: 'nisha-seva-backend', time: new Date().toISOString() });
+});
 
 app.use(
   express.json({
