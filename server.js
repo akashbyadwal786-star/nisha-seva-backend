@@ -11,7 +11,8 @@ const {
   readDB,
   writeDB,
   nextId,
-  pool
+  pool,
+  ensureTables
 } = require('./db');
 
 /* Supabase removed from runtime. Image uploads now use local uploads/ storage. */
@@ -29,9 +30,12 @@ const PORT =
 const ADMIN_USERNAME =
   process.env.ADMIN_USERNAME || 'admin';
 
-const ADMIN_PASSWORD =
-  process.env.ADMIN_PASSWORD ||
-  'change-this-password';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+if (!ADMIN_PASSWORD) {
+  console.error('STARTUP BLOCKED: Set a strong ADMIN_PASSWORD in Hostinger Environment Variables.');
+  process.exit(1);
+}
 
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
@@ -2620,7 +2624,7 @@ app.use(
    START SERVER
    ========================================================= */
 
-Promise.all([internshipTableReady, projectSubmissionTableReady])
+Promise.all([internshipTableReady, projectSubmissionTableReady, ensureTables()])
   .then(() => {
 
     app.listen(

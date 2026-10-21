@@ -5,15 +5,17 @@ const defaultDB = {
   volunteers: [], members: [], contactMessages: [], newsletter: []
 };
 
-if (!process.env.DB_HOST || !process.env.DB_NAME || !process.env.DB_USER || !process.env.DB_PASSWORD) {
-  console.warn('MySQL configuration incomplete: set DB_HOST, DB_NAME, DB_USER and DB_PASSWORD.');
+const requiredDbVars = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
+const missingDbVars = requiredDbVars.filter(key => !process.env[key]);
+if (missingDbVars.length) {
+  throw new Error(`Missing required MySQL environment variables: ${missingDbVars.join(', ')}`);
 }
 
 const rawPool = mysql.createPool({
-  host: process.env.DB_HOST || 'srv1871.hstgr.io',
+  host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT || 3306),
-  database: process.env.DB_NAME || 'u454486601_nishaseva',
-  user: process.env.DB_USER || 'u454486601_nishaseva78',
+  database: process.env.DB_NAME,
+  user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   waitForConnections: true,
   connectionLimit: 5,
@@ -26,9 +28,9 @@ function translateSql(sql) {
   let s = sql
     .replace(/\$\d+::jsonb/gi, '?')
     .replace(/\$\d+/g, '?')
+    .replace(/\s+NOT NULL DEFAULT '\{\}'::jsonb/gi, ' NOT NULL')
     .replace(/\bSERIAL\s+PRIMARY\s+KEY\b/gi, 'INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY')
     .replace(/\bJSONB\b/gi, 'JSON')
-    .replace(/\s+NOT NULL DEFAULT '\{\}'::jsonb/gi, ' NOT NULL')
     .replace(/\bTIMESTAMPTZ\b/gi, 'TIMESTAMP')
     .replace(/DEFAULT\s+NOW\(\)/gi, 'DEFAULT CURRENT_TIMESTAMP')
     .replace(/data->>'verificationCode'/g, "JSON_UNQUOTE(JSON_EXTRACT(data, '$.verificationCode'))");
@@ -83,8 +85,7 @@ const pool = {
 async function readDB() {
   const [rows] = await rawPool.query('SELECT data FROM app_data WHERE id = 1 LIMIT 1');
   if (!rows.length) {
-    await writeDB(defaultDB);
-    return defaultDB;
+    throw new Error('app_data row id=1 is missing. Refusing to initialize empty data; verify the imported database before continuing.');
   }
   let data = rows[0].data;
   if (typeof data === 'string') data = JSON.parse(data);
@@ -104,7 +105,7 @@ function nextId(collection) {
 }
 
 async function ensureTables() {
-  const tables = ['volunteers', 'members', 'contact_messages', 'newsletter', 'internships', 'project_submissions'];
+  const tables = ['volunteers', 'members', 'contact_messages', 'newsletter'];
   for (const table of tables) {
     await rawPool.query(`CREATE TABLE IF NOT EXISTS \`${table}\` (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
