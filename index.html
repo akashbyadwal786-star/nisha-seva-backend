@@ -925,21 +925,36 @@ async function downloadSubmittedInternshipForm(data){
     txt(page,'Availability / preferred time: '+safe(data.availability),margin,y-29,8.5,regular,ink,W-2*margin);
     txt(page,'Student note: '+safe(data.studentNote),margin,y-50,8.5,regular,ink,W-2*margin);
     txt(page,'I confirm that the information provided above is true and complete to the best of my knowledge.',margin,y-76,8,bold,green,W-2*margin);
+    // Blue divider directly below the declaration; signature blocks sit in one aligned row below it.
+    const dividerY=y-94;
+    page.drawLine({start:{x:margin,y:dividerY},end:{x:W-margin,y:dividerY},thickness:1.2,color:green});
     // Student-uploaded image/signature previews, if supplied. NGO seal/signature space intentionally left blank.
     async function embedDataImage(dataUrl){if(!dataUrl||!String(dataUrl).startsWith('data:image/'))return null;const bytes=Uint8Array.from(atob(String(dataUrl).split(',')[1]),c=>c.charCodeAt(0));return String(dataUrl).startsWith('data:image/png')?await out.embedPng(bytes):await out.embedJpg(bytes);}
     let photo=await embedDataImage(data.studentPhoto), ssig=await embedDataImage(data.studentSignature);
-    // Student photo sits in the upper-right corner of page 1; no parent photo/signature image in the downloaded PDF.
     if(photo){page.drawImage(photo,{x:W-margin-54,y:H-105,width:42,height:52});page.drawText('STUDENT PHOTO',{x:W-margin-60,y:H-112,size:5.5,font:bold,color:muted});}
-    // Three vertically stacked signature blocks with generous spacing to prevent overlap.
+    const sigTop=dividerY-24;
+    const sigGap=10;
+    const sigColW=(W-2*margin)/3;
     const signatureRows=[
-      {y:116,label:'Candidate Signature: '+safe(data.studentSignatureName||data.studentName),x:margin,w:220},
-      {y:76,label:'Parent / Guardian Signature: '+safe(data.parentSignatureName||data.parentName),x:margin,w:220},
-      {y:36,label:'NSF Coordinator Signature / Office Use',x:margin,w:220}
+      {x:margin+sigGap/2,w:sigColW-sigGap,label:'Candidate Signature: '+safe(data.studentSignatureName||data.studentName),align:'left'},
+      {x:margin+sigColW+sigGap/2,w:sigColW-sigGap,label:'Parent / Guardian Signature: '+safe(data.parentSignatureName||data.parentName),align:'left'},
+      {x:margin+2*sigColW+sigGap/2,w:sigColW-sigGap,label:'NSF Coordinator Signature / Office Use',align:'left'}
     ];
-    if(ssig){page.drawImage(ssig,{x:margin,y:signatureRows[0].y+9,width:72,height:22});}
+    if(ssig){page.drawImage(ssig,{x:signatureRows[0].x,y:sigTop+4,width:58,height:18});}
     for(const row of signatureRows){
-      page.drawLine({start:{x:row.x,y:row.y},end:{x:row.x+row.w,y:row.y},thickness:.7,color:line});
-      page.drawText(row.label,{x:row.x,y:row.y-12,size:7,font:regular,color:ink,maxWidth:row.w});
+      page.drawLine({start:{x:row.x,y:sigTop},end:{x:row.x+row.w,y:sigTop},thickness:.7,color:line});
+      const labelLines = row.label.length > 28 && row.w < 180;
+      if(labelLines){
+        const splitAt = row.label.indexOf(': ');
+        if(splitAt>0){
+          page.drawText(row.label.slice(0,splitAt+1),{x:row.x,y:sigTop-11,size:6,font:regular,color:ink,maxWidth:row.w});
+          page.drawText(row.label.slice(splitAt+2),{x:row.x,y:sigTop-20,size:6,font:regular,color:ink,maxWidth:row.w});
+        } else {
+          page.drawText(row.label,{x:row.x,y:sigTop-11,size:6,font:regular,color:ink,maxWidth:row.w});
+        }
+      } else {
+        page.drawText(row.label,{x:row.x,y:sigTop-11,size:6,font:regular,color:ink,maxWidth:row.w});
+      }
     }
 
     {
