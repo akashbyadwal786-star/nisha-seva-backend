@@ -1,18 +1,18 @@
 {
-  "name": "nisha-seva-backend",
-  "version": "1.0.0",
-  "description": "Backend + Admin Panel for Nisha Seva Foundation website",
+  "name": "nisha-seva-backend-mysql",
+  "version": "1.1.0",
+  "description": "Nisha Seva Foundation backend migrated from PostgreSQL/Supabase to Hostinger MySQL and local uploads",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node --check server.js && node --check db.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.57.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "multer": "^2.4.0",
-    "pg": "^8.16.3"
+    "mysql2": "^3.14.3"
   }
 }
