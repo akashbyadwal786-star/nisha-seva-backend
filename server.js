@@ -14,19 +14,7 @@ const {
   pool
 } = require('./db');
 
-const {
-  createClient
-} = require('@supabase/supabase-js');
-
-
-/* =========================================================
-   SUPABASE
-   ========================================================= */
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+/* Supabase removed from runtime. Image uploads now use local uploads/ storage. */
 
 
 /* =========================================================
@@ -271,223 +259,27 @@ const upload =
 
 
 /* =========================================================
-   UPLOAD API
+   UPLOAD API - LOCAL HOSTINGER STORAGE
+   IMPORTANT: deploy this backend on persistent Hostinger hosting
+   before enabling production uploads. Render Free disk is ephemeral.
    ========================================================= */
-
 app.post(
   '/api/upload',
   requireAdmin,
   upload.single('file'),
   async (req, res) => {
-
-    let uploadedFileName =
-      null;
-
     try {
-
-      if (!req.file) {
-
-        return res.status(400).json({
-          error:
-            'No file uploaded'
-        });
-
-      }
-
-
-      /*
-       * Get extension
-       */
-
-      let ext =
-        path.extname(
-          req.file.originalname
-        )
-        .replace(
-          '.',
-          ''
-        )
-        .toLowerCase();
-
-      if (!ext) {
-
-        ext =
-          req.file.mimetype
-            .split('/')
-            .pop() || 'jpg';
-
-      }
-
-
-      /*
-       * Safe unique file name
-       */
-
-      uploadedFileName =
-        `gallery/${Date.now()}-${crypto.randomUUID()}.${ext}`;
-
-
-      /*
-       * Upload to Supabase
-       */
-
-      /*
-       * Upload to the dedicated Supabase Storage bucket.
-       * If the bucket is missing, create it once and retry.
-       * This requires SUPABASE_SERVICE_ROLE_KEY on the backend.
-       */
-      const bucketName = 'gallery';
-      const uploadOptions = {
-        contentType: req.file.mimetype,
-        cacheControl: '3600',
-        upsert: false
-      };
-
-      let uploadResponse = await supabase.storage
-        .from(bucketName)
-        .upload(uploadedFileName, req.file.buffer, uploadOptions);
-
-      if (uploadResponse.error && /bucket not found|not found/i.test(uploadResponse.error.message || '')) {
-        const createResponse = await supabase.storage.createBucket(bucketName, {
-          public: true,
-          fileSizeLimit: 5 * 1024 * 1024,
-          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-        });
-
-        // Ignore an already-existing bucket response; report other setup errors.
-        if (createResponse.error && !/already exists|duplicate/i.test(createResponse.error.message || '')) {
-          console.error('Supabase bucket creation error:', createResponse.error);
-          return res.status(500).json({
-            error: 'Supabase Storage bucket setup failed',
-            details: createResponse.error.message
-          });
-        }
-
-        uploadResponse = await supabase.storage
-          .from(bucketName)
-          .upload(uploadedFileName, req.file.buffer, uploadOptions);
-      }
-
-      if (uploadResponse.error) {
-        console.error('Supabase upload error:', uploadResponse.error);
-        const message = uploadResponse.error.message || 'Unknown Supabase Storage error';
-        const likelySetupIssue = /permission|unauthorized|forbidden|invalid.*key|jwt/i.test(message);
-        return res.status(500).json({
-          error: 'Image upload failed',
-          details: message,
-          hint: likelySetupIssue
-            ? 'Hostinger environment variables में SUPABASE_URL और SUPABASE_SERVICE_ROLE_KEY जाँचें।'
-            : 'Supabase Dashboard → Storage में gallery bucket और उसकी settings जाँचें।'
-        });
-      }
-
-
-      /*
-       * Generate public URL
-       */
-
-      const {
-        data: publicUrlData
-      } =
-        supabase.storage
-          .from('gallery')
-          .getPublicUrl(
-            uploadedFileName
-          );
-
-
-      const imageUrl =
-        publicUrlData &&
-        publicUrlData.publicUrl
-          ? publicUrlData.publicUrl
-          : null;
-
-
-      if (!imageUrl) {
-
-        /*
-         * Cleanup if URL was not generated
-         */
-
-        await supabase.storage
-          .from('gallery')
-          .remove([
-            uploadedFileName
-          ]);
-
-        return res.status(500).json({
-          error:
-            'Could not generate image URL'
-        });
-
-      }
-
-
-      /*
-       * Return URL to Admin Panel
-       */
-
-      return res.json({
-
-        ok: true,
-
-        url:
-          imageUrl,
-
-        image:
-          imageUrl,
-
-        path:
-          uploadedFileName
-
-      });
-
-
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const ext = (path.extname(req.file.originalname).replace('.', '').toLowerCase() || req.file.mimetype.split('/').pop() || 'jpg');
+      const filename = `${Date.now()}-${crypto.randomUUID()}.${ext}`;
+      const destination = path.join(uploadsDir, filename);
+      await fs.promises.writeFile(destination, req.file.buffer);
+      const imageUrl = `${PUBLIC_BASE_URL.replace(/\/$/, '')}/uploads/${encodeURIComponent(filename)}`;
+      return res.json({ ok: true, url: imageUrl, image: imageUrl, path: filename });
     } catch (error) {
-
-      console.error(
-        'POST /api/upload:',
-        error
-      );
-
-
-      /*
-       * Cleanup uploaded file
-       * if something failed afterwards
-       */
-
-      if (uploadedFileName) {
-
-        try {
-
-          await supabase.storage
-            .from('gallery')
-            .remove([
-              uploadedFileName
-            ]);
-
-        } catch (
-          cleanupError
-        ) {
-
-          console.error(
-            'Upload cleanup error:',
-            cleanupError
-          );
-
-        }
-
-      }
-
-
-      return res.status(500).json({
-        error:
-          error.message ||
-          'Upload failed'
-      });
-
+      console.error('POST /api/upload:', error);
+      return res.status(500).json({ error: error.message || 'Upload failed' });
     }
-
   }
 );
 
@@ -827,54 +619,7 @@ function crudRoutes(name) {
               ) === id
           );
 
-
-        /*
-         * If Gallery item has a Supabase
-         * image path, delete image too.
-         */
-
-        if (
-          name === 'gallery' &&
-          existing
-        ) {
-
-          try {
-
-            const imagePath =
-              existing.path ||
-              extractSupabaseGalleryPath(
-                existing.image ||
-                existing.imageUrl ||
-                existing.url ||
-                existing.photo ||
-                ''
-              );
-
-
-            if (imagePath) {
-
-              await supabase
-                .storage
-                .from('gallery')
-                .remove([
-                  imagePath
-                ]);
-
-            }
-
-          } catch (
-            storageError
-          ) {
-
-            console.error(
-              'Gallery storage delete error:',
-              storageError
-            );
-
-          }
-
-        }
-
+        // Uploaded local files are retained; delete them only after verifying no other record uses them.
 
         db[name] =
           db[name].filter(
@@ -909,59 +654,6 @@ function crudRoutes(name) {
 
     }
   );
-
-}
-
-
-/* =========================================================
-   SUPABASE GALLERY PATH HELPER
-   ========================================================= */
-
-function extractSupabaseGalleryPath(
-  url
-) {
-
-  if (
-    !url ||
-    typeof url !== 'string'
-  ) {
-
-    return null;
-
-  }
-
-
-  try {
-
-    const marker =
-      '/storage/v1/object/public/gallery/';
-
-
-    const index =
-      url.indexOf(marker);
-
-
-    if (
-      index === -1
-    ) {
-
-      return null;
-
-    }
-
-
-    return decodeURIComponent(
-      url.slice(
-        index +
-        marker.length
-      )
-    );
-
-  } catch (error) {
-
-    return null;
-
-  }
 
 }
 
