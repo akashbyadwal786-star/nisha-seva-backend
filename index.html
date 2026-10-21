@@ -883,9 +883,12 @@ async function downloadSubmittedInternshipForm(data){
     function header(page,kicker,title,pageNo){
       page.drawRectangle({x:0,y:H-112,width:W,height:112,color:navy});
       page.drawRectangle({x:0,y:H-116,width:W,height:4,color:gold});
-      page.drawText('NISHA SEVA FOUNDATION',{x:margin,y:H-42,size:16,font:bold,color:white});
-      page.drawText('STUDENT INTERNSHIP PROGRAMME',{x:margin,y:H-61,size:8.5,font:regular,color:rgb(.82,.9,.86)});
-      page.drawText(title,{x:margin,y:H-91,size:14,font:bold,color:white,maxWidth:W-2*margin-12});
+      const foundationTitle='NISHA SEVA FOUNDATION';
+      const programmeTitle='STUDENT INTERNSHIP PROGRAMME';
+      const mainTitle=title;
+      page.drawText(foundationTitle,{x:(W-bold.widthOfTextAtSize(foundationTitle,16))/2,y:H-42,size:16,font:bold,color:white});
+      page.drawText(programmeTitle,{x:(W-regular.widthOfTextAtSize(programmeTitle,8.5))/2,y:H-61,size:8.5,font:regular,color:rgb(.82,.9,.86)});
+      page.drawText(mainTitle,{x:(W-bold.widthOfTextAtSize(mainTitle,14))/2,y:H-91,size:14,font:bold,color:white});
       const kickerWidth=bold.widthOfTextAtSize(kicker,7);
       page.drawText(kicker,{x:W-margin-kickerWidth,y:H-20,size:7,font:bold,color:gold});
       // Keep page 1 clean: no extra footer line or text below the form.
@@ -910,7 +913,7 @@ async function downloadSubmittedInternshipForm(data){
     let y=H-140;
     page.drawRectangle({x:margin,y:y-35,width:W-2*margin,height:44,color:rgb(.97,.98,.96),borderColor:line,borderWidth:.6});
     txt(page,'Application Date: '+dateFmt(data.applicationDate),margin+12,y-7,9,bold,navy,240);
-    txt(page,'Internship ID: NSF/INT/'+safe(data.enrollmentRoll||data.mobile||'APP'),margin+280,y-7,9,bold,navy,230);
+    txt(page,'Internship ID: NSF/INT/JR/2026 __________',margin+260,y-7,9,bold,navy,260);
     y-=58; y=section(page,'PROGRAMME DETAILS',y);
     y=drawFields(page,[field('Programme',data.program),field('Internship Duration',data.duration),field('College / Institution',data.collegeName),field('Preferred Internship Location',data.preferredPlace)],y-10,2);
     y=section(page,'STUDENT PERSONAL DETAILS',y-2);
@@ -927,14 +930,17 @@ async function downloadSubmittedInternshipForm(data){
     let photo=await embedDataImage(data.studentPhoto), ssig=await embedDataImage(data.studentSignature);
     // Student photo sits in the upper-right corner of page 1; no parent photo/signature image in the downloaded PDF.
     if(photo){page.drawImage(photo,{x:W-margin-54,y:H-105,width:42,height:52});page.drawText('STUDENT PHOTO',{x:W-margin-60,y:H-112,size:5.5,font:bold,color:muted});}
-    const signY=68;
-    if(ssig){page.drawImage(ssig,{x:margin,y:signY+10,width:82,height:28});}
-    page.drawLine({start:{x:margin,y:signY+7},end:{x:margin+150,y:signY+7},thickness:.7,color:line});
-    page.drawText('Student Signature: '+safe(data.studentSignatureName||data.studentName),{x:margin,y:signY-4,size:7,font:regular,color:ink});
-    page.drawLine({start:{x:margin+190,y:signY+7},end:{x:margin+340,y:signY+7},thickness:.7,color:line});
-    page.drawText('Parent / Guardian: '+safe(data.parentSignatureName||data.parentName),{x:margin+190,y:signY-4,size:7,font:regular,color:ink});
-    page.drawLine({start:{x:margin+365,y:signY+7},end:{x:margin+480,y:signY+7},thickness:.7,color:line});
-    page.drawText('NSF Coordinator / Office Use',{x:margin+365,y:signY-4,size:7,font:regular,color:ink});
+    // Three vertically stacked signature blocks with generous spacing to prevent overlap.
+    const signatureRows=[
+      {y:116,label:'Candidate Signature: '+safe(data.studentSignatureName||data.studentName),x:margin,w:220},
+      {y:76,label:'Parent / Guardian Signature: '+safe(data.parentSignatureName||data.parentName),x:margin,w:220},
+      {y:36,label:'NSF Coordinator Signature / Office Use',x:margin,w:220}
+    ];
+    if(ssig){page.drawImage(ssig,{x:margin,y:signatureRows[0].y+9,width:72,height:22});}
+    for(const row of signatureRows){
+      page.drawLine({start:{x:row.x,y:row.y},end:{x:row.x+row.w,y:row.y},thickness:.7,color:line});
+      page.drawText(row.label,{x:row.x,y:row.y-12,size:7,font:regular,color:ink,maxWidth:row.w});
+    }
 
     {
     // Shared actual NGO logo for both the declaration and offer letter.
@@ -944,7 +950,11 @@ async function downloadSubmittedInternshipForm(data){
     // PAGE 2: keep the supplied Student Declaration page exactly as provided.
     // Do not mask, redraw, or overlay anything: this preserves the first rule line and all eight rules.
     const declaration=await PDFDocument.load(Uint8Array.from(atob(templates[0].trim()),c=>c.charCodeAt(0)));
-    const declPages=await out.copyPages(declaration,[0]); out.addPage(declPages[0]);
+    const declPages=await out.copyPages(declaration,[0]);
+    const declarationPage=out.addPage(declPages[0]);
+    // Fill the blank immediately after "मैं" with the candidate's name.
+    declarationPage.drawRectangle({x:64,y:673,width:164,height:16,color:rgb(1,1,1),borderWidth:0});
+    declarationPage.drawText(safe(data.studentName),{x:67,y:678,size:10,font:await out.embedFont(StandardFonts.Helvetica),color:rgb(.05,.05,.05),maxWidth:157});
 
     // PAGE 3: offer / acceptance letter, following the user's attached two-page reference layout.
     // A second offer-letter page is added so long student/mentor details never collide or get clipped.
@@ -959,13 +969,27 @@ async function downloadSubmittedInternshipForm(data){
     }
     function letterHeader(pg,continued=false){
       pg.drawRectangle({x:0,y:H-7,width:W,height:7,color:green});
-      pg.drawText('NISHA SEVA FOUNDATION',{x:margin,y:H-48,size:17,font:bold,color:green});
-      pg.drawText('Registration No. U96091RJ2025NPL108344',{x:margin,y:H-65,size:8,font:bold,color:pink2});
-      pg.drawText('Address: Plot No. 4-5, Vinayak Vihar Colony, Jamwaramgarh, Jaipur - 303109',{x:margin,y:H-80,size:7.4,font:bold,color:ink2});
-      pg.drawText('Mob.: 7568660017   |   Email: nishasevafoundation@gmail.com',{x:margin,y:H-94,size:7.4,font:bold,color:ink2});
-      pg.drawLine({start:{x:margin,y:H-108},end:{x:W-margin,y:H-108},thickness:1,color:gold});
-      pg.drawText(continued?'INTERNSHIP OFFER / ACCEPTANCE LETTER — CONTINUED':'INTERNSHIP OFFER / ACCEPTANCE LETTER',{x:margin,y:H-130,size:12,font:bold,color:green});
-      pg.drawText('(INTERNSHIP OFFER AND ACCEPTANCE LETTER)',{x:margin,y:H-145,size:8.5,font:bold,color:ink2});
+      if(!continued){
+        const org='NISHA SEVA FOUNDATION';
+        pg.drawText(org,{x:(W-bold.widthOfTextAtSize(org,20))/2,y:H-43,size:20,font:bold,color:green});
+        const reg='Registration No. U96091RJ2025NPL108344';
+        pg.drawText(reg,{x:(W-bold.widthOfTextAtSize(reg,8))/2,y:H-60,size:8,font:bold,color:pink2});
+        const address='Address: Plot No. 4-5, Vinayak Vihar Colony, Jamwaramgarh, Jaipur - 303109';
+        pg.drawText(address,{x:(W-bold.widthOfTextAtSize(address,7.4))/2,y:H-75,size:7.4,font:bold,color:ink2});
+        const contact='Mob.: 7568660017   |   Email: nishasevafoundation@gmail.com';
+        pg.drawText(contact,{x:(W-bold.widthOfTextAtSize(contact,7.4))/2,y:H-89,size:7.4,font:bold,color:ink2});
+        pg.drawLine({start:{x:margin,y:H-101},end:{x:W-margin,y:H-101},thickness:1,color:gold});
+        const title='INTERNSHIP OFFER / ACCEPTANCE LETTER';
+        pg.drawText(title,{x:(W-bold.widthOfTextAtSize(title,15))/2,y:H-124,size:15,font:bold,color:green});
+        const subtitle='(INTERNSHIP OFFER AND ACCEPTANCE LETTER)';
+        pg.drawText(subtitle,{x:(W-bold.widthOfTextAtSize(subtitle,8.5))/2,y:H-140,size:8.5,font:bold,color:ink2});
+      }else{
+        const title='INTERNSHIP OFFER / ACCEPTANCE LETTER — CONTINUED';
+        pg.drawText(title,{x:(W-bold.widthOfTextAtSize(title,14))/2,y:H-55,size:14,font:bold,color:green});
+        const subtitle='MENTOR DETAILS AND COMPLETION';
+        pg.drawText(subtitle,{x:(W-bold.widthOfTextAtSize(subtitle,8.5))/2,y:H-72,size:8.5,font:bold,color:ink2});
+        pg.drawLine({start:{x:margin,y:H-88},end:{x:W-margin,y:H-88},thickness:1,color:gold});
+      }
     }
     function drawLabeledRow(pg, y, label, value, h=27, split=.49){
       const x=margin, total=W-2*margin, lw=total*split, rw=total-lw;
@@ -975,10 +999,10 @@ async function downloadSubmittedInternshipForm(data){
       return y-h;
     }
     page=out.addPage([W,H]); letterHeader(page,false);
-    let ly=H-164;
+    let ly=H-155;
     // Reference number and issue date in a clean two-cell row.
     drawCell(page,margin,ly, (W-2*margin)/2,27,pale); drawCell(page,margin+(W-2*margin)/2,ly,(W-2*margin)/2,27,white2);
-    page.drawText('Ref. No.: NSF/INT/'+safe(data.enrollmentRoll||data.mobile||'2026'),{x:margin+8,y:ly-17,size:7.8,font:bold,color:ink2});
+    page.drawText('Ref. No.: NSF/INT/JR/2026 __________',{x:margin+8,y:ly-17,size:8,font:bold,color:ink2});
     page.drawText('Date: '+dateFmt(data.applicationDate),{x:margin+(W-2*margin)/2+8,y:ly-17,size:7.8,font:bold,color:ink2});
     ly-=42;
     page.drawText('TO,',{x:margin,y:ly,size:9,font:bold,color:ink2}); ly-=13;
@@ -992,7 +1016,7 @@ async function downloadSubmittedInternshipForm(data){
     page.drawText('SUBJECT: INTERNSHIP SELECTION AND ACCEPTANCE',{x:margin,y:ly,size:8.1,font:bold,color:green}); ly-=20;
     page.drawText('Dear Student,',{x:margin,y:ly,size:8.6,font:bold,color:ink2}); ly-=15;
     ly-=drawWrappedCell(page,'We are pleased to inform you that Nisha Seva Foundation has accepted your internship application in consideration of your academic programme requirements. The details of your internship are provided below.',margin,ly,W-2*margin,8.2,regular,ink2,5)+8;
-    ly=drawLabeledRow(page,ly,'1. Internship Duration',safe(data.duration)+'  |  Hours / Weeks as applicable',35,.47);
+    ly=drawLabeledRow(page,ly,'1. Internship Duration','120 Days',35,.47);
     ly=drawLabeledRow(page,ly,'2. Internship Period','Start: '+dateFmt(data.preferredStartDate||data.startDate)+'     End: '+dateFmt(data.endDate),39,.47);
     ly=drawLabeledRow(page,ly,'3. Internship Mode',safe(data.mode||'Online / Offline / Hybrid — as approved'),32,.47);
     page.drawText('Please retain this letter for your records. The internship is subject to the Foundation’s programme guidelines.',{x:margin,y:ly-20,size:7.3,font:regular,color:muted2,maxWidth:W-2*margin});
@@ -1001,12 +1025,12 @@ async function downloadSubmittedInternshipForm(data){
 
     // PAGE 4: continuation page, for mentor, responsibilities, wishes and authorization.
     page=out.addPage([W,H]); letterHeader(page,true);
-    let cy=H-165;
+    let cy=H-112;
     cy=drawLabeledRow(page,cy,'4. MENTOR DETAILS','',27,.46);
-    cy=drawLabeledRow(page,cy,'Name',data.mentorName||data.supervisorName,27,.46);
-    cy=drawLabeledRow(page,cy,'Designation',data.mentorDesignation,27,.46);
-    cy=drawLabeledRow(page,cy,'Contact',data.mentorContact,27,.46);
-    cy=drawLabeledRow(page,cy,'Email',data.mentorEmail,27,.46);
+    cy=drawLabeledRow(page,cy,'Name','Aashu Gurjar',27,.46);
+    cy=drawLabeledRow(page,cy,'Designation','Mentor',27,.46);
+    cy=drawLabeledRow(page,cy,'Contact','8905780017',27,.46);
+    cy=drawLabeledRow(page,cy,'Email','nishasevafoundation@gmail.com',27,.46);
     cy-=18;
     page.drawText('5. ROLES AND RESPONSIBILITIES',{x:margin,y:cy,size:9,font:bold,color:green}); cy-=20;
     const roleText=safe(data.rolesResponsibilities||data.studentNote||'Assigned internship activities, project work, documentation and reporting as directed by the Foundation.');
