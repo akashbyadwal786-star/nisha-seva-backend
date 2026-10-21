@@ -1,7 +1,8 @@
 {
   "name": "nisha-seva-backend",
-  "version": "1.0.0",
-  "description": "Backend + Admin Panel for Nisha Seva Foundation website",
+  "version": "1.0.1",
+  "private": true,
+  "description": "Nisha Seva Foundation backend and admin panel",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
