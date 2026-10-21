@@ -408,12 +408,13 @@ const tabs = [
   ["donors","Donors"],
   ["volunteers","Volunteers"],
   ["internships","Student Internships"],
+  ["internshipDocuments","Internship Documents"],
   ["projectSubmissions","Student Projects"],
   ["members","Members"],
   ["contactMessages","Messages"],
   ["newsletter","Newsletter"]
 ];
-const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉"};
+const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎"};
 
 
 /* =========================================================
@@ -663,6 +664,11 @@ async function render(){
 
     }
 
+    if(current === "internshipDocuments"){
+      await renderInternshipDocuments();
+      return;
+    }
+
     if(current === "projectSubmissions"){
 
       await renderProjectSubmissions();
@@ -684,6 +690,7 @@ async function render(){
 
     let html = `
 
+      ${addRecordSearch(tabs.find(x=>x[0]===current)?.[1]||current,records.length)}
       <div class="easy-help">✨ <b>आसान तरीका:</b> नीचे दिए गए बटन से नया कंटेंट जोड़ें, फोटो चुनें और Save करें। कोड लिखने की जरूरत नहीं है। केवल वही बदलाव सेव करें जिन्हें आप वेबसाइट पर दिखाना चाहते हैं।</div>
 
       <div class="easy-action-grid">
@@ -771,6 +778,42 @@ async function render(){
 
 }
 
+
+/* Search bar for all record lists; filters visible cards only. */
+function addRecordSearch(title, count){
+  return `<div class="record-search" style="margin:12px 0 18px">
+    <label for="recordSearch"><b>🔎 Search ${esc(title||'records')}</b></label>
+    <input id="recordSearch" type="search" placeholder="नाम, ID, मोबाइल, ईमेल या कोई विवरण लिखें…" oninput="filterVisibleRecords(this.value)">
+    <div id="searchCount" class="small" style="margin-top:6px">${Number(count)||0} रिकॉर्ड</div>
+  </div>`;
+}
+function filterVisibleRecords(query){
+  const q=String(query||'').trim().toLocaleLowerCase('en-IN');
+  const cards=[...document.querySelectorAll('#content .item')];
+  let shown=0;
+  cards.forEach(el=>{const match=!q||el.innerText.toLocaleLowerCase('en-IN').includes(q);el.style.display=match?'':'none';if(match)shown++;});
+  const label=document.getElementById('searchCount');
+  if(label)label.textContent=`${shown} / ${cards.length} रिकॉर्ड दिख रहे हैं`;
+}
+function docValue(x, keys){
+  for(const k of keys){
+    const v=x?.[k];
+    if(typeof v==='string' && v.trim()) return v.trim();
+    if(v && typeof v==='object'){
+      const val=v.url||v.dataUrl||v.data||v.href||v.path;
+      if(typeof val==='string' && val.trim()) return val.trim();
+    }
+  }
+  return '';
+}
+function documentLink(value,label){
+  if(!value) return `<span class="small">उपलब्ध नहीं</span>`;
+  const safe=String(value);
+  if(/^https?:\/\//i.test(safe)||/^data:(application|image|text)\//i.test(safe)||safe.startsWith('blob:')){
+    return `<a href="${esc(safe)}" target="_blank" rel="noopener" download="${esc(label.replace(/[^a-z0-9_-]/gi,'_'))}">📄 देखें / डाउनलोड करें</a>`;
+  }
+  return `<span class="small">फ़ाइल मिली है, लेकिन उसका URL मान्य नहीं है।</span>`;
+}
 
 /* =========================================================
    NORMAL CARD
@@ -1166,7 +1209,7 @@ async function renderProjectSubmissions(){
   try{
     const data = await api('/api/projectSubmissions');
     const rows = Array.isArray(data) ? data : [];
-    let html = `<div class="row">
+    let html = `${addRecordSearch('Student Projects',rows.length)}<div class="row">
       <div><h2>📤 Student Project Submissions</h2><span class="small">${rows.length} submission(s) received</span></div>
       <button class="primary" onclick="renderProjectSubmissions()">↻ Refresh</button>
     </div>`;
@@ -1259,16 +1302,34 @@ async function deleteProjectSubmission(id){
 let internshipCache={};
 async function renderInternships(){
  content.innerHTML='<h2>Student Internship Applications</h2><p>Loading internship applications...</p>';
- try{const data=await api('/api/internships');const rows=Array.isArray(data)?data:[];internshipCache={};rows.forEach(x=>internshipCache[x.id]=x);let html=`<div class="row"><div><h2>BA Internship Applications</h2><span class="small">${rows.length} application(s)</span></div></div>`;html+=rows.length?rows.map(internshipCard).join(''):'<div class="ok">अभी कोई Student Internship application नहीं है।</div>';content.innerHTML=html;}catch(e){content.innerHTML=`<div class="err">${esc(e.message)}</div>`;}}
+ try{const data=await api('/api/internships');const rows=Array.isArray(data)?data:[];internshipCache={};rows.forEach(x=>internshipCache[x.id]=x);let html=addRecordSearch('Student Internships',rows.length)+`<div class="row"><div><h2>BA Internship Applications</h2><span class="small">${rows.length} application(s)</span></div></div>`;html+=rows.length?rows.map(internshipCard).join(''):'<div class="ok">अभी कोई Student Internship application नहीं है।</div>';content.innerHTML=html;}catch(e){content.innerHTML=`<div class="err">${esc(e.message)}</div>`;}}
 function internshipCard(x){
  const status=String(x.status||'pending').toLowerCase(),cls=['pending','active','rejected','revoked'].includes(status)?status:'pending';let actions='';
  if(status==='pending')actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button><button class="danger" onclick="rejectInternship(${x.id})">✕ Reject</button>`;
  else if(status==='active')actions=`<button class="primary" onclick="showOfferLetterById(${x.id})">📄 Offer Letter</button><button class="warning" onclick="revokeInternship(${x.id})">Revoke Approval</button>`;
+ else if(status==='rejected')actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button>`;
  else actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button>`;
+ actions += `<button class="danger" onclick="deleteAdminRecord('internships',${Number(x.id)},'internship application')">🗑 Delete</button>`;
  const interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'-');
  return `<div class="item"><div class="row"><div><h3 style="margin:0 0 6px">${esc(x.studentName||x.name||'Student')}</h3><span class="status ${cls}">${esc(status.toUpperCase())}</span></div><div class="actions">${actions}</div></div><div class="internship-admin-grid">
- <div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId||'Not issued')}</div><div class="info-box"><strong>Application ID</strong>${esc(x.id)}</div><div class="info-box"><strong>Father / Mother</strong>${esc(x.parentName||'-')}</div><div class="info-box"><strong>Mobile</strong>${esc(x.mobile||x.phone||'-')}</div><div class="info-box"><strong>Email</strong>${esc(x.email||'-')}</div><div class="info-box"><strong>College</strong>${esc(x.collegeName||x.educationCollege||'-')}</div><div class="info-box"><strong>University</strong>${esc(x.university||'-')}</div><div class="info-box"><strong>Class / Year</strong>${esc((x.className||'BA')+' / '+(x.yearSemester||'-'))}</div><div class="info-box"><strong>Enrollment / Roll</strong>${esc(x.enrollmentRoll||'-')}</div><div class="info-box"><strong>Previous %</strong>${esc(x.previousPercentage||'-')}%</div><div class="info-box"><strong>Duration</strong>${esc(x.duration||'-')}</div><div class="info-box"><strong>Availability</strong>${esc(x.availability||'-')}</div><div class="info-box"><strong>Preferred Area</strong>${esc(x.preferredPlace||'-')}</div><div class="info-box"><strong>Application Date</strong>${esc(x.applicationDate||'-')}</div></div><div style="margin-top:12px"><b>Internship Interest:</b> ${esc(interests)}</div>${x.otherInterest?`<div style="margin-top:7px"><b>Other:</b> ${esc(x.otherInterest)}</div>`:''}${x.address?`<div style="margin-top:7px"><b>Address:</b> ${esc(x.address)}</div>`:''}${x.studentNote?`<div style="margin-top:7px"><b>Student Note:</b> ${esc(x.studentNote)}</div>`:''}${x.recommendation?`<div style="margin-top:7px"><b>College Recommendation:</b> ${esc(x.recommendation)}</div>`:''}</div>`;
+ <div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId||'Not issued')}</div><div class="info-box"><strong>Application ID</strong>${esc(x.id)}</div><div class="info-box"><strong>Father / Mother</strong>${esc(x.parentName||'-')}</div><div class="info-box"><strong>Mobile</strong>${esc(x.mobile||x.phone||'-')}</div><div class="info-box"><strong>Email</strong>${esc(x.email||'-')}</div><div class="info-box"><strong>College</strong>${esc(x.collegeName||x.educationCollege||'-')}</div><div class="info-box"><strong>University</strong>${esc(x.university||'-')}</div><div class="info-box"><strong>Class / Year</strong>${esc((x.className||'BA')+' / '+(x.yearSemester||'-'))}</div><div class="info-box"><strong>Enrollment / Roll</strong>${esc(x.enrollmentRoll||'-')}</div><div class="info-box"><strong>Previous %</strong>${esc(x.previousPercentage||'-')}%</div><div class="info-box"><strong>Duration</strong>${esc(x.duration||'-')}</div><div class="info-box"><strong>Availability</strong>${esc(x.availability||'-')}</div><div class="info-box"><strong>Preferred Area</strong>${esc(x.preferredPlace||'-')}</div><div class="info-box"><strong>Application Date</strong>${esc(x.applicationDate||'-')}</div></div><div style="margin-top:12px"><b>Internship Interest:</b> ${esc(interests)}</div>${x.otherInterest?`<div style="margin-top:7px"><b>Other:</b> ${esc(x.otherInterest)}</div>`:''}${x.address?`<div style="margin-top:7px"><b>Address:</b> ${esc(x.address)}</div>`:''}${x.studentNote?`<div style="margin-top:7px"><b>Student Note:</b> ${esc(x.studentNote)}</div>`:''}${x.recommendation?`<div style="margin-top:7px"><b>College Recommendation:</b> ${esc(x.recommendation)}</div>`:''}<div class="upload-field"><b>📎 Uploaded Documents</b><div style="display:grid;gap:8px;margin-top:10px"><div><b>10th Marksheet:</b> ${documentLink(docValue(x,['tenthMarksheet','marksheet10','class10Marksheet','tenthMarksheetUrl','marksheet10Url']),'10th_Marksheet')}</div><div><b>Last Year Marksheet:</b> ${documentLink(docValue(x,['lastYearMarksheet','previousYearMarksheet','lastYearMarksheetUrl','previousMarksheet']),'Last_Year_Marksheet')}</div><div><b>Aadhaar Card:</b> ${documentLink(docValue(x,['aadharCard','aadhaarCard','aadhaar','aadharCardUrl','aadhaarCardUrl']),'Aadhaar_Card')}</div></div></div></div>`;
 }
+async function renderInternshipDocuments(){
+ content.innerHTML='<h2>📎 Internship Documents</h2><p>Loading uploaded documents...</p>';
+ try{
+  const data=await api('/api/internships');const rows=Array.isArray(data)?data:[];
+  const withDocs=rows.filter(x=>docValue(x,['tenthMarksheet','marksheet10','class10Marksheet','tenthMarksheetUrl','marksheet10Url','lastYearMarksheet','previousYearMarksheet','lastYearMarksheetUrl','previousMarksheet','aadharCard','aadhaarCard','aadhaar','aadharCardUrl','aadhaarCardUrl']));
+  let html=addRecordSearch('Internship Documents',withDocs.length)+`<div class="row"><div><h2>📎 Uploaded Internship Documents</h2><span class="small">${withDocs.length} आवेदन में दस्तावेज़ मिले</span></div><button class="primary" onclick="renderInternshipDocuments()">↻ Refresh</button></div>`;
+  html+=withDocs.length?withDocs.map(x=>`<div class="item"><div class="row"><div><h3>${esc(x.studentName||x.name||'Student')}</h3><div class="small">Application ID: ${esc(x.id)} · ${esc(x.email||'')}</div></div><button class="danger" onclick="deleteAdminRecord('internships',${Number(x.id)},'internship application')">🗑 Delete Application</button></div><div class="upload-field"><div style="display:grid;gap:10px"><div><b>10th Marksheet:</b> ${documentLink(docValue(x,['tenthMarksheet','marksheet10','class10Marksheet','tenthMarksheetUrl','marksheet10Url']),'10th_Marksheet')}</div><div><b>Last Year Marksheet:</b> ${documentLink(docValue(x,['lastYearMarksheet','previousYearMarksheet','lastYearMarksheetUrl','previousMarksheet']),'Last_Year_Marksheet')}</div><div><b>Aadhaar Card:</b> ${documentLink(docValue(x,['aadharCard','aadhaarCard','aadhaar','aadharCardUrl','aadhaarCardUrl']),'Aadhaar_Card')}</div></div></div></div>`).join(''):'<div class="ok">अभी किसी आवेदन में समर्थित upload fields के अंतर्गत दस्तावेज़ नहीं मिले। अगर फॉर्म में दस्तावेज़ जमा किए गए हैं लेकिन यहाँ नहीं दिखते, तो backend/form field names को भी मिलाना होगा।';
+  content.innerHTML=html;filterVisibleRecords('');
+ }catch(e){content.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
+}
+async function deleteAdminRecord(section,id,label){
+ if(!confirm(`क्या आप यह ${label||'record'} स्थायी रूप से delete करना चाहते हैं? Delete करने के बाद यह admin list में नहीं दिखेगा।`))return;
+ try{await api('/api/'+section+'/'+id,{method:'DELETE'});alert('रिकॉर्ड delete हो गया।');if(section==='internships'&&current==='internshipDocuments')await renderInternshipDocuments();else if(section==='internships')await renderInternships();else if(section==='volunteers')await renderVolunteers();else if(section==='projectSubmissions')await renderProjectSubmissions();else await render();}
+ catch(e){alert('Delete नहीं हो सका: '+e.message);}
+}
+
 async function approveInternship(id){if(!confirm('क्या आप इस BA Internship application को Approve करके Official Internship ID और Offer Letter जारी करना चाहते हैं?'))return;try{const result=await api('/api/internships/'+id+'/approve',{method:'POST'});let list=await api('/api/internships');list=Array.isArray(list)?list:[];let item=list.find(x=>Number(x.id)===Number(id));if(!item&&result&&result.id)item=result;if(!item)throw new Error('Approved internship record backend से नहीं मिला।');if(!item.internshipId)item.internshipId=result?.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(id).padStart(4,'0'));if(!item.status||item.status==='pending')item.status='active';internshipCache[id]=item;alert('Internship application approved. अब Premium Offer Letter तैयार है।');showOfferLetter(item);renderInternships();}catch(e){alert('Approval नहीं हो सकी:\n\n'+e.message);}}
 async function rejectInternship(id){if(!confirm('क्या आप इस Internship application को Reject करना चाहते हैं?'))return;try{await api('/api/internships/'+id+'/reject',{method:'POST'});alert('Internship application rejected.');renderInternships();}catch(e){alert(e.message);}}
 async function revokeInternship(id){if(!confirm('क्या आप इस Internship approval को Revoke करना चाहते हैं?'))return;try{await api('/api/internships/'+id+'/revoke',{method:'POST'});alert('Internship approval revoked.');renderInternships();}catch(e){alert(e.message);}}
@@ -1446,6 +1507,8 @@ async function renderVolunteers(){
 
     let html = `
 
+      ${addRecordSearch('Volunteers',volunteers.length)}
+
       <div class="row">
 
         <div>
@@ -1598,6 +1661,8 @@ function volunteerCard(v){
 
   }
 
+
+  actions += `<button class="danger" onclick="deleteAdminRecord('volunteers',${Number(v.id)},'volunteer application')">🗑 Delete</button>`;
 
   return `
 
