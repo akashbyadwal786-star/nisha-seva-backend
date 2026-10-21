@@ -921,9 +921,9 @@ async function downloadSubmittedInternshipForm(data){
     y=section(page,'EDUCATION DETAILS',y-2);
     y=drawFields(page,[field('College currently attending',data.educationCollege||data.collegeName),field('University',data.university),field('Course / Class',data.className),field('Year / Semester',data.yearSemester),field('Enrollment / Roll Number',data.enrollmentRoll),field('Previous Percentage / Marks',data.previousPercentage?data.previousPercentage+'%':'')],y-10,2);
     y=section(page,'INTERNSHIP PREFERENCES & DECLARATION',y-2);
-    txt(page,'Selected focus areas: '+safe(interests),margin,y-8,8.5,regular,ink,W-2*margin);
-    txt(page,'Availability / preferred time: '+safe(data.availability),margin,y-29,8.5,regular,ink,W-2*margin);
-    txt(page,'Student note: '+safe(data.studentNote),margin,y-50,8.5,regular,ink,W-2*margin);
+    txt(page,'SELECTED FOCUS AREAS: '+safe(interests).toUpperCase(),margin,y-8,8.5,regular,ink,W-2*margin);
+    txt(page,'AVAILABILITY / PREFERRED TIME: '+safe(data.availability).toUpperCase(),margin,y-29,8.5,regular,ink,W-2*margin);
+    txt(page,'STUDENT NOTE: '+safe(data.studentNote).toUpperCase(),margin,y-50,8.5,regular,ink,W-2*margin);
     txt(page,'I confirm that the information provided above is true and complete to the best of my knowledge.',margin,y-76,8,bold,green,W-2*margin);
     // Blue divider directly below the declaration; signature blocks sit in one aligned row below it.
     const dividerY=y-94;
@@ -931,7 +931,7 @@ async function downloadSubmittedInternshipForm(data){
     // Student-uploaded image/signature previews, if supplied. NGO seal/signature space intentionally left blank.
     async function embedDataImage(dataUrl){if(!dataUrl||!String(dataUrl).startsWith('data:image/'))return null;const bytes=Uint8Array.from(atob(String(dataUrl).split(',')[1]),c=>c.charCodeAt(0));return String(dataUrl).startsWith('data:image/png')?await out.embedPng(bytes):await out.embedJpg(bytes);}
     let photo=await embedDataImage(data.studentPhoto), ssig=await embedDataImage(data.studentSignature);
-    if(photo){page.drawImage(photo,{x:W-margin-54,y:H-105,width:42,height:52});page.drawText('STUDENT PHOTO',{x:W-margin-60,y:H-112,size:5.5,font:bold,color:muted});}
+    if(photo){page.drawImage(photo,{x:W-margin-68,y:H-125,width:58,height:72});page.drawText('STUDENT PHOTO',{x:W-margin-68,y:H-132,size:6.2,font:bold,color:muted});}
     const sigTop=dividerY-24;
     const sigGap=10;
     const sigColW=(W-2*margin)/3;
@@ -1010,7 +1010,7 @@ async function downloadSubmittedInternshipForm(data){
       const x=margin, total=W-2*margin, lw=total*split, rw=total-lw;
       drawCell(pg,x,y,lw,h,pale); drawCell(pg,x+lw,y,rw,h,white2);
       drawWrappedCell(pg,label,x+7,y-10,lw-14,7.6,bold,ink2,3);
-      drawWrappedCell(pg,value,x+lw+7,y-10,rw-14,8,regular,ink2,3);
+      drawWrappedCell(pg,String(value==null?'':value).toUpperCase(),x+lw+7,y-10,rw-14,8,regular,ink2,3);
       return y-h;
     }
     page=out.addPage([W,H]); letterHeader(page,false);
@@ -1031,8 +1031,8 @@ async function downloadSubmittedInternshipForm(data){
     page.drawText('SUBJECT: INTERNSHIP SELECTION AND ACCEPTANCE',{x:margin,y:ly,size:8.1,font:bold,color:green}); ly-=20;
     page.drawText('Dear Student,',{x:margin,y:ly,size:8.6,font:bold,color:ink2}); ly-=15;
     ly-=drawWrappedCell(page,'We are pleased to inform you that Nisha Seva Foundation has accepted your internship application in consideration of your academic programme requirements. The details of your internship are provided below.',margin,ly,W-2*margin,8.2,regular,ink2,5)+8;
-    ly=drawLabeledRow(page,ly,'1. Internship Duration','120 Days',35,.47);
-    ly=drawLabeledRow(page,ly,'2. Internship Period','Start: '+dateFmt(data.preferredStartDate||data.startDate)+'     End: '+dateFmt(data.endDate),39,.47);
+    ly=drawLabeledRow(page,ly,'1. INTERNSHIP DURATION','120 HOURS / 3 WEEKS',35,.47);
+    ly=drawLabeledRow(page,ly,'2. INTERNSHIP PERIOD','START: ____________________     END: ____________________',39,.47);
     ly=drawLabeledRow(page,ly,'3. Internship Mode',safe(data.mode||'Online / Offline / Hybrid — as approved'),32,.47);
     page.drawText('Please retain this letter for your records. The internship is subject to the Foundation’s programme guidelines.',{x:margin,y:ly-20,size:7.3,font:regular,color:muted2,maxWidth:W-2*margin});
     page.drawText('NISHA SEVA FOUNDATION',{x:margin,y:24,size:6.8,font:bold,color:green});
@@ -1042,13 +1042,15 @@ async function downloadSubmittedInternshipForm(data){
     page=out.addPage([W,H]); letterHeader(page,true);
     let cy=H-112;
     cy=drawLabeledRow(page,cy,'4. MENTOR DETAILS','',27,.46);
-    cy=drawLabeledRow(page,cy,'Name','Aashu Gurjar',27,.46);
-    cy=drawLabeledRow(page,cy,'Designation','Mentor',27,.46);
-    cy=drawLabeledRow(page,cy,'Contact','8905780017',27,.46);
-    cy=drawLabeledRow(page,cy,'Email','nishasevafoundation@gmail.com',27,.46);
+    cy=drawLabeledRow(page,cy,'NAME','ASHUTOSH GURJAR',27,.46);
+    cy=drawLabeledRow(page,cy,'DESIGNATION','MENTOR',27,.46);
+    cy=drawLabeledRow(page,cy,'CONTACT','8905780017',27,.46);
+    cy=drawLabeledRow(page,cy,'EMAIL','NISHASEVAFOUNDATION@GMAIL.COM',27,.46);
     cy-=18;
     page.drawText('5. ROLES AND RESPONSIBILITIES',{x:margin,y:cy,size:9,font:bold,color:green}); cy-=20;
-    const roleText=safe(data.rolesResponsibilities||data.studentNote||'Assigned internship activities, project work, documentation and reporting as directed by the Foundation.');
+    const roleMenu = 'HEALTH, EDUCATION, ENVIRONMENT, WOMEN EMPOWERMENT, YOUTH EMPOWERMENT, SOCIAL AWARENESS, DIGITAL LITERACY, LIBRARY & READING, CLEANLINESS, TREE PLANTATION, WATER CONSERVATION, ANIMAL WELFARE, COMMUNITY DEVELOPMENT, CULTURAL ACTIVITIES, SURVEY & FIELDWORK, DOCUMENTATION AND REPORTING';
+    const customRoles = safe(data.rolesResponsibilities || data.studentNote || '');
+    const roleText = (customRoles ? customRoles.toUpperCase() + ' | ' : '') + roleMenu;
     const roleH=drawWrappedCell(page,roleText,margin+5,cy,W-2*margin-10,8.2,regular,ink2,8); cy-=roleH+14;
     // Three clean writing lines retain the structure of the attached reference letter.
     for(let i=0;i<3;i++){page.drawLine({start:{x:margin+6,y:cy-i*22},end:{x:W-margin-6,y:cy-i*22},thickness:.55,color:line2});}
