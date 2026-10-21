@@ -45,10 +45,6 @@ const ADMIN_PASSWORD =
   process.env.ADMIN_PASSWORD ||
   'change-this-password';
 
-// Set both values in Render Environment for a separate coordinator account.
-const COORDINATOR_USERNAME = process.env.COORDINATOR_USERNAME || '';
-const COORDINATOR_PASSWORD = process.env.COORDINATOR_PASSWORD || '';
-
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
   'https://nisha-seva-backend.onrender.com';
@@ -134,23 +130,21 @@ function requireAdmin(
       ? header.slice(7)
       : null;
 
-  const session = token && sessions.get(token);
+  const expiry =
+    token &&
+    sessions.get(token);
 
-  if (!session || session.expiresAt < Date.now()) {
-    if (token) sessions.delete(token);
-    return res.status(401).json({ error: 'Unauthorized' });
+  if (
+    !expiry ||
+    expiry < Date.now()
+  ) {
+
+    return res.status(401).json({
+      error: 'Unauthorized'
+    });
+
   }
 
-  // Coordinator can access only internship application endpoints.
-  if (session.role === 'coordinator' && !(/^\/api\/internships(?:\/|$)/.test(req.path) || req.path === '/api/admin/logout')) {
-    return res.status(403).json({ error: 'Forbidden: coordinator access is limited to internship management' });
-  }
-
-  if (!['admin','coordinator'].includes(session.role)) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  req.userRole = session.role;
   next();
 }
 
@@ -177,9 +171,15 @@ app.post(
         crypto.randomBytes(24)
           .toString('hex');
 
-      sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'admin' });
+      sessions.set(
+        token,
+        Date.now() +
+        SESSION_TTL_MS
+      );
 
-      return res.json({ token, role: 'admin' });
+      return res.json({
+        token
+      });
 
     }
 
@@ -190,23 +190,6 @@ app.post(
 
   }
 );
-
-
-/* =========================================================
-   COORDINATOR LOGIN — internship-only access
-   ========================================================= */
-app.post('/api/coordinator/login', (req, res) => {
-  const { username, password } = req.body || {};
-  if (!COORDINATOR_USERNAME || !COORDINATOR_PASSWORD) {
-    return res.status(503).json({ error: 'Coordinator account is not configured. Set COORDINATOR_USERNAME and COORDINATOR_PASSWORD in Render Environment.' });
-  }
-  if (username !== COORDINATOR_USERNAME || password !== COORDINATOR_PASSWORD) {
-    return res.status(401).json({ error: 'Invalid coordinator username or password' });
-  }
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'coordinator' });
-  return res.json({ token, role: 'coordinator' });
-});
 
 
 /* =========================================================
@@ -2942,10 +2925,157 @@ app.use(
 
 
 /* =========================================================
+   STUDENT SELF-SERVICE PORTAL
+   Student accounts use scrypt password hashes; public QR
+   profiles intentionally exclude Aadhaar and document files.
+   ========================================================= */
+const studentSessions = new Map();
+const STUDENT_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+const studentAccountsTableReady = pool.query(`
+  CREATE TABLE IF NOT EXISTS internship_student_accounts (
+    id BIGSERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    password_salt TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    public_id TEXT NOT NULL UNIQUE,
+    internship_id BIGINT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`).catch(error => { console.error('STUDENT ACCOUNTS TABLE INIT ERROR:', error); throw error; });
+
+function makeStudentToken(){ return crypto.randomBytes(32).toString('hex'); }
+function makePublicStudentId(){ return crypto.randomBytes(16).toString('hex'); }
+function studentAuth(req,res,next){
+  const header=req.headers.authorization||'';
+  const token=header.startsWith('Bearer ')?header.slice(7):'';
+  const session=token&&studentSessions.get(token);
+  if(!session||session.expiresAt<Date.now()){
+    if(token) studentSessions.delete(token);
+    return res.status(401).json({error:'Student login session expired. Please log in again.'});
+  }
+  req.studentAccountId=session.accountId;
+  next();
+}
+function hashStudentPassword(password,salt){
+  return new Promise((resolve,reject)=>crypto.scrypt(password,salt,64,(err,derived)=>err?reject(err):resolve(derived.toString('hex'))));
+}
+function studentPublicUrl(publicId){
+  const base=(process.env.STUDENT_PORTAL_URL||'https://nishasevafoundation.org/student-portal.html').replace(/\/$/,'');
+  return `${base}?profile=${encodeURIComponent(publicId)}`;
+}
+async function getStudentAccount(accountId){
+  const result=await pool.query('SELECT id, username, email, public_id, internship_id, created_at FROM internship_student_accounts WHERE id=$1 LIMIT 1',[accountId]);
+  return result.rows[0]||null;
+}
+async function getStudentApplication(account){
+  if(!account || !account.internship_id) return null;
+  await internshipTableReady;
+  const result=await pool.query('SELECT id, data, created_at FROM internships WHERE id=$1 LIMIT 1',[account.internship_id]);
+  if(!result.rows.length) return null;
+  return {id:result.rows[0].id,submittedAt:result.rows[0].created_at,...(result.rows[0].data||{})};
+}
+
+app.post('/api/student/signup', async (req,res)=>{
+  try{
+    await Promise.all([studentAccountsTableReady,internshipTableReady]);
+    const body=req.body||{};
+    const username=String(body.username||'').trim();
+    const email=String(body.email||'').trim().toLowerCase();
+    const password=String(body.password||'');
+    const application=body.application&&typeof body.application==='object'?body.application:{};
+    if(!/^[a-zA-Z0-9_.-]{4,32}$/.test(username)) return res.status(400).json({error:'Username 4–32 characters का रखें; letters, numbers, dot, underscore या hyphen इस्तेमाल करें।'});
+    if(!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({error:'Valid email address भरें।'});
+    if(password.length<10) return res.status(400).json({error:'Password कम से कम 10 characters का होना चाहिए।'});
+    if(!String(application.studentName||application.name||'').trim()) return res.status(400).json({error:'Student registration form में पूरा नाम भरें।'});
+    if(!String(application.mobile||application.phone||'').trim()) return res.status(400).json({error:'Mobile number भरें।'});
+    const salt=crypto.randomBytes(16).toString('hex');
+    const passwordHash=await hashStudentPassword(password,salt);
+    const publicId=makePublicStudentId();
+    const appData={...application,studentName:String(application.studentName||application.name).trim(),email,mobile:String(application.mobile||application.phone).trim(),status:'pending',studentAccount:true,publicProfileId:publicId,submittedAt:new Date().toISOString()};
+    const created=await pool.query('INSERT INTO internships (data) VALUES ($1::jsonb) RETURNING id, data, created_at',[JSON.stringify(appData)]);
+    const internshipId=created.rows[0].id;
+    const accountResult=await pool.query('INSERT INTO internship_student_accounts (username,email,password_salt,password_hash,public_id,internship_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, username, email, public_id, internship_id, created_at',[username,email,salt,passwordHash,publicId,internshipId]);
+    const account=accountResult.rows[0];
+    const token=makeStudentToken();
+    studentSessions.set(token,{accountId:account.id,expiresAt:Date.now()+STUDENT_SESSION_TTL_MS});
+    return res.status(201).json({ok:true,token,student:{id:account.id,username:account.username,email:account.email,publicId:account.public_id,uniqueUrl:studentPublicUrl(account.public_id),application:{id:internshipId,...(created.rows[0].data||{}),submittedAt:created.rows[0].created_at}}});
+  }catch(error){
+    if(error.code==='23505') return res.status(409).json({error:'यह Username या Email पहले से registered है। दूसरा इस्तेमाल करें या Login करें।'});
+    console.error('STUDENT SIGNUP ERROR:',error);
+    return res.status(500).json({error:'Student account नहीं बन सका। कृपया बाद में प्रयास करें।'});
+  }
+});
+
+app.post('/api/student/login', async (req,res)=>{
+  try{
+    await studentAccountsTableReady;
+    const usernameOrEmail=String((req.body||{}).username||'').trim();
+    const password=String((req.body||{}).password||'');
+    const result=await pool.query('SELECT * FROM internship_student_accounts WHERE lower(username)=lower($1) OR lower(email)=lower($1) LIMIT 1',[usernameOrEmail]);
+    if(!result.rows.length) return res.status(401).json({error:'Username/Email या password गलत है।'});
+    const row=result.rows[0];
+    const hash=await hashStudentPassword(password,row.password_salt);
+    const a=Buffer.from(hash,'hex'),b=Buffer.from(row.password_hash,'hex');
+    if(a.length!==b.length||!crypto.timingSafeEqual(a,b)) return res.status(401).json({error:'Username/Email या password गलत है।'});
+    const token=makeStudentToken();
+    studentSessions.set(token,{accountId:row.id,expiresAt:Date.now()+STUDENT_SESSION_TTL_MS});
+    const account={id:row.id,username:row.username,email:row.email,public_id:row.public_id,internship_id:row.internship_id,created_at:row.created_at};
+    const application=await getStudentApplication(account);
+    return res.json({ok:true,token,student:{id:row.id,username:row.username,email:row.email,publicId:row.public_id,uniqueUrl:studentPublicUrl(row.public_id),application}});
+  }catch(error){console.error('STUDENT LOGIN ERROR:',error);return res.status(500).json({error:'Student login नहीं हो सका।'});}
+});
+
+app.get('/api/student/me',studentAuth,async(req,res)=>{
+  try{await studentAccountsTableReady;const account=await getStudentAccount(req.studentAccountId);if(!account)return res.status(404).json({error:'Student account नहीं मिला।'});const application=await getStudentApplication(account);res.json({student:{id:account.id,username:account.username,email:account.email,publicId:account.public_id,uniqueUrl:studentPublicUrl(account.public_id)},application});}
+  catch(error){console.error('STUDENT ME ERROR:',error);res.status(500).json({error:'Student dashboard data load नहीं हो सका।'});}
+});
+
+app.put('/api/student/application',studentAuth,async(req,res)=>{
+  try{
+    await Promise.all([studentAccountsTableReady,internshipTableReady]);
+    const account=await getStudentAccount(req.studentAccountId);
+    if(!account)return res.status(404).json({error:'Student account नहीं मिला।'});
+    const old=await getStudentApplication(account);
+    const incoming=req.body&&req.body.application&&typeof req.body.application==='object'?req.body.application:{};
+    const protectedKeys=['id','status','internshipId','approvedAt','issuedAt','rejectedAt','revokedAt','publicProfileId','studentAccount'];
+    const merged={...(old||{}),...incoming};
+    protectedKeys.forEach(k=>{if(old&&old[k]!==undefined)merged[k]=old[k];});
+    merged.studentName=String(merged.studentName||merged.name||'').trim();
+    merged.email=account.email;
+    merged.studentAccount=true;
+    await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2',[JSON.stringify(merged),account.internship_id]);
+    await pool.query('UPDATE internship_student_accounts SET updated_at=NOW() WHERE id=$1',[account.id]);
+    const updated=await getStudentApplication(account);
+    res.json({ok:true,application:updated});
+  }catch(error){console.error('STUDENT APPLICATION UPDATE ERROR:',error);res.status(500).json({error:'Application update नहीं हो सकी।'});}
+});
+
+app.post('/api/student/logout',studentAuth,(req,res)=>{
+  const token=(req.headers.authorization||'').slice(7);studentSessions.delete(token);res.json({ok:true});
+});
+
+// QR destination: a limited public verification/profile page. Never expose Aadhaar or uploaded documents here.
+app.get('/api/student/public/:publicId',async(req,res)=>{
+  try{
+    await studentAccountsTableReady;
+    const result=await pool.query('SELECT a.username,a.public_id,a.internship_id,i.data,i.created_at FROM internship_student_accounts a LEFT JOIN internships i ON i.id=a.internship_id WHERE a.public_id=$1 LIMIT 1',[String(req.params.publicId||'')]);
+    if(!result.rows.length)return res.status(404).json({error:'Student profile not found'});
+    const row=result.rows[0],d=row.data||{};
+    const safe={studentName:d.studentName||d.name||row.username,internshipId:d.internshipId||null,status:d.status||'pending',programme:d.className||d.programme||'Student Internship',college:d.collegeName||d.educationCollege||null,university:d.university||null,applicationDate:d.applicationDate||row.created_at,profileUrl:studentPublicUrl(row.public_id)};
+    res.set('Cache-Control','no-store');res.json({profile:safe});
+  }catch(error){console.error('STUDENT PUBLIC PROFILE ERROR:',error);res.status(500).json({error:'Student profile load नहीं हो सकी।'});}
+});
+
+
+
+
+/* =========================================================
    START SERVER
    ========================================================= */
 
-Promise.all([internshipTableReady, projectSubmissionTableReady])
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady])
   .then(() => {
 
     app.listen(
