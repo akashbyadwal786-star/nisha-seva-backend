@@ -586,7 +586,7 @@ header#site-header .donate-btn{font-size:.68rem!important;padding:8px 10px!impor
  Replace this URL with your live Node/Express backend URL.
  Example: https://nisha-seva-backend.onrender.com
  */
-const API_BASE = window.NISHA_API_URL || window.location.origin; // Hostinger Node.js backend on the same domain
+const API_BASE = window.NISHA_API_URL || 'https://nisha-seva-backend.onrender.com'; // Render backend; public website is hosted on Hostinger
  const apiUrl = (path) => API_BASE.replace(/\/$/, '') + path;
  const internshipVerificationUrl = (code) => API_BASE.replace(/\/$/, '') + '/verify/internship/' + encodeURIComponent(code || '');
  async function apiFetch(path, options = {}) {
@@ -1087,7 +1087,14 @@ if (internshipForm) {
  const response = await fetch(apiUrl('/api/internships'), {
  method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
  });
- const result = await response.json();
+ let result;
+ const responseText = await response.text();
+ try {
+   result = JSON.parse(responseText);
+ } catch (parseError) {
+   const preview = responseText.slice(0, 100).replace(/\\s+/g, ' ');
+   throw new Error('Backend se JSON ke bajay HTML/text mila. API URL: ' + apiUrl('/api/internships') + '. Response: ' + preview);
+ }
  if (!response.ok) throw new Error(result.error || 'Submission failed');
  internshipForm.reset();
  if (dateInput) dateInput.value = today;
