@@ -392,7 +392,8 @@ header .brand-mark{display:flex;align-items:center;gap:12px}header .brand-symbol
 const API = (window.NISHA_API_URL || 'https://nisha-seva-backend.onrender.com').replace(/\/$/, '');
 
 let token = localStorage.getItem("nisha_token") || "";
-let current = "programs";
+let currentRole = localStorage.getItem("nisha_role") || "admin";
+let current = currentRole === "coordinator" ? "internships" : "programs";
 let volunteerCache = {};
 
 
@@ -510,7 +511,7 @@ function login(){
         <br><br><label for="pass"><b>Password</b></label><input id="pass" type="password" autocomplete="current-password" placeholder="Enter password">
         <br><br><button class="primary" style="width:100%;padding:13px" onclick="doLogin()">🔐 Login Securely</button>
         <div id="msg"></div>
-        <div class="role-note">Manager और Coordinator के लिए अलग-अलग सुरक्षित login तभी काम करेगा जब backend में उनके अलग authentication endpoints और permissions configure हों। अभी मौजूदा Admin login सुरक्षित रखने के लिए केवल Admin login endpoint इस्तेमाल होगा।</div>
+        <div class="role-note">Coordinator login के लिए Render backend में COORDINATOR_USERNAME और COORDINATOR_PASSWORD environment variables सेट होने चाहिए। Coordinator को केवल Internship Applications और Internship Documents दिखेंगे।</div>
       </div>
     </div>`;
   selectLoginRole("admin");
@@ -521,42 +522,22 @@ function login(){
    ========================================================= */
 
 async function doLogin(){
-
-  if(selectedLoginRole !== "admin"){
-    const msgBox=document.getElementById("msg");
-    if(msgBox) msgBox.innerHTML=`<div class="err"><b>${selectedLoginRole === "manager" ? "Manager" : "Coordinator"} login अभी backend में configured नहीं है।</b><br>इस role के लिए अलग API authentication और permission rules जोड़ने होंगे। Admin credentials को इन roles में इस्तेमाल नहीं किया गया है।</div>`;
-    return;
-  }
+  const msgBox=document.getElementById("msg");
   try{
-
-    const data = await api(
-      "/api/admin/login",
-      {
-        method:"POST",
-        body:JSON.stringify({
-          username:user.value,
-          password:pass.value
-        })
-      }
-    );
-
+    if(selectedLoginRole === "manager"){
+      throw new Error("Manager login अभी configure नहीं है। कृपया Admin या Coordinator चुनें।");
+    }
+    const endpoint = selectedLoginRole === "coordinator" ? "/api/coordinator/login" : "/api/admin/login";
+    const data = await api(endpoint, {method:"POST",body:JSON.stringify({username:document.getElementById("user").value,password:document.getElementById("pass").value})});
     token = data.token;
-
-    localStorage.setItem(
-      "nisha_token",
-      token
-    );
-
+    currentRole = data.role || selectedLoginRole;
+    current = currentRole === "coordinator" ? "internships" : "programs";
+    localStorage.setItem("nisha_token",token);
+    localStorage.setItem("nisha_role",currentRole);
     render();
-
+  }catch(error){
+    if(msgBox) msgBox.innerHTML = `<div class="err">${esc(error.message)}</div>`;
   }
-  catch(error){
-
-    msg.innerHTML =
-      `<div class="err">${esc(error.message)}</div>`;
-
-  }
-
 }
 
 
@@ -577,8 +558,11 @@ async function logout(){
   catch{}
 
   localStorage.removeItem("nisha_token");
+  localStorage.removeItem("nisha_role");
 
   token = "";
+  currentRole = "admin";
+  current = "programs";
 
   login();
 
@@ -596,6 +580,9 @@ async function render(){
     return;
   }
 
+  if(currentRole === "coordinator" && !["internships","internshipDocuments"].includes(current)) current = "internships";
+  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => ["internships","internshipDocuments"].includes(t[0])) : tabs;
+
   app.innerHTML = `
 
     <header>
@@ -603,7 +590,7 @@ async function render(){
       <div>
         <b>🌿 Nisha Seva Foundation</b>
         <br>
-        <small>Admin Panel</small>
+        <small>${currentRole === "coordinator" ? "Internship Coordinator Panel" : "Admin Panel"}</small>
       </div>
 
       <button
@@ -619,7 +606,7 @@ async function render(){
 
       <div class="tabs">
 
-        ${tabs.map(tab => `
+        ${visibleTabs.map(tab => `
 
           <button
             data-section="${tab[0]}"
