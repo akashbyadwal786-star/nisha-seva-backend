@@ -45,6 +45,10 @@ const ADMIN_PASSWORD =
   process.env.ADMIN_PASSWORD ||
   'change-this-password';
 
+// Set both values in Render Environment for a separate coordinator account.
+const COORDINATOR_USERNAME = process.env.COORDINATOR_USERNAME || '';
+const COORDINATOR_PASSWORD = process.env.COORDINATOR_PASSWORD || '';
+
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
   'https://nisha-seva-backend.onrender.com';
@@ -130,21 +134,23 @@ function requireAdmin(
       ? header.slice(7)
       : null;
 
-  const expiry =
-    token &&
-    sessions.get(token);
+  const session = token && sessions.get(token);
 
-  if (
-    !expiry ||
-    expiry < Date.now()
-  ) {
-
-    return res.status(401).json({
-      error: 'Unauthorized'
-    });
-
+  if (!session || session.expiresAt < Date.now()) {
+    if (token) sessions.delete(token);
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Coordinator can access only internship application endpoints.
+  if (session.role === 'coordinator' && !(/^\/api\/internships(?:\/|$)/.test(req.path) || req.path === '/api/admin/logout')) {
+    return res.status(403).json({ error: 'Forbidden: coordinator access is limited to internship management' });
+  }
+
+  if (!['admin','coordinator'].includes(session.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  req.userRole = session.role;
   next();
 }
 
@@ -171,15 +177,9 @@ app.post(
         crypto.randomBytes(24)
           .toString('hex');
 
-      sessions.set(
-        token,
-        Date.now() +
-        SESSION_TTL_MS
-      );
+      sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'admin' });
 
-      return res.json({
-        token
-      });
+      return res.json({ token, role: 'admin' });
 
     }
 
@@ -190,6 +190,23 @@ app.post(
 
   }
 );
+
+
+/* =========================================================
+   COORDINATOR LOGIN — internship-only access
+   ========================================================= */
+app.post('/api/coordinator/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!COORDINATOR_USERNAME || !COORDINATOR_PASSWORD) {
+    return res.status(503).json({ error: 'Coordinator account is not configured. Set COORDINATOR_USERNAME and COORDINATOR_PASSWORD in Render Environment.' });
+  }
+  if (username !== COORDINATOR_USERNAME || password !== COORDINATOR_PASSWORD) {
+    return res.status(401).json({ error: 'Invalid coordinator username or password' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'coordinator' });
+  return res.json({ token, role: 'coordinator' });
+});
 
 
 /* =========================================================
