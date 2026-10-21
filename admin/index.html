@@ -377,6 +377,7 @@ header .brand-mark{display:flex;align-items:center;gap:12px}header .brand-symbol
 @media(max-width:900px){.tabs button{min-width:0!important}}
 </style>
 
+<style id="student-portal-qr-admin-style">.student-qr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}.student-qr-item{min-width:0}.student-qr-content{display:grid;grid-template-columns:170px minmax(0,1fr);gap:14px;align-items:center;margin-top:14px}.student-qr-code{background:#fff;border:1px solid #e3eaf1;border-radius:12px;min-height:160px;display:flex;align-items:center;justify-content:center;padding:8px}.student-qr-code img,.student-qr-code canvas{max-width:100%;height:auto}.student-qr-details{line-height:1.8;overflow-wrap:anywhere}.student-qr-details a{color:#0f6b4f;font-weight:700}.student-qr-details .actions{display:flex;gap:8px;flex-wrap:wrap}.student-qr-details button{font-size:12px}@media(max-width:600px){.student-qr-content{grid-template-columns:1fr}.student-qr-code{width:170px;margin:auto}}</style>
 </head>
 
 <body>
@@ -410,12 +411,13 @@ const tabs = [
   ["volunteers","Volunteers"],
   ["internships","Student Internships"],
   ["internshipDocuments","Internship Documents"],
+  ["studentPortal","Student Portal QR"],
   ["projectSubmissions","Student Projects"],
   ["members","Members"],
   ["contactMessages","Messages"],
   ["newsletter","Newsletter"]
 ];
-const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎"};
+const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳"};
 
 
 /* =========================================================
@@ -580,8 +582,8 @@ async function render(){
     return;
   }
 
-  if(currentRole === "coordinator" && !["internships","internshipDocuments"].includes(current)) current = "internships";
-  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => ["internships","internshipDocuments"].includes(t[0])) : tabs;
+  if(currentRole === "coordinator" && !["internships","internshipDocuments","studentPortal"].includes(current)) current = "internships";
+  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => ["internships","internshipDocuments","studentPortal"].includes(t[0])) : tabs;
 
   app.innerHTML = `
 
@@ -653,6 +655,11 @@ async function render(){
 
     if(current === "internshipDocuments"){
       await renderInternshipDocuments();
+      return;
+    }
+
+    if(current === "studentPortal"){
+      await renderStudentPortal();
       return;
     }
 
@@ -1282,6 +1289,31 @@ async function deleteProjectSubmission(id){
   }
 }
 
+
+/* =========================================================
+   STUDENT PORTAL QR MANAGEMENT
+   ========================================================= */
+async function renderStudentPortal(){
+ content.innerHTML='<h2>🔳 Student Portal QR Management</h2><p>Loading registered student accounts...</p>';
+ try{
+  const result=await api('/api/student/accounts');
+  const rows=Array.isArray(result)?result:(Array.isArray(result.students)?result.students:[]);
+  let html=addRecordSearch('Student Portal QR',rows.length)+`<div class="row"><div><h2>🎓 Student Accounts & QR Profiles</h2><span class="small">${rows.length} registered student account(s)</span></div><button class="primary" onclick="renderStudentPortal()">↻ Refresh</button></div><p class="small">QR केवल basic internship verification profile खोलता है। Aadhaar, marksheets, phone और address सार्वजनिक QR में शामिल नहीं हैं।</p>`;
+  if(!rows.length){html+='<div class="ok">अभी कोई Student Portal account नहीं है। छात्र वेबसाइट के Student Portal से अपना account बना सकते हैं।</div>';content.innerHTML=html;return;}
+  html+='<div class="student-qr-grid">'+rows.map((x,i)=>{
+   const url=String(x.uniqueUrl||x.profileUrl||'');
+   const qrId='studentQr_'+Number(x.id||i);
+   const name=esc(x.studentName||x.name||x.username||'Student');
+   const status=esc(String(x.status||'pending').toUpperCase());
+   return `<div class="item student-qr-item"><div class="row"><div><h3>${name}</h3><div class="small">Username: ${esc(x.username||'-')} · Application ID: ${esc(x.internshipId||x.applicationId||'-')}</div><div class="small">${esc(x.email||'')}</div></div><span class="status ${String(x.status||'pending').toLowerCase()==='active'?'active':'pending'}">${status}</span></div><div class="student-qr-content"><div class="student-qr-code" id="${qrId}"></div><div class="student-qr-details"><b>Internship ID:</b> ${esc(x.internshipId||'Not issued')}<br><b>College:</b> ${esc(x.college||'-')}<br><b>Programme:</b> ${esc(x.programme||'Student Internship')}<br><b>Profile URL:</b><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open public profile</a><input readonly value="${esc(url)}" aria-label="Student profile URL" style="width:100%;margin-top:8px;padding:9px;border:1px solid #dce3ea;border-radius:8px"><div class="actions" style="margin-top:10px"><button class="primary" onclick="downloadStudentQR('${qrId}','${esc(x.username||'student')}')">Download QR</button><button class="muted" onclick="copyStudentProfile('${esc(url)}')">Copy URL</button></div></div></div></div>`;
+  }).join('')+'</div>';
+  content.innerHTML=html;
+  rows.forEach((x,i)=>{const el=document.getElementById('studentQr_'+Number(x.id||i));const url=String(x.uniqueUrl||x.profileUrl||'');if(el&&url&&window.QRCode)new QRCode(el,{text:url,width:150,height:150,colorDark:'#0b2035',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});});
+  filterVisibleRecords('');
+ }catch(e){content.innerHTML=`<div class="err">${esc(e.message)}<p class="small">यदि API Not Found दिखे, तो नवीनतम student-portal backend deploy नहीं हुआ है।</p></div>`;}
+}
+function downloadStudentQR(id,name){const box=document.getElementById(id);if(!box)return;const canvas=box.querySelector('canvas');const img=box.querySelector('img');const data=canvas?canvas.toDataURL('image/png'):(img?img.src:'');if(!data){alert('QR अभी तैयार नहीं हुआ। Refresh करके फिर प्रयास करें।');return;}const a=document.createElement('a');a.href=data;a.download='NSF-Student-QR-'+String(name||'student').replace(/[^a-z0-9_-]/gi,'_')+'.png';a.click();}
+async function copyStudentProfile(url){try{await navigator.clipboard.writeText(url);alert('Student public profile URL copied.');}catch(e){const t=document.createElement('textarea');t.value=url;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();alert('Student public profile URL copied.');}}
 
 /* =========================================================
    STUDENT INTERNSHIPS
