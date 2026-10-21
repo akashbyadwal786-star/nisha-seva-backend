@@ -45,6 +45,10 @@ const ADMIN_PASSWORD =
   process.env.ADMIN_PASSWORD ||
   'change-this-password';
 
+// Set both values in Render Environment for a separate coordinator account.
+const COORDINATOR_USERNAME = process.env.COORDINATOR_USERNAME || '';
+const COORDINATOR_PASSWORD = process.env.COORDINATOR_PASSWORD || '';
+
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
   'https://nisha-seva-backend.onrender.com';
@@ -54,21 +58,7 @@ const PUBLIC_BASE_URL =
    MIDDLEWARE
    ========================================================= */
 
-const corsOptions = {
-  origin: true,
-  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: false,
-  optionsSuccessStatus: 204
-};
-app.use(cors(corsOptions));
-app.options(/.*/, cors(corsOptions));
-
-// Simple health endpoint to distinguish a live backend from a frontend/CORS issue.
-app.get('/health', (req, res) => {
-  res.set('Cache-Control', 'no-store');
-  res.json({ ok: true, service: 'nisha-seva-backend', time: new Date().toISOString() });
-});
+app.use(cors());
 
 app.use(
   express.json({
@@ -144,21 +134,23 @@ function requireAdmin(
       ? header.slice(7)
       : null;
 
-  const expiry =
-    token &&
-    sessions.get(token);
+  const session = token && sessions.get(token);
 
-  if (
-    !expiry ||
-    expiry < Date.now()
-  ) {
-
-    return res.status(401).json({
-      error: 'Unauthorized'
-    });
-
+  if (!session || session.expiresAt < Date.now()) {
+    if (token) sessions.delete(token);
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Coordinator can access only internship application endpoints.
+  if (session.role === 'coordinator' && !(/^\/api\/internships(?:\/|$)/.test(req.path) || req.path === '/api/admin/logout' || req.path === '/api/student/accounts')) {
+    return res.status(403).json({ error: 'Forbidden: coordinator access is limited to internship management' });
+  }
+
+  if (!['admin','coordinator'].includes(session.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  req.userRole = session.role;
   next();
 }
 
@@ -185,15 +177,9 @@ app.post(
         crypto.randomBytes(24)
           .toString('hex');
 
-      sessions.set(
-        token,
-        Date.now() +
-        SESSION_TTL_MS
-      );
+      sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'admin' });
 
-      return res.json({
-        token
-      });
+      return res.json({ token, role: 'admin' });
 
     }
 
@@ -204,6 +190,23 @@ app.post(
 
   }
 );
+
+
+/* =========================================================
+   COORDINATOR LOGIN — internship-only access
+   ========================================================= */
+app.post('/api/coordinator/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!COORDINATOR_USERNAME || !COORDINATOR_PASSWORD) {
+    return res.status(503).json({ error: 'Coordinator account is not configured. Set COORDINATOR_USERNAME and COORDINATOR_PASSWORD in Render Environment.' });
+  }
+  if (username !== COORDINATOR_USERNAME || password !== COORDINATOR_PASSWORD) {
+    return res.status(401).json({ error: 'Invalid coordinator username or password' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'coordinator' });
+  return res.json({ token, role: 'coordinator' });
+});
 
 
 /* =========================================================
@@ -2938,6 +2941,7 @@ app.use(
 );
 
 
+
 /* =========================================================
    STUDENT SELF-SERVICE PORTAL
    Student accounts use scrypt password hashes; public QR
@@ -3070,6 +3074,42 @@ app.post('/api/student/logout',studentAuth,(req,res)=>{
   const token=(req.headers.authorization||'').slice(7);studentSessions.delete(token);res.json({ok:true});
 });
 
+// Authenticated coordinator/admin list for generating QR codes in the coordinator panel.
+// Sensitive documents, phone and address are deliberately excluded from this response.
+app.get('/api/student/accounts', requireAdmin, async (req, res) => {
+  try {
+    await Promise.all([studentAccountsTableReady, internshipTableReady]);
+    const result = await pool.query(`
+      SELECT a.id, a.username, a.email, a.public_id, a.internship_id, a.created_at,
+             i.data AS application_data, i.created_at AS application_created_at
+      FROM internship_student_accounts a
+      LEFT JOIN internships i ON i.id = a.internship_id
+      ORDER BY a.created_at DESC
+    `);
+    const students = result.rows.map(row => {
+      const d = row.application_data || {};
+      return {
+        id: row.id,
+        username: row.username,
+        email: row.email,
+        studentName: d.studentName || d.name || row.username,
+        status: d.status || 'pending',
+        internshipId: d.internshipId || null,
+        applicationId: row.internship_id,
+        college: d.collegeName || d.educationCollege || null,
+        programme: d.className || d.programme || 'Student Internship',
+        createdAt: row.created_at,
+        uniqueUrl: studentPublicUrl(row.public_id)
+      };
+    });
+    res.set('Cache-Control', 'no-store');
+    return res.json({ students });
+  } catch (error) {
+    console.error('STUDENT ACCOUNTS LIST ERROR:', error);
+    return res.status(500).json({ error: 'Student accounts list load नहीं हो सकी।' });
+  }
+});
+
 // QR destination: a limited public verification/profile page. Never expose Aadhaar or uploaded documents here.
 app.get('/api/student/public/:publicId',async(req,res)=>{
   try{
@@ -3081,8 +3121,6 @@ app.get('/api/student/public/:publicId',async(req,res)=>{
     res.set('Cache-Control','no-store');res.json({profile:safe});
   }catch(error){console.error('STUDENT PUBLIC PROFILE ERROR:',error);res.status(500).json({error:'Student profile load नहीं हो सकी।'});}
 });
-
-
 
 
 /* =========================================================
