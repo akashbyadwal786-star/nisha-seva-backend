@@ -11,11 +11,11 @@ const defaultDB = {
   contactMessages: [],
   newsletter: [],
   impactLocations: [],
-  volunteerMissions: [],
-  certificateRecords: [],
+  missions: [],
+  certificates: [],
   impactStories: [],
   communityEvents: [],
-  knowledgeResources: []
+  knowledgeLibrary: []
 };
 
 const pool = new Pool({
