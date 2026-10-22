@@ -62,7 +62,8 @@ app.use(cors());
 
 app.use(
   express.json({
-    limit: '30mb'
+    limit: '30mb',
+    verify: (req, res, buf) => { if (req.originalUrl && req.originalUrl.startsWith('/api/donations/webhook')) req.rawBody = Buffer.from(buf); }
   })
 );
 
@@ -3124,10 +3125,190 @@ app.get('/api/student/public/:publicId',async(req,res)=>{
 
 
 /* =========================================================
+   CASHFREE DONATION + RECEIPT + SMS
+   Configure Cashfree and MSG91 values in Render Environment.
+   ========================================================= */
+const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID || '';
+const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY || '';
+const CASHFREE_MODE = (process.env.CASHFREE_MODE || 'sandbox').toLowerCase();
+const CASHFREE_API_VERSION = process.env.CASHFREE_API_VERSION || '2025-01-01';
+const DONATION_SITE_URL = (process.env.DONATION_SITE_URL || 'https://nishasevafoundation.org').replace(/\/$/, '');
+const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || '';
+const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID || '';
+const MSG91_SENDER_ID = process.env.MSG91_SENDER_ID || '';
+const CASHFREE_BASE = CASHFREE_MODE === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+
+const donationsTableReady = pool.query(`CREATE TABLE IF NOT EXISTS donations (
+ id BIGSERIAL PRIMARY KEY, order_id VARCHAR(80) UNIQUE NOT NULL, receipt_no VARCHAR(80) UNIQUE NOT NULL,
+ donor_name VARCHAR(120) NOT NULL, donor_phone VARCHAR(20) NOT NULL, donor_email VARCHAR(180), amount NUMERIC(12,2) NOT NULL,
+ currency VARCHAR(3) NOT NULL DEFAULT 'INR', payment_status VARCHAR(20) NOT NULL DEFAULT 'PENDING', cf_payment_id VARCHAR(100),
+ payment_time TIMESTAMPTZ, sms_status VARCHAR(30) NOT NULL DEFAULT 'NOT_SENT', sms_error TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`).catch(e=>{console.error('DONATIONS TABLE INIT ERROR:',e);throw e;});
+
+async function cashfreeRequest(url, options={}) {
+  if (!CASHFREE_APP_ID || !CASHFREE_SECRET_KEY) throw new Error('Cashfree API credentials are not configured in Render Environment.');
+  const response = await fetch(url, { ...options, headers: { 'x-client-id': CASHFREE_APP_ID, 'x-client-secret': CASHFREE_SECRET_KEY, 'x-api-version': CASHFREE_API_VERSION, 'accept':'application/json', 'content-type':'application/json', ...(options.headers||{}) } });
+  const data = await response.json().catch(()=>({}));
+  if (!response.ok) { console.error('CASHFREE API ERROR', response.status, data); throw new Error(data.message || 'Cashfree API request failed'); }
+  return data;
+}
+function safeText(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function receiptUrl(orderId){return `${PUBLIC_BASE_URL}/api/donations/receipt/${encodeURIComponent(orderId)}`;}
+async function sendDonationSms(row){
+  if(!MSG91_AUTH_KEY || !MSG91_TEMPLATE_ID){await pool.query("UPDATE donations SET sms_status='NOT_CONFIGURED',sms_error='MSG91 credentials/template not configured',updated_at=NOW() WHERE order_id=$1",[row.order_id]);return;}
+  const mobile = String(row.donor_phone).replace(/\D/g,'');
+  const payload={template_id:MSG91_TEMPLATE_ID,short_url:'1',recipients:[{mobiles:'91'+mobile,VAR1:row.donor_name,VAR2:String(row.amount),VAR3:row.receipt_no,VAR4:receiptUrl(row.order_id)}]};
+  try{
+    const resp=await fetch('https://control.msg91.com/api/v5/flow/',{method:'POST',headers:{authkey:MSG91_AUTH_KEY,'content-type':'application/json',accept:'application/json'},body:JSON.stringify(payload)});
+    const data=await resp.json().catch(()=>({}));
+    if(!resp.ok) throw new Error(data.message||JSON.stringify(data));
+    await pool.query("UPDATE donations SET sms_status='SENT_REQUESTED',sms_error=NULL,updated_at=NOW() WHERE order_id=$1",[row.order_id]);
+  }catch(e){console.error('DONATION SMS ERROR',e);await pool.query("UPDATE donations SET sms_status='FAILED',sms_error=$2,updated_at=NOW() WHERE order_id=$1",[row.order_id,String(e.message||e).slice(0,1000)]);}
+}
+async function finalizeDonation(orderId, paymentInfo={}){
+  await donationsTableReady;
+  const found=await pool.query('SELECT * FROM donations WHERE order_id=$1 LIMIT 1',[orderId]);
+  if(!found.rows.length) return null;
+  const old=found.rows[0];
+  if(old.payment_status==='PAID') return old; // idempotent: never send duplicate SMS
+  const payment=paymentInfo.payment || paymentInfo;
+  const paymentId=payment.cf_payment_id || paymentInfo.cf_payment_id || null;
+  const result=await pool.query("UPDATE donations SET payment_status='PAID',cf_payment_id=COALESCE($2,cf_payment_id),payment_time=COALESCE($3::timestamptz,NOW()),updated_at=NOW() WHERE order_id=$1 RETURNING *",[orderId,paymentId,payment.payment_time||paymentInfo.payment_time||null]);
+  const row=result.rows[0];
+  await sendDonationSms(row);
+  const refreshed=await pool.query('SELECT * FROM donations WHERE order_id=$1',[orderId]);
+  return refreshed.rows[0];
+}
+
+app.post('/api/donations/create-order', async(req,res)=>{
+ try{
+  await donationsTableReady;
+  const name=String(req.body.name||'').trim().slice(0,120), phone=String(req.body.phone||'').replace(/\D/g,''), email=String(req.body.email||'').trim().slice(0,180), amount=Number(req.body.amount);
+  if(name.length<2) return res.status(400).json({error:'Please enter donor name.'});
+  if(!/^[6-9]\d{9}$/.test(phone)) return res.status(400).json({error:'Enter a valid 10-digit Indian mobile number.'});
+  if(!Number.isFinite(amount)||amount<1||amount>1000000||Math.round(amount*100)!==amount*100) return res.status(400).json({error:'Enter a valid donation amount.'});
+  if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({error:'Enter a valid email address or leave it blank.'});
+  const orderId='NSFDON_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex');
+  const receiptNo='NSF-'+new Date().getFullYear()+'-'+crypto.randomBytes(4).toString('hex').toUpperCase();
+  const customerId='donor_'+crypto.randomBytes(8).toString('hex');
+  await pool.query('INSERT INTO donations(order_id,receipt_no,donor_name,donor_phone,donor_email,amount) VALUES($1,$2,$3,$4,$5,$6)',[orderId,receiptNo,name,phone,email||null,amount]);
+  const created=await cashfreeRequest(`${CASHFREE_BASE}/orders`,{method:'POST',body:JSON.stringify({order_id:orderId,order_amount:amount,order_currency:'INR',customer_details:{customer_id:customerId,customer_name:name,customer_email:email||undefined,customer_phone:phone},order_meta:{return_url:`${DONATION_SITE_URL}/?order_id={order_id}#donate`,notify_url:`${PUBLIC_BASE_URL}/api/donations/webhook`},order_note:'Donation to Nisha Seva Foundation'})});
+  res.json({ok:true,orderId,paymentSessionId:created.payment_session_id,mode:CASHFREE_MODE});
+ }catch(e){console.error('CREATE DONATION ORDER ERROR:',e);res.status(500).json({error:e.message||'Could not create Cashfree order.'});}
+});
+
+app.get('/api/donations/status/:orderId',async(req,res)=>{
+ try{
+  await donationsTableReady;
+  const orderId=String(req.params.orderId||'').slice(0,80);
+  const local=await pool.query('SELECT * FROM donations WHERE order_id=$1 LIMIT 1',[orderId]);
+  if(!local.rows.length)return res.status(404).json({error:'Donation order not found.'});
+  let row=local.rows[0];
+  if(row.payment_status!=='PAID'){
+   const order=await cashfreeRequest(`${CASHFREE_BASE}/orders/${encodeURIComponent(orderId)}`,{method:'GET'});
+   if(order.order_status==='PAID'){
+    const payments=await cashfreeRequest(`${CASHFREE_BASE}/orders/${encodeURIComponent(orderId)}/payments`,{method:'GET'});
+    const paid=(Array.isArray(payments)?payments:[]).find(p=>p.payment_status==='SUCCESS');
+    if(paid) row=await finalizeDonation(orderId,paid);
+   } else if(['EXPIRED','TERMINATED'].includes(order.order_status)){
+    await pool.query("UPDATE donations SET payment_status='FAILED',updated_at=NOW() WHERE order_id=$1 AND payment_status='PENDING'",[orderId]);
+   }
+  }
+  row=(await pool.query('SELECT * FROM donations WHERE order_id=$1',[orderId])).rows[0];
+  res.set('Cache-Control','no-store');res.json({orderId,status:row.payment_status,receiptNo:row.payment_status==='PAID'?row.receipt_no:null,receiptUrl:row.payment_status==='PAID'?receiptUrl(orderId):null});
+ }catch(e){console.error('DONATION STATUS ERROR:',e);res.status(500).json({error:'Could not verify payment. Please try again shortly.'});}
+});
+
+app.post('/api/donations/webhook',async(req,res)=>{
+ try{
+  const signature=req.headers['x-webhook-signature'], timestamp=req.headers['x-webhook-timestamp'];
+  if(!signature||!timestamp||!req.rawBody||!CASHFREE_SECRET_KEY)return res.status(400).send('Missing webhook signature data');
+  const expected=crypto.createHmac('sha256',CASHFREE_SECRET_KEY).update(String(timestamp)+req.rawBody.toString('utf8')).digest('base64');
+  const a=Buffer.from(String(signature)),b=Buffer.from(expected);
+  if(a.length!==b.length||!crypto.timingSafeEqual(a,b))return res.status(401).send('Invalid webhook signature');
+  const body=req.body||{}, type=body.type||'', orderId=body.data?.order?.order_id, payment=body.data?.payment||{};
+  if(orderId && (type==='PAYMENT_SUCCESS_WEBHOOK'||payment.payment_status==='SUCCESS')) await finalizeDonation(orderId,payment);
+  if(orderId && (type==='PAYMENT_FAILED_WEBHOOK'||payment.payment_status==='FAILED')) await pool.query("UPDATE donations SET payment_status='FAILED',updated_at=NOW() WHERE order_id=$1 AND payment_status='PENDING'",[orderId]);
+  return res.status(200).send('OK');
+ }catch(e){console.error('DONATION WEBHOOK ERROR:',e);return res.status(500).send('Webhook processing failed');}
+});
+
+app.get('/api/donations/receipt/:orderId',async(req,res)=>{
+ try{
+  await donationsTableReady;
+  const orderId=String(req.params.orderId||'').slice(0,80);
+  const result=await pool.query('SELECT * FROM donations WHERE order_id=$1 AND payment_status=\'PAID\' LIMIT 1',[orderId]);
+  if(!result.rows.length)return res.status(404).send('Verified donation receipt not available yet.');
+  const d=result.rows[0];
+  res.set('Cache-Control','no-store');res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Donation Receipt ${safeText(d.receipt_no)}</title><style>body{font-family:Arial,sans-serif;background:#eef4f0;padding:20px;color:#173a2d}.receipt{max-width:720px;margin:20px auto;background:white;border:2px solid #16835c;border-radius:18px;padding:34px;box-shadow:0 12px 35px #163a2d1a}.brand{text-align:center;color:#08764f}.rule{border:0;border-top:1px solid #d8e5dd;margin:24px 0}.row{display:flex;justify-content:space-between;gap:20px;padding:10px 0;border-bottom:1px solid #edf1ee}.label{color:#617168}.thanks{text-align:center;line-height:1.6;color:#365449}.actions{text-align:center;margin:18px}.actions button{padding:12px 20px;background:#08764f;color:#fff;border:0;border-radius:8px;font-weight:bold;cursor:pointer}@media print{body{background:white;padding:0}.receipt{box-shadow:none;margin:0 auto;border-radius:0}.actions{display:none}}</style></head><body><main class="receipt"><header class="brand"><h1>NISHA SEVA FOUNDATION</h1><h2>DONATION RECEIPT</h2><p>Thank you for supporting our community work</p></header><hr class="rule"><div class="row"><span class="label">Receipt Number</span><strong>${safeText(d.receipt_no)}</strong></div><div class="row"><span class="label">Donor Name</span><strong>${safeText(d.donor_name)}</strong></div><div class="row"><span class="label">Donation Amount</span><strong>₹${Number(d.amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></div><div class="row"><span class="label">Payment Status</span><strong>SUCCESSFUL</strong></div><div class="row"><span class="label">Payment Date</span><strong>${safeText(new Date(d.payment_time||d.updated_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}))}</strong></div><div class="row"><span class="label">Cashfree Order ID</span><strong>${safeText(d.order_id)}</strong></div><hr class="rule"><p class="thanks">We sincerely thank you for your generous contribution to Nisha Seva Foundation. Your support helps us continue our social service initiatives.<br><strong>With gratitude, Nisha Seva Foundation</strong></p><div class="actions"><button onclick="window.print()">Download / Print Receipt (Save as PDF)</button></div></main></body></html>`);
+ }catch(e){console.error('DONATION RECEIPT ERROR:',e);res.status(500).send('Receipt could not be generated.');}
+});
+
+app.get('/api/admin/donations',requireAdmin,async(req,res)=>{
+ try{await donationsTableReady;const r=await pool.query('SELECT order_id,receipt_no,donor_name,donor_phone,donor_email,amount,currency,payment_status,payment_time,sms_status,sms_error,created_at FROM donations ORDER BY created_at DESC LIMIT 500');res.json({donations:r.rows});}
+ catch(e){console.error('ADMIN DONATIONS ERROR:',e);res.status(500).json({error:'Could not load donation records.'});}
+});
+
+/* =========================================================
+   COMMUNITY HELP DESK — Phase 03/04
+   ========================================================= */
+const communityRequestsTableReady = pool.query(`
+  CREATE TABLE IF NOT EXISTS community_help_requests (
+    id BIGSERIAL PRIMARY KEY,
+    reference_id VARCHAR(32) UNIQUE NOT NULL,
+    name VARCHAR(90) NOT NULL,
+    phone VARCHAR(18) NOT NULL,
+    request_type VARCHAR(32) NOT NULL,
+    area VARCHAR(100),
+    details TEXT NOT NULL,
+    status VARCHAR(24) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`);
+
+app.post('/api/community-requests', async (req, res) => {
+  try {
+    await communityRequestsTableReady;
+    const body = req.body || {};
+    const name = String(body.name || '').trim().slice(0, 90);
+    const phone = String(body.phone || '').trim().slice(0, 18);
+    const requestType = String(body.requestType || '').trim();
+    const area = String(body.area || '').trim().slice(0, 100);
+    const details = String(body.details || '').trim().slice(0, 1200);
+    const allowed = new Set(['help','volunteer','skill','opportunity','suggestion']);
+    if (!name || name.length < 2) return res.status(400).json({ error: 'कृपया सही नाम भरें।' });
+    if (!/^[0-9+()\-\s]{8,18}$/.test(phone)) return res.status(400).json({ error: 'कृपया सही मोबाइल नंबर भरें।' });
+    if (!allowed.has(requestType)) return res.status(400).json({ error: 'कृपया अनुरोध का प्रकार चुनें।' });
+    if (details.length < 10) return res.status(400).json({ error: 'कृपया कम से कम 10 अक्षरों में विवरण लिखें।' });
+    const referenceId = 'NSF-' + Date.now().toString(36).toUpperCase() + '-' + crypto.randomBytes(3).toString('hex').toUpperCase();
+    await pool.query(
+      `INSERT INTO community_help_requests (reference_id,name,phone,request_type,area,details) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [referenceId,name,phone,requestType,area,details]
+    );
+    return res.status(201).json({ success: true, referenceId, message: 'Request received' });
+  } catch (error) {
+    console.error('COMMUNITY REQUEST SAVE ERROR:', error);
+    return res.status(500).json({ error: 'अनुरोध सेव नहीं हो पाया। कृपया थोड़ी देर बाद फिर कोशिश करें।' });
+  }
+});
+
+app.get('/api/community-requests', requireAdmin, async (req, res) => {
+  try {
+    await communityRequestsTableReady;
+    const result = await pool.query(`SELECT id,reference_id,name,phone,request_type,area,details,status,created_at FROM community_help_requests ORDER BY created_at DESC LIMIT 500`);
+    res.set('Cache-Control', 'no-store');
+    return res.json({ requests: result.rows });
+  } catch (error) {
+    console.error('COMMUNITY REQUEST LIST ERROR:', error);
+    return res.status(500).json({ error: 'Community requests load नहीं हो सके।' });
+  }
+});
+
+/* =========================================================
    START SERVER
    ========================================================= */
 
-Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady])
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, donationsTableReady])
   .then(() => {
 
     app.listen(
