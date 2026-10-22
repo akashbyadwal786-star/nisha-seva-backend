@@ -993,10 +993,41 @@ function extractSupabaseGalleryPath(
   'events',
   'gallery',
   'documents',
-  'donors'
+  'donors',
+  'impactLocations', 'missions', 'impactStories', 'communityEvents', 'knowledgeLibrary'
+
 ].forEach(
   crudRoutes
 );
+
+// Certificate records are private to admins. Public visitors can only verify one ID.
+app.get('/api/certificates', requireAdmin, async (req, res) => {
+  try { const db = await readDB(); res.json(Array.isArray(db.certificates) ? db.certificates : []); }
+  catch (e) { console.error('GET /api/certificates', e); res.status(500).json({error:'Database error'}); }
+});
+app.post('/api/certificates', requireAdmin, async (req, res) => {
+  try { const db = await readDB(); db.certificates = Array.isArray(db.certificates) ? db.certificates : [];
+    const body = req.body || {}; const item = {id: nextId(db.certificates), ...body}; db.certificates.push(item); await writeDB(db); res.status(201).json(item);
+  } catch(e) { console.error('POST /api/certificates',e); res.status(500).json({error:'Database error'}); }
+});
+app.put('/api/certificates/:id', requireAdmin, async (req, res) => {
+  try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const i=db.certificates.findIndex(x=>Number(x.id)===id); if(i<0)return res.status(404).json({error:'Not found'}); db.certificates[i]={...db.certificates[i],...(req.body||{}),id}; await writeDB(db); res.json(db.certificates[i]);
+  } catch(e) { console.error('PUT /api/certificates',e); res.status(500).json({error:'Database error'}); }
+});
+app.delete('/api/certificates/:id', requireAdmin, async (req, res) => {
+  try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const before=db.certificates.length; db.certificates=db.certificates.filter(x=>Number(x.id)!==id); if(before===db.certificates.length)return res.status(404).json({error:'Not found'}); await writeDB(db); res.json({ok:true}); }
+  catch(e) { console.error('DELETE /api/certificates',e); res.status(500).json({error:'Database error'}); }
+});
+app.get('/api/certificate-verify/:certificateId', async (req, res) => {
+  try {
+    const wanted=String(req.params.certificateId||'').trim().toLowerCase();
+    if(!wanted || wanted.length>100) return res.status(400).json({valid:false,error:'Invalid certificate ID'});
+    const db=await readDB(); const list=Array.isArray(db.certificates)?db.certificates:[];
+    const item=list.find(x=>String(x.certificateId||x.certificate_id||'').trim().toLowerCase()===wanted);
+    if(!item || String(item.status||'active').toLowerCase()==='revoked') return res.json({valid:false,message:'Certificate not found or revoked'});
+    res.json({valid:true,certificate:{certificateId:item.certificateId||item.certificate_id,name:item.name||item.studentName||'',course:item.course||item.program||'',issueDate:item.issueDate||item.issuedAt||'',issuer:'Nisha Seva Foundation',status:'Valid'}});
+  } catch(e) { console.error('GET /api/certificate-verify',e); res.status(500).json({valid:false,error:'Verification unavailable'}); }
+});
 
 
 /* =========================================================
@@ -3311,77 +3342,7 @@ app.get('/api/community-requests', requireAdmin, async (req, res) => {
 Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, donationsTableReady])
   .then(() => {
 
-    
-/* =========================================================
-   COMMUNITY HUB MODULES (additive; existing APIs preserved)
-   ========================================================= */
-const COMMUNITY_COLLECTIONS = new Set([
-  'impactLocations','volunteerMissions','certificateRecords',
-  'impactStories','communityEvents','knowledgeResources'
-]);
-const COMMUNITY_PUBLIC = new Set([
-  'impactLocations','volunteerMissions','impactStories','communityEvents','knowledgeResources'
-]);
-app.get('/api/community/:collection', async (req,res) => {
-  try {
-    const key = String(req.params.collection || '');
-    if (!COMMUNITY_COLLECTIONS.has(key) || !COMMUNITY_PUBLIC.has(key)) return res.status(404).json({error:'Not found'});
-    const db = await readDB();
-    const items = Array.isArray(db[key]) ? db[key] : [];
-    // Public route returns published content only. Certificate records are deliberately excluded.
-    const visible = items.filter(x => x && x.status !== 'draft' && x.published !== false && x.status !== 'archived');
-    res.json(visible);
-  } catch (e) { console.error('community GET', e); res.status(500).json({error:'Unable to load community content'}); }
-});
-app.get('/api/admin/community/:collection', requireAdmin, async (req,res) => {
-  try { const key=String(req.params.collection||''); if(!COMMUNITY_COLLECTIONS.has(key)) return res.status(404).json({error:'Not found'}); const db=await readDB(); res.json(Array.isArray(db[key])?db[key]:[]); }
-  catch(e){ console.error('admin community GET',e); res.status(500).json({error:'Unable to load community items'}); }
-});
-app.post('/api/community/:collection', requireAdmin, async (req,res) => {
-  try {
-    const key = String(req.params.collection || '');
-    if (!COMMUNITY_COLLECTIONS.has(key)) return res.status(404).json({error:'Not found'});
-    const db = await readDB(); if (!Array.isArray(db[key])) db[key] = [];
-    const item = req.body && typeof req.body === 'object' ? req.body : {};
-    const record = {...item, id: nextId(db[key]), updatedAt: new Date().toISOString()};
-    if (!record.status) record.status = 'published';
-    db[key].push(record); await writeDB(db); res.status(201).json(record);
-  } catch (e) { console.error('community POST', e); res.status(500).json({error:'Unable to save community item'}); }
-});
-app.put('/api/community/:collection/:id', requireAdmin, async (req,res) => {
-  try {
-    const key = String(req.params.collection || ''), id = Number(req.params.id);
-    if (!COMMUNITY_COLLECTIONS.has(key)) return res.status(404).json({error:'Not found'});
-    const db = await readDB(); if (!Array.isArray(db[key])) db[key] = [];
-    const pos = db[key].findIndex(x => Number(x.id) === id);
-    if (pos < 0) return res.status(404).json({error:'Item not found'});
-    db[key][pos] = {...db[key][pos], ...(req.body || {}), id, updatedAt:new Date().toISOString()};
-    await writeDB(db); res.json(db[key][pos]);
-  } catch (e) { console.error('community PUT', e); res.status(500).json({error:'Unable to update community item'}); }
-});
-app.delete('/api/community/:collection/:id', requireAdmin, async (req,res) => {
-  try {
-    const key = String(req.params.collection || ''), id = Number(req.params.id);
-    if (!COMMUNITY_COLLECTIONS.has(key)) return res.status(404).json({error:'Not found'});
-    const db = await readDB(); if (!Array.isArray(db[key])) db[key] = [];
-    const before = db[key].length; db[key] = db[key].filter(x => Number(x.id) !== id);
-    if (db[key].length === before) return res.status(404).json({error:'Item not found'});
-    await writeDB(db); res.json({ok:true});
-  } catch (e) { console.error('community DELETE', e); res.status(500).json({error:'Unable to delete community item'}); }
-});
-app.get('/api/certificates/verify/:code', async (req,res) => {
-  try {
-    const code = String(req.params.code || '').trim().toLowerCase();
-    if (!code || code.length > 100) return res.status(400).json({valid:false});
-    const db = await readDB(); const rows = Array.isArray(db.certificateRecords) ? db.certificateRecords : [];
-    const found = rows.find(x => String(x.certificateId || x.code || '').trim().toLowerCase() === code && x.status === 'published' && x.verified !== false);
-    if (!found) return res.json({valid:false, message:'No matching active certificate was found.'});
-    // Return only non-sensitive verification fields.
-    res.json({valid:true, certificateId:found.certificateId || found.code, recipientName:found.recipientName || found.name || 'Verified recipient', certificateType:found.certificateType || 'Certificate', issueDate:found.issueDate || '', status:'Valid'});
-  } catch(e) { console.error('certificate verify',e); res.status(500).json({valid:false,message:'Verification is temporarily unavailable.'}); }
-});
-
-app.listen(
+    app.listen(
       PORT,
       () => {
 
