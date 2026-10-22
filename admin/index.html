@@ -378,6 +378,24 @@ header .brand-mark{display:flex;align-items:center;gap:12px}header .brand-symbol
 </style>
 
 <style id="student-portal-qr-admin-style">.student-qr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}.student-qr-item{min-width:0}.student-qr-content{display:grid;grid-template-columns:170px minmax(0,1fr);gap:14px;align-items:center;margin-top:14px}.student-qr-code{background:#fff;border:1px solid #e3eaf1;border-radius:12px;min-height:160px;display:flex;align-items:center;justify-content:center;padding:8px}.student-qr-code img,.student-qr-code canvas{max-width:100%;height:auto}.student-qr-details{line-height:1.8;overflow-wrap:anywhere}.student-qr-details a{color:#0f6b4f;font-weight:700}.student-qr-details .actions{display:flex;gap:8px;flex-wrap:wrap}.student-qr-details button{font-size:12px}@media(max-width:600px){.student-qr-content{grid-template-columns:1fr}.student-qr-code{width:170px;margin:auto}}</style>
+
+<style id="nsf-community-admin-readable">
+.tabs button[data-section="communityRequests"]{--item:#0d9488}
+.community-admin-filters{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:10px;margin:16px 0}
+.community-request-item{color:#173047!important;overflow-wrap:anywhere}
+.community-request-item h3{margin:0 0 5px;color:#102c42!important;font-size:19px;line-height:1.35}
+.community-request-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:15px 0}
+.community-request-grid>div{min-width:0;background:#f4f8fb;border:1px solid #e3ebf2;border-radius:12px;padding:12px}
+.community-request-grid strong,.community-request-details strong{display:block;color:#607386;font-size:12px;margin-bottom:5px}
+.community-request-grid span{display:block;color:#172f43;font-size:14px;overflow-wrap:anywhere}
+.community-request-details{background:#fbfcfe;border:1px solid #e7edf3;border-radius:12px;padding:14px;margin:10px 0;color:#253b4e}
+.community-request-details p{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;color:#253b4e!important}
+.community-request-actions{justify-content:flex-start!important;align-items:end!important}
+.community-request-actions label{display:block;max-width:230px;min-width:170px;color:#30465b;font-weight:700;font-size:13px}
+.community-request-actions select{margin-top:6px}
+@media(max-width:650px){.community-admin-filters,.community-request-grid{grid-template-columns:1fr}.community-request-actions{align-items:stretch!important}.community-request-actions label{max-width:none;width:100%}.community-request-actions button{width:100%}}
+</style>
+
 </head>
 
 <body>
@@ -415,9 +433,10 @@ const tabs = [
   ["projectSubmissions","Student Projects"],
   ["members","Members"],
   ["contactMessages","Messages"],
+  ["communityRequests","Community Help Desk"],
   ["newsletter","Newsletter"]
 ];
-const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳"};
+const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳",communityRequests:"🤝"};
 
 
 /* =========================================================
@@ -671,6 +690,10 @@ async function render(){
 
     }
 
+    if(current === "communityRequests"){
+      await renderCommunityRequests();
+      return;
+    }
 
     const data = await api(
       "/api/" + current
@@ -1293,6 +1316,45 @@ async function deleteProjectSubmission(id){
 /* =========================================================
    STUDENT PORTAL QR MANAGEMENT
    ========================================================= */
+async function renderCommunityRequests(){
+  content.innerHTML='<h2>🤝 Community Help Desk</h2><p>लोगों की सहायता, volunteer, skill offer और सुझाव एक जगह देखें।</p><p>लोड हो रहा है…</p>';
+  try{
+    const result=await api('/api/community-requests');
+    const rows=Array.isArray(result.requests)?result.requests:[];
+    const counts={pending:0,in_progress:0,resolved:0,rejected:0};
+    rows.forEach(r=>{const k=String(r.status||'pending').toLowerCase();if(Object.prototype.hasOwnProperty.call(counts,k))counts[k]++;});
+    const labels={help:'मुझे सहायता चाहिए',volunteer:'स्वयंसेवक',skill:'स्किल साझा करना',opportunity:'अवसर / कार्यक्रम',suggestion:'सुझाव'};
+    let html=`<div class="row"><div><h2>🤝 Community Help Desk</h2><span class="small">कुल ${rows.length} अनुरोध · Pending ${counts.pending} · जारी ${counts.in_progress} · हल ${counts.resolved}</span></div><button class="primary" onclick="renderCommunityRequests()">↻ Refresh</button></div>
+    <div class="easy-help">🔐 मोबाइल नंबर और अनुरोध का विवरण केवल अधिकृत Admin के लिए है। स्थिति बदलने पर वह database में सेव होगी।</div>
+    <div class="community-admin-filters"><input id="communityRequestSearch" placeholder="नाम, Reference ID, शहर या अनुरोध खोजें…" oninput="filterCommunityRequests()"><select id="communityStatusFilter" onchange="filterCommunityRequests()"><option value="all">सभी स्थिति</option><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option><option value="rejected">Rejected</option></select></div>
+    <div id="communityRequestRows">`;
+    if(!rows.length) html+='<div class="ok">अभी कोई Community Help अनुरोध प्राप्त नहीं हुआ है।</div>';
+    html+=rows.map(r=>{
+      const status=String(r.status||'pending').toLowerCase();
+      const created=r.created_at?new Date(r.created_at).toLocaleString('en-IN'):'-';
+      const searchable=[r.reference_id,r.name,r.phone,r.request_type,r.area,r.details,status].join(' ').toLowerCase();
+      return `<article class="item community-request-item" data-status="${esc(status)}" data-search="${esc(searchable)}"><div class="row"><div><h3>${esc(r.name||'नाम नहीं दिया')}</h3><div class="small">Reference: <b>${esc(r.reference_id||'-')}</b> · ${esc(created)}</div></div><span class="status ${status==='resolved'?'active':status==='rejected'?'rejected':'pending'}">${esc(status.replace('_',' ').toUpperCase())}</span></div><div class="community-request-grid"><div><strong>अनुरोध का प्रकार</strong><span>${esc(labels[r.request_type]||r.request_type||'-')}</span></div><div><strong>मोबाइल</strong><span>${esc(r.phone||'-')}</span></div><div><strong>क्षेत्र / शहर</strong><span>${esc(r.area||'-')}</span></div></div><div class="community-request-details"><strong>विवरण</strong><p>${esc(r.details||'-')}</p></div><div class="row community-request-actions"><label>स्थिति<select id="communityStatus_${Number(r.id)}"><option value="pending" ${status==='pending'?'selected':''}>Pending</option><option value="in_progress" ${status==='in_progress'?'selected':''}>In Progress</option><option value="resolved" ${status==='resolved'?'selected':''}>Resolved</option><option value="rejected" ${status==='rejected'?'selected':''}>Rejected</option></select></label><button class="primary" onclick="updateCommunityRequest(${Number(r.id)})">स्थिति सेव करें</button><button class="muted" onclick="copyCommunityReference('${esc(r.reference_id||'')}')">Reference कॉपी करें</button></div></article>`;
+    }).join('');
+    html+='</div>';
+    content.innerHTML=html;
+    window.__communityRequestRows=rows;
+  }catch(error){content.innerHTML=`<h2>🤝 Community Help Desk</h2><div class="err">अनुरोध लोड नहीं हो सके: ${esc(error.message)}<br><span class="small">सुनिश्चित करें कि अपडेटेड server.js deploy है और आप Admin के रूप में लॉगिन हैं।</span></div><button class="primary" onclick="renderCommunityRequests()">फिर कोशिश करें</button>`;}
+}
+function filterCommunityRequests(){
+  const q=(document.getElementById('communityRequestSearch')?.value||'').trim().toLowerCase();
+  const status=document.getElementById('communityStatusFilter')?.value||'all';
+  document.querySelectorAll('.community-request-item').forEach(el=>{const matchText=(el.dataset.search||'').includes(q);const matchStatus=status==='all'||el.dataset.status===status;el.style.display=matchText&&matchStatus?'':'none';});
+}
+async function updateCommunityRequest(id){
+  const select=document.getElementById('communityStatus_'+id);if(!select)return;
+  try{await api('/api/community-requests/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({status:select.value})});await renderCommunityRequests();}
+  catch(error){alert('स्थिति सेव नहीं हुई: '+error.message);}
+}
+function copyCommunityReference(value){
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(value).then(()=>alert('Reference ID कॉपी हो गई।')).catch(()=>prompt('Reference ID कॉपी करें:',value));
+  else prompt('Reference ID कॉपी करें:',value);
+}
+
 async function renderStudentPortal(){
  content.innerHTML='<h2>🔳 Student Portal QR Management</h2><p>Loading registered student accounts...</p>';
  try{
