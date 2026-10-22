@@ -1284,7 +1284,7 @@ if (internshipForm) {
  if (dateInput) dateInput.value = today;
  const box = document.getElementById('internshipSuccess');
  box.style.display='block';
- box.innerHTML='<b>Application submitted successfully.</b><br>Your application has been sent to the Nisha Seva Foundation Admin Panel for verification and approval. The Premium Offer Letter will be available after approval.<div style="margin-top:14px"><button type="button" class="btn-primary" id="downloadInternshipFormBtn">📄 Download Submitted Form</button></div>';
+ box.innerHTML='<b>Application submitted successfully.</b><br>Your application has been sent to the Nisha Seva Foundation Admin Panel for verification and approval.<br><b>Reference Number: '+String(result.referenceNo||('NSF-INT-'+result.id)).replace(/[&<>"']/g,'')+'</b><br>Save this number. You will need it to create your Student Portal account.<div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="btn-primary" id="downloadInternshipFormBtn">📄 Download Submitted Form</button><a class="btn-primary" style="text-decoration:none;display:inline-flex;align-items:center" href="/student-portal.html">🎓 Open Student Portal</a></div>';
  const downloadBtn=document.getElementById('downloadInternshipFormBtn');
  if(downloadBtn) downloadBtn.addEventListener('click',()=>downloadSubmittedInternshipForm(data));
  box.scrollIntoView({behavior:'smooth',block:'center'});
