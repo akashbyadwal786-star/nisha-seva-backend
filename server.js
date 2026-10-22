@@ -6,6 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 
 const {
   readDB,
@@ -58,7 +59,16 @@ const PUBLIC_BASE_URL =
    MIDDLEWARE
    ========================================================= */
 
-app.use(cors());
+const allowedOrigins = String(process.env.ALLOWED_ORIGINS || 'https://nishasevafoundation.org')
+  .split(',').map(value => value.trim()).filter(Boolean);
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origin not allowed by CORS'));
+  },
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
+}));
 
 app.use(
   express.json({
@@ -1180,17 +1190,18 @@ function submissionRoutes(
           );
 
 
-        const row =
-          result.rows[0];
-
+        const row = result.rows[0];
+        let referenceNo = null;
+        if (name === 'internships') {
+          referenceNo = `NSF-INT-${row.id}`;
+          const updatedData = { ...(row.data || {}), referenceNo, applicationReference: referenceNo };
+          await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify(updatedData), row.id]);
+        }
 
         res.status(201).json({
-
           ok: true,
-
-          id:
-            row.id
-
+          id: row.id,
+          referenceNo
         });
 
 
@@ -3027,32 +3038,139 @@ async function getStudentApplication(account){
   return {id:result.rows[0].id,submittedAt:result.rows[0].created_at,...(result.rows[0].data||{})};
 }
 
-app.post('/api/student/signup', async (req,res)=>{
-  try{
-    await Promise.all([studentAccountsTableReady,internshipTableReady]);
+const passwordResetTableReady = pool.query(`
+  CREATE TABLE IF NOT EXISTS internship_password_resets (
+    id BIGSERIAL PRIMARY KEY,
+    email TEXT NOT NULL,
+    otp_hash TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    used BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`).catch(error => { console.error('PASSWORD RESET TABLE INIT ERROR:', error); throw error; });
+const resetRequestLimiter = new Map();
+function makeOtpHash(otp, salt) { return crypto.createHash('sha256').update(`${salt}:${otp}`).digest('hex'); }
+function getMailTransport() {
+  const port = Number(process.env.SMTP_PORT || 465);
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+    port,
+    secure: String(process.env.SMTP_SECURE || (port === 465 ? 'true' : 'false')).toLowerCase() === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000
+  });
+}
+app.post('/api/student/forgot-password', async (req,res) => {
+  const email = String((req.body||{}).email||'').trim().toLowerCase();
+  const generic = {ok:true,message:'यदि यह ईमेल Student Portal अकाउंट से जुड़ा है, तो OTP भेज दिया गया है।'};
+  if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(200).json(generic);
+  const now = Date.now();
+  const last = resetRequestLimiter.get(email) || 0;
+  if (now - last < 60 * 1000) return res.status(200).json(generic);
+  resetRequestLimiter.set(email, now);
+  try {
+    await Promise.all([studentAccountsTableReady,passwordResetTableReady]);
+    const account = await pool.query('SELECT id FROM internship_student_accounts WHERE lower(email)=lower($1) LIMIT 1',[email]);
+    if (!account.rows.length) return res.status(200).json(generic);
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) throw new Error('SMTP credentials are not configured');
+    const otp = String(crypto.randomInt(100000,1000000));
+    const salt = crypto.randomBytes(16).toString('hex');
+    const otpHash = makeOtpHash(otp,salt);
+    await pool.query('UPDATE internship_password_resets SET used=TRUE WHERE lower(email)=lower($1) AND used=FALSE',[email]);
+    await pool.query('INSERT INTO internship_password_resets (email,otp_hash,expires_at,attempts,used) VALUES ($1,$2,$3,0,FALSE)',[email,`${salt}:${otpHash}`,new Date(Date.now()+10*60*1000)]);
+    const transport = getMailTransport();
+    await transport.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: email,
+      subject: 'Nisha Seva Foundation Student Portal — Password Reset OTP',
+      text: `Your password reset OTP is ${otp}. It expires in 10 minutes. If you did not request this, ignore this email.`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px;border:1px solid #dfe8e2;border-radius:16px"><h2 style="color:#0f5132">Nisha Seva Foundation</h2><p>Your Student Portal password reset code is:</p><p style="font-size:32px;font-weight:bold;letter-spacing:8px">${otp}</p><p>This code expires in 10 minutes. Never share it with anyone.</p></div>`
+    });
+    return res.status(200).json(generic);
+  } catch(error) {
+    console.error('STUDENT FORGOT PASSWORD ERROR:',error.message);
+    return res.status(200).json(generic);
+  }
+});
+app.post('/api/student/reset-password', async (req,res) => {
+  try {
+    await Promise.all([studentAccountsTableReady,passwordResetTableReady]);
     const body=req.body||{};
-    const username=String(body.username||'').trim();
     const email=String(body.email||'').trim().toLowerCase();
-    const password=String(body.password||'');
-    const application=body.application&&typeof body.application==='object'?body.application:{};
-    if(!/^[a-zA-Z0-9_.-]{4,32}$/.test(username)) return res.status(400).json({error:'Username 4–32 characters का रखें; letters, numbers, dot, underscore या hyphen इस्तेमाल करें।'});
-    if(!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({error:'Valid email address भरें।'});
-    if(password.length<10) return res.status(400).json({error:'Password कम से कम 10 characters का होना चाहिए।'});
-    if(!String(application.studentName||application.name||'').trim()) return res.status(400).json({error:'Student registration form में पूरा नाम भरें।'});
-    if(!String(application.mobile||application.phone||'').trim()) return res.status(400).json({error:'Mobile number भरें।'});
-    const salt=crypto.randomBytes(16).toString('hex');
-    const passwordHash=await hashStudentPassword(password,salt);
-    const publicId=makePublicStudentId();
-    const appData={...application,studentName:String(application.studentName||application.name).trim(),email,mobile:String(application.mobile||application.phone).trim(),status:'pending',studentAccount:true,publicProfileId:publicId,submittedAt:new Date().toISOString()};
-    const created=await pool.query('INSERT INTO internships (data) VALUES ($1::jsonb) RETURNING id, data, created_at',[JSON.stringify(appData)]);
-    const internshipId=created.rows[0].id;
-    const accountResult=await pool.query('INSERT INTO internship_student_accounts (username,email,password_salt,password_hash,public_id,internship_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, username, email, public_id, internship_id, created_at',[username,email,salt,passwordHash,publicId,internshipId]);
-    const account=accountResult.rows[0];
-    const token=makeStudentToken();
+    const otp=String(body.otp||'').trim();
+    const newPassword=String(body.newPassword||'');
+    if (!/^\S+@\S+\.\S+$/.test(email) || !/^\d{6}$/.test(otp)) return res.status(400).json({error:'ईमेल और 6 अंकों का OTP सही भरें।'});
+    if (newPassword.length<10) return res.status(400).json({error:'नया पासवर्ड कम से कम 10 characters का होना चाहिए।'});
+    const result=await pool.query('SELECT * FROM internship_password_resets WHERE lower(email)=lower($1) AND used=FALSE AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1',[email]);
+    if (!result.rows.length) return res.status(400).json({error:'OTP गलत है या उसकी समय-सीमा समाप्त हो गई है। नया OTP लें।'});
+    const reset=result.rows[0];
+    if (reset.attempts>=5) return res.status(429).json({error:'बहुत अधिक प्रयास हुए। नया OTP लें।'});
+    const [salt,storedHash]=String(reset.otp_hash).split(':');
+    const incomingHash=makeOtpHash(otp,salt);
+    if (incomingHash!==storedHash) {
+      await pool.query('UPDATE internship_password_resets SET attempts=attempts+1 WHERE id=$1',[reset.id]);
+      return res.status(400).json({error:'OTP गलत है।'});
+    }
+    const saltNew=crypto.randomBytes(16).toString('hex');
+    const passwordHash=await hashStudentPassword(newPassword,saltNew);
+    await pool.query('UPDATE internship_student_accounts SET password_salt=$1,password_hash=$2,updated_at=NOW() WHERE lower(email)=lower($3)',[saltNew,passwordHash,email]);
+    await pool.query('UPDATE internship_password_resets SET used=TRUE WHERE id=$1',[reset.id]);
+    for (const [token,session] of studentSessions.entries()) {
+      if (session.accountId) {
+        const acc=await pool.query('SELECT email FROM internship_student_accounts WHERE id=$1',[session.accountId]);
+        if (acc.rows[0] && String(acc.rows[0].email).toLowerCase()===email) studentSessions.delete(token);
+      }
+    }
+    return res.json({ok:true,message:'पासवर्ड बदल गया है। अब नए पासवर्ड से Login करें।'});
+  } catch(error) {
+    console.error('STUDENT RESET PASSWORD ERROR:',error);
+    return res.status(500).json({error:'पासवर्ड रीसेट नहीं हो सका।'});
+  }
+});
+
+app.post('/api/student/signup', async (req,res)=>{
+  try {
+    await Promise.all([studentAccountsTableReady, internshipTableReady]);
+    const body = req.body || {};
+    const username = String(body.username || '').trim();
+    const email = String(body.email || '').trim().toLowerCase();
+    const password = String(body.password || '');
+    const referenceNo = String(body.referenceNo || body.refNo || '').trim().toUpperCase();
+    if (!/^[a-zA-Z0-9_.-]{4,32}$/.test(username)) return res.status(400).json({error:'Username 4–32 characters का रखें; letters, numbers, dot, underscore या hyphen इस्तेमाल करें।'});
+    if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({error:'Valid email address भरें।'});
+    if (password.length < 10) return res.status(400).json({error:'Password कम से कम 10 characters का होना चाहिए।'});
+    if (!/^NSF-INT-\d+$/.test(referenceNo)) return res.status(400).json({error:'अपने Internship Application का सही Reference Number भरें।'});
+    const appId = Number(referenceNo.replace('NSF-INT-',''));
+    const appResult = await pool.query('SELECT id,data,created_at FROM internships WHERE id=$1 LIMIT 1',[appId]);
+    if (!appResult.rows.length) return res.status(403).json({error:'इस Reference Number से Internship Application नहीं मिला।'});
+    const appRow = appResult.rows[0];
+    const appData = appRow.data || {};
+    const applicationEmail = String(appData.email || '').trim().toLowerCase();
+    const savedReference = String(appData.referenceNo || appData.applicationReference || '').toUpperCase();
+    if (applicationEmail !== email || (savedReference && savedReference !== referenceNo)) {
+      return res.status(403).json({error:'Reference Number और आवेदन में दर्ज ईमेल का मिलान नहीं हुआ।'});
+    }
+    if (!savedReference) {
+      appData.referenceNo = referenceNo;
+      appData.applicationReference = referenceNo;
+      await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2',[JSON.stringify(appData),appRow.id]);
+    }
+    const exists = await pool.query('SELECT id FROM internship_student_accounts WHERE internship_id=$1 OR lower(email)=lower($2) LIMIT 1',[appRow.id,email]);
+    if (exists.rows.length) return res.status(409).json({error:'इस आवेदन के लिए अकाउंट पहले से बना है। Login या Forgot Password इस्तेमाल करें।'});
+    const salt = crypto.randomBytes(16).toString('hex');
+    const passwordHash = await hashStudentPassword(password,salt);
+    const publicId = makePublicStudentId();
+    const accountResult = await pool.query(
+      'INSERT INTO internship_student_accounts (username,email,password_salt,password_hash,public_id,internship_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,username,email,public_id,internship_id,created_at',
+      [username,email,salt,passwordHash,publicId,appRow.id]
+    );
+    const account = accountResult.rows[0];
+    const token = makeStudentToken();
     studentSessions.set(token,{accountId:account.id,expiresAt:Date.now()+STUDENT_SESSION_TTL_MS});
-    return res.status(201).json({ok:true,token,student:{id:account.id,username:account.username,email:account.email,publicId:account.public_id,uniqueUrl:studentPublicUrl(account.public_id),application:{id:internshipId,...(created.rows[0].data||{}),submittedAt:created.rows[0].created_at}}});
-  }catch(error){
-    if(error.code==='23505') return res.status(409).json({error:'यह Username या Email पहले से registered है। दूसरा इस्तेमाल करें या Login करें।'});
+    return res.status(201).json({ok:true,token,student:{id:account.id,username:account.username,email:account.email,publicId:account.public_id,uniqueUrl:studentPublicUrl(account.public_id),application:{id:appRow.id,...appData,submittedAt:appRow.created_at}}});
+  } catch(error) {
+    if (error.code === '23505') return res.status(409).json({error:'Username, email या internship application के लिए अकाउंट पहले से registered है।'});
     console.error('STUDENT SIGNUP ERROR:',error);
     return res.status(500).json({error:'Student account नहीं बन सका। कृपया बाद में प्रयास करें।'});
   }
