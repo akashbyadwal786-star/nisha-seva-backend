@@ -9,7 +9,13 @@ const defaultDB = {
   volunteers: [],
   members: [],
   contactMessages: [],
-  newsletter: []
+  newsletter: [],
+  impactLocations: [],
+  volunteerMissions: [],
+  certificateRecords: [],
+  impactStories: [],
+  communityEvents: [],
+  knowledgeResources: []
 };
 
 const pool = new Pool({
