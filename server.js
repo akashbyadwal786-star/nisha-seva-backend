@@ -46,49 +46,33 @@ const ADMIN_PASSWORD =
   process.env.ADMIN_PASSWORD ||
   'change-this-password';
 
-// Set both values in Render Environment for a separate coordinator account.
+// Set both values in Hostinger Environment for a separate coordinator account.
 const COORDINATOR_USERNAME = process.env.COORDINATOR_USERNAME || '';
 const COORDINATOR_PASSWORD = process.env.COORDINATOR_PASSWORD || '';
 
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
-  'https://nisha-seva-backend.onrender.com';
+  'https://api.nishasevafoundation.org';
 
 
 /* =========================================================
    MIDDLEWARE
    ========================================================= */
 
-// Explicitly allow the production domain and its www variant, plus any
-// additional exact origins configured in Render's ALLOWED_ORIGINS variable.
-const normalizeOrigin = value => {
-  const trimmed = String(value || '').trim().toLowerCase();
-  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
-};
-const configuredOrigins = String(process.env.ALLOWED_ORIGINS || '')
-  .split(',').map(normalizeOrigin).filter(Boolean);
-const allowedOrigins = new Set([
-  'https://nishasevafoundation.org',
-  'https://www.nishasevafoundation.org',
-  'https://api.nishasevafoundation.org',
-  ...configuredOrigins
-].map(value => value.toLowerCase()));
+const allowedOrigins = String(process.env.ALLOWED_ORIGINS || 'https://nishasevafoundation.org')
+  .split(',').map(value => value.trim()).filter(Boolean);
 app.use(cors({
   origin: (origin, callback) => {
-    const normalizedOrigin = normalizeOrigin(origin);
-    if (!origin || allowedOrigins.has(normalizedOrigin)) return callback(null, true);
-    console.warn('[CORS] Rejected Origin:', origin);
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('Origin not allowed by CORS'));
   },
-  methods: ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
-  optionsSuccessStatus: 204
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
 }));
 
 app.use(
   express.json({
-    // Keep request parsing bounded for Render's small-memory instances.
-    limit: '10mb',
+    limit: '30mb',
     verify: (req, res, buf) => { if (req.originalUrl && req.originalUrl.startsWith('/api/donations/webhook')) req.rawBody = Buffer.from(buf); }
   })
 );
@@ -96,7 +80,7 @@ app.use(
 app.use(
   express.urlencoded({
     extended: true,
-    limit: '10mb'
+    limit: '30mb'
   })
 );
 
@@ -146,18 +130,6 @@ const sessions =
 const SESSION_TTL_MS =
   12 * 60 * 60 * 1000;
 
-// Remove expired in-memory sessions periodically so abandoned logins do not
-// accumulate indefinitely on small-memory hosting plans.
-function pruneExpiredSessions() {
-  const now = Date.now();
-  for (const [token, session] of sessions) {
-    if (!session || !session.expiresAt || session.expiresAt <= now) {
-      sessions.delete(token);
-    }
-  }
-}
-setInterval(pruneExpiredSessions, 10 * 60 * 1000).unref();
-
 
 function requireAdmin(
   req,
@@ -181,7 +153,7 @@ function requireAdmin(
   }
 
   // Coordinator can access only internship application endpoints.
-  if (session.role === 'coordinator' && !(/^\/api\/internships(?:\/|$)/.test(req.path) || req.path === '/api/admin/logout' || req.path === '/api/student/accounts')) {
+  if (session.role === 'coordinator' && !(/^\/api\/internships(?:\/|$)/.test(req.path) || req.path === '/api/admin/logout' || req.path === '/api/student/accounts' || /^\/api\/projectSubmissions(?:\/|$)/.test(req.path))) {
     return res.status(403).json({ error: 'Forbidden: coordinator access is limited to internship management' });
   }
 
@@ -237,7 +209,7 @@ app.post(
 app.post('/api/coordinator/login', (req, res) => {
   const { username, password } = req.body || {};
   if (!COORDINATOR_USERNAME || !COORDINATOR_PASSWORD) {
-    return res.status(503).json({ error: 'Coordinator account is not configured. Set COORDINATOR_USERNAME and COORDINATOR_PASSWORD in Render Environment.' });
+    return res.status(503).json({ error: 'Coordinator account is not configured. Set COORDINATOR_USERNAME and COORDINATOR_PASSWORD in Hostinger Environment.' });
   }
   if (username !== COORDINATOR_USERNAME || password !== COORDINATOR_PASSWORD) {
     return res.status(401).json({ error: 'Invalid coordinator username or password' });
