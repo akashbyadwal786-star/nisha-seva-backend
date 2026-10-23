@@ -44,7 +44,7 @@ button,.linkbtn{border:0;border-radius:10px;padding:12px 15px;font-weight:800;cu
 <p class="foot">Protect your password and OTP. Foundation staff will never ask you to share either one.</p>
 </main>
 <script>
-const API_BASE=(window.NISHA_API_URL||'https://nisha-seva-backend.onrender.com').replace(/\/$/,'');
+const API_BASE=(window.NISHA_API_URL||'https://api.nishasevafoundation.org').replace(/\/$/,'');
 const $=id=>document.getElementById(id);
 let currentStudent=null;
 function showMsg(id,text,ok=false){const el=$(id);el.textContent=text;el.className='message '+(ok?'ok':'err');}
