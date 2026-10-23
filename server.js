@@ -86,7 +86,8 @@ app.use(cors({
 
 app.use(
   express.json({
-    limit: '30mb',
+    // Keep request parsing bounded for Render's small-memory instances.
+    limit: '10mb',
     verify: (req, res, buf) => { if (req.originalUrl && req.originalUrl.startsWith('/api/donations/webhook')) req.rawBody = Buffer.from(buf); }
   })
 );
@@ -94,7 +95,7 @@ app.use(
 app.use(
   express.urlencoded({
     extended: true,
-    limit: '30mb'
+    limit: '10mb'
   })
 );
 
@@ -143,6 +144,18 @@ const sessions =
 
 const SESSION_TTL_MS =
   12 * 60 * 60 * 1000;
+
+// Remove expired in-memory sessions periodically so abandoned logins do not
+// accumulate indefinitely on small-memory hosting plans.
+function pruneExpiredSessions() {
+  const now = Date.now();
+  for (const [token, session] of sessions) {
+    if (!session || !session.expiresAt || session.expiresAt <= now) {
+      sessions.delete(token);
+    }
+  }
+}
+setInterval(pruneExpiredSessions, 10 * 60 * 1000).unref();
 
 
 function requireAdmin(
