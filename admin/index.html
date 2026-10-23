@@ -542,7 +542,7 @@ function login(){
         <br><br><label for="pass"><b>Password</b></label><input id="pass" type="password" autocomplete="current-password" placeholder="Enter password">
         <br><br><button class="primary" style="width:100%;padding:13px" onclick="doLogin()">🔐 Login Securely</button>
         <div id="msg"></div>
-        <div class="role-note">Coordinator login के लिए Render backend में COORDINATOR_USERNAME और COORDINATOR_PASSWORD environment variables सेट होने चाहिए। Coordinator को केवल Internship Applications और Internship Documents दिखेंगे।</div>
+        <div class="role-note">Coordinator login के लिए Render backend में COORDINATOR_USERNAME और COORDINATOR_PASSWORD environment variables सेट होने चाहिए। Coordinator को Internship Applications, Documents, Student Portal Accounts/QR और Student Projects के कार्य मिलेंगे।</div>
       </div>
     </div>`;
   selectLoginRole("admin");
@@ -611,8 +611,8 @@ async function render(){
     return;
   }
 
-  if(currentRole === "coordinator" && !["internships","internshipDocuments","studentPortal"].includes(current)) current = "internships";
-  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => ["internships","internshipDocuments","studentPortal"].includes(t[0])) : tabs;
+  if(currentRole === "coordinator" && !["internships","internshipDocuments","studentPortal","projectSubmissions"].includes(current)) current = "internships";
+  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => ["internships","internshipDocuments","studentPortal","projectSubmissions"].includes(t[0])) : tabs;
 
   app.innerHTML = `
 
@@ -1415,31 +1415,66 @@ function internshipCard(x){
  return `<div class="item"><div class="row"><div><h3 style="margin:0 0 6px">${esc(x.studentName||x.name||'Student')}</h3><span class="status ${cls}">${esc(status.toUpperCase())}</span></div><div class="actions">${actions}</div></div><div class="internship-admin-grid">
  <div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId||'Not issued')}</div><div class="info-box"><strong>Application ID</strong>${esc(x.id)}</div><div class="info-box"><strong>Reference Number</strong>${esc(x.referenceNo||x.applicationReference||('NSF-INT-'+x.id))}</div><div class="info-box"><strong>Father / Mother</strong>${esc(x.parentName||'-')}</div><div class="info-box"><strong>Mobile</strong>${esc(x.mobile||x.phone||'-')}</div><div class="info-box"><strong>Email</strong>${esc(x.email||'-')}</div><div class="info-box"><strong>College</strong>${esc(x.collegeName||x.educationCollege||'-')}</div><div class="info-box"><strong>University</strong>${esc(x.university||'-')}</div><div class="info-box"><strong>Class / Year</strong>${esc((x.className||'BA')+' / '+(x.yearSemester||'-'))}</div><div class="info-box"><strong>Enrollment / Roll</strong>${esc(x.enrollmentRoll||'-')}</div><div class="info-box"><strong>Previous %</strong>${esc(x.previousPercentage||'-')}%</div><div class="info-box"><strong>Duration</strong>${esc(x.duration||'-')}</div><div class="info-box"><strong>Availability</strong>${esc(x.availability||'-')}</div><div class="info-box"><strong>Preferred Area</strong>${esc(x.preferredPlace||'-')}</div><div class="info-box"><strong>Application Date</strong>${esc(x.applicationDate||'-')}</div></div><div style="margin-top:12px"><b>Internship Interest:</b> ${esc(interests)}</div>${x.otherInterest?`<div style="margin-top:7px"><b>Other:</b> ${esc(x.otherInterest)}</div>`:''}${x.address?`<div style="margin-top:7px"><b>Address:</b> ${esc(x.address)}</div>`:''}${x.studentNote?`<div style="margin-top:7px"><b>Student Note:</b> ${esc(x.studentNote)}</div>`:''}${x.recommendation?`<div style="margin-top:7px"><b>College Recommendation:</b> ${esc(x.recommendation)}</div>`:''}<div class="upload-field"><b>📎 Uploaded Documents</b><div style="display:grid;gap:8px;margin-top:10px"><div><b>10th Marksheet:</b> ${documentLink(docValue(x,['tenthMarksheet','marksheet10','class10Marksheet','tenthMarksheetUrl','marksheet10Url']),'10th_Marksheet')}</div><div><b>Last Year Marksheet:</b> ${documentLink(docValue(x,['lastYearMarksheet','previousYearMarksheet','lastYearMarksheetUrl','previousMarksheet']),'Last_Year_Marksheet')}</div><div><b>Aadhaar Card:</b> ${documentLink(docValue(x,['aadharCard','aadhaarCard','aadhaar','aadharCardUrl','aadhaarCardUrl']),'Aadhaar_Card')}</div></div></div></div>`;
 }
-async function editInternshipApplication(id){
+const INTERNSHIP_EDIT_PROTECTED = new Set(['id','status','internshipId','approvedAt','issuedAt','rejectedAt','revokedAt','publicProfileId','studentAccount']);
+function internshipFieldLabel(key){
+ const labels={studentName:'Student Name',name:'Student Name',parentName:'Father / Mother Name',email:'Email',mobile:'Mobile Number',phone:'Phone Number',collegeName:'College Name',educationCollege:'College Name',university:'University',className:'Class / Course',yearSemester:'Year / Semester',enrollmentRoll:'Enrollment / Roll Number',duration:'Internship Duration',applicationDate:'Application Date',preferredPlace:'Preferred Area',availability:'Availability',interests:'Areas of Interest',address:'Address',city:'City',state:'State',pincode:'PIN Code',gender:'Gender',dateOfBirth:'Date of Birth',studentNote:'Student Note',recommendation:'Recommendation',coordinatorName:'Coordinator Name',submittedAt:'Submitted At',referenceNo:'Reference Number',applicationReference:'Application Reference'};
+ return labels[key]||key.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
+}
+function editInternshipApplication(id){
  const x=internshipCache[id]; if(!x){alert('Application record नहीं मिला।');return;}
- const editable={...x};
- const raw=prompt('Internship Form Edit करें — नीचे JSON में जानकारी बदलें और OK दबाएँ:',JSON.stringify(editable,null,2));
- if(raw===null)return;
- let updated;try{updated=JSON.parse(raw);}catch(e){alert('JSON सही नहीं है। कोई बदलाव सेव नहीं हुआ।');return;}
- if(!updated||typeof updated!=='object'||Array.isArray(updated)){alert('कृपया valid form object डालें।');return;}
- // Keep approval/security fields controlled by admin approval workflow.
- ['id','status','internshipId','approvedAt','issuedAt','rejectedAt','revokedAt'].forEach(k=>{if(k in x)updated[k]=x[k];});
- try{await api('/api/internships/'+id,{method:'PUT',body:JSON.stringify(updated)});alert('Internship form saved. अब Download Form बटन से सेव किया हुआ फॉर्म डाउनलोड कर सकते हैं।');await renderInternships();}
- catch(e){alert('Save नहीं हुआ: '+e.message);}
+ const old=document.getElementById('internshipEditModal');if(old)old.remove();
+ const editableKeys=Object.keys(x).filter(k=>!INTERNSHIP_EDIT_PROTECTED.has(k)&&!['studentPhoto','studentSignature','parentSignature','documents','aadharCard','aadhaarCard','tenthMarksheet','lastYearMarksheet'].includes(k));
+ const fields=editableKeys.map(key=>{
+   const value=x[key];
+   if(value!==null && typeof value==='object' && !Array.isArray(value)) return '';
+   const val=Array.isArray(value)?value.join(', '):(value??'');
+   return `<label style="display:block;margin:12px 0 5px;font-weight:700">${esc(internshipFieldLabel(key))}<input data-app-key="${esc(key)}" value="${esc(val)}" style="display:block;width:100%;margin-top:6px;padding:11px;border:1px solid #d5dfe7;border-radius:9px"></label>`;
+ }).join('');
+ document.body.insertAdjacentHTML('beforeend',`<div class="modal" id="internshipEditModal"><div class="modalbox" style="max-width:900px"><div class="row"><div><h2>✏️ Internship Application Edit</h2><p class="small">बदलाव सेव करने के बाद इसी आवेदन का अपडेटेड PDF डाउनलोड कर सकते हैं। Approval और Internship ID सुरक्षित रहेंगे।</p></div><button class="muted" onclick="document.getElementById('internshipEditModal').remove()">✕ बंद करें</button></div><form id="internshipEditForm">${fields}<div class="actions" style="margin-top:20px"><button class="primary" type="submit">💾 Save Changes</button><button class="muted" type="button" onclick="document.getElementById('internshipEditModal').remove()">Cancel</button></div><div id="internshipEditMessage" class="small" style="margin-top:10px"></div></form></div></div>`);
+ document.getElementById('internshipEditForm').addEventListener('submit',async ev=>{
+   ev.preventDefault();
+   const updated={...x};
+   document.querySelectorAll('#internshipEditForm [data-app-key]').forEach(input=>{
+     const key=input.getAttribute('data-app-key'),prior=x[key],value=input.value.trim();
+     updated[key]=Array.isArray(prior)?value.split(',').map(v=>v.trim()).filter(Boolean):value;
+   });
+   INTERNSHIP_EDIT_PROTECTED.forEach(k=>{if(k in x)updated[k]=x[k];});
+   const message=document.getElementById('internshipEditMessage');message.textContent='Saving...';
+   try{
+     const saved=await api('/api/internships/'+id,{method:'PUT',body:JSON.stringify(updated)});
+     internshipCache[id]={...x,...(saved&&typeof saved==='object'?saved:updated)};
+     await renderInternships();
+     const modal=document.getElementById('internshipEditModal');if(modal)modal.remove();
+     alert('आवेदन अपडेट हो गया। अब Download Form दबाएँ।');
+   }catch(e){message.textContent='Save नहीं हुआ: '+e.message;}
+ });
 }
 function downloadInternshipApplication(id){
  const x=internshipCache[id];if(!x){alert('Application record नहीं मिला।');return;}
  const {jsPDF}=window.jspdf||{};if(!jsPDF){alert('PDF library load नहीं हुई।');return;}
- const pdf=new jsPDF({unit:'mm',format:'a4'});let y=16;
- pdf.setFont('helvetica','bold');pdf.setFontSize(16);pdf.text('NISHA SEVA FOUNDATION',14,y);y+=8;
- pdf.setFont('helvetica','normal');pdf.setFontSize(10);pdf.text('Student Internship Application',14,y);y+=8;
- pdf.text('Reference Number: '+(x.referenceNo||x.applicationReference||('NSF-INT-'+x.id)),14,y);y+=7;
- pdf.text('Application ID: '+x.id,14,y);y+=8;
- const fields=[['Student Name',x.studentName||x.name],['Father / Mother Name',x.parentName],['Email',x.email],['Mobile',x.mobile||x.phone],['College',x.collegeName||x.educationCollege],['University',x.university],['Class / Year',(x.className||'BA')+' / '+(x.yearSemester||'')],['Enrollment / Roll',x.enrollmentRoll],['Duration',x.duration],['Application Date',x.applicationDate],['Preferred Area',x.preferredPlace],['Availability',x.availability],['Status',x.status]];
- fields.forEach(([label,value])=>{const text=String(value||'-');const lines=pdf.splitTextToSize(label+': '+text,180);if(y+lines.length*5>280){pdf.addPage();y=16;}pdf.text(lines,14,y);y+=lines.length*5+2;});
- const exclude=new Set(['id','studentPhoto','studentSignature','parentSignature','documents','aadharCard','aadhaarCard','tenthMarksheet','lastYearMarksheet']);
- Object.keys(x).filter(k=>!exclude.has(k)&&!['studentName','name','parentName','email','mobile','phone','collegeName','educationCollege','university','className','yearSemester','enrollmentRoll','duration','applicationDate','preferredPlace','availability','status','referenceNo','applicationReference','internshipId'].includes(k)).forEach(k=>{let val=x[k];if(val&&typeof val==='object')val=JSON.stringify(val);if(val===undefined||val===null||String(val)==='')return;const lines=pdf.splitTextToSize(k+': '+String(val),180);if(y+lines.length*5>280){pdf.addPage();y=16;}pdf.text(lines,14,y);y+=lines.length*5+2;});
- pdf.save((x.referenceNo||('NSF-INT-'+x.id))+'_Internship_Application.pdf');
+ const pdf=new jsPDF({unit:'mm',format:'a4'}),left=15,right=195;let y=17;
+ const ref=x.referenceNo||x.applicationReference||('NSF-INT-'+x.id);
+ pdf.setFillColor(11,32,53);pdf.rect(0,0,210,28,'F');
+ pdf.setTextColor(255,255,255);pdf.setFont('helvetica','bold');pdf.setFontSize(16);pdf.text('NISHA SEVA FOUNDATION',left,12);
+ pdf.setFont('helvetica','normal');pdf.setFontSize(10);pdf.text('STUDENT INTERNSHIP APPLICATION',left,20);
+ pdf.setTextColor(25,43,58);y=37;pdf.setFont('helvetica','bold');pdf.setFontSize(10);
+ pdf.text('Reference Number: '+String(ref),left,y);pdf.text('Application ID: '+String(x.id),120,y);y+=8;
+ pdf.setDrawColor(220,228,235);pdf.line(left,y,right,y);y+=7;
+ const preferred=[['Student Name',x.studentName||x.name],['Father / Mother Name',x.parentName],['Email',x.email],['Mobile Number',x.mobile||x.phone],['Date of Birth',x.dateOfBirth],['Gender',x.gender],['Address',x.address],['City',x.city],['State',x.state],['PIN Code',x.pincode],['College Name',x.collegeName||x.educationCollege],['University',x.university],['Class / Course',x.className||x.program],['Year / Semester',x.yearSemester],['Enrollment / Roll Number',x.enrollmentRoll],['Internship Duration',x.duration],['Application Date',x.applicationDate],['Preferred Area',x.preferredPlace],['Availability',x.availability],['Areas of Interest',Array.isArray(x.interests)?x.interests.join(', '):x.interests],['Student Note',x.studentNote],['Application Status',x.status],['Internship ID',x.internshipId]];
+ const excluded=new Set(['id','studentPhoto','studentSignature','parentSignature','documents','aadharCard','aadhaarCard','tenthMarksheet','lastYearMarksheet','marksheet10','class10Marksheet','aadharCardUrl','aadhaarCardUrl','tenthMarksheetUrl','lastYearMarksheetUrl','previousYearMarksheet','previousMarksheet','publicProfileId','studentAccount']);
+ const all=[...preferred,...Object.keys(x).filter(k=>!excluded.has(k)&&!preferred.some(([label])=>label===internshipFieldLabel(k))).map(k=>[internshipFieldLabel(k),x[k]])];
+ const used=new Set();pdf.setFont('helvetica','normal');pdf.setFontSize(10);
+ all.forEach(([label,value])=>{
+   if(value===undefined||value===null||String(value)==='')return;
+   const key=label+'|'+String(value);if(used.has(key))return;used.add(key);
+   let text=Array.isArray(value)?value.join(', '):(typeof value==='object'?JSON.stringify(value):String(value));
+   const lines=pdf.splitTextToSize(label+': '+text,178);
+   if(y+lines.length*5>278){pdf.addPage();y=17;}
+   pdf.setTextColor(35,52,68);pdf.text(lines,left,y);y+=lines.length*5+2.2;
+ });
+ const pages=pdf.getNumberOfPages();
+ for(let p=1;p<=pages;p++){pdf.setPage(p);pdf.setFontSize(8);pdf.setTextColor(100,115,128);pdf.text('Nisha Seva Foundation · Internship Application · '+ref,15,289);pdf.text('Page '+p+' of '+pages,195,289,{align:'right'});}
+ pdf.save(String(ref).replace(/[^a-z0-9_-]/gi,'_')+'_Internship_Application.pdf');
 }
 async function renderInternshipDocuments(){
  content.innerHTML='<h2>📎 Internship Documents</h2><p>Loading uploaded documents...</p>';
