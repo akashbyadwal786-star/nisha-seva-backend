@@ -435,6 +435,8 @@ const tabs = [
   ["internshipDocuments","Internship Documents"],
   ["studentPortal","Student Portal QR"],
   ["projectSubmissions","Student Projects"],
+  ["tasks","Coordinator Task Management"],
+  ["impactPassport","Student Impact Passport"],
   ["members","Members"],
   ["contactMessages","Messages"],
   ["communityRequests","Community Help Desk"],
@@ -446,7 +448,7 @@ const tabs = [
   ["knowledgeLibrary","Knowledge Library"],
   ["newsletter","Newsletter"]
 ];
-const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳",communityRequests:"🤝"};
+const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",tasks:"✅",impactPassport:"🏅",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳",communityRequests:"🤝"};
 
 
 /* =========================================================
@@ -611,8 +613,8 @@ async function render(){
     return;
   }
 
-  if(currentRole === "coordinator" && !["internships","internshipDocuments","studentPortal","projectSubmissions"].includes(current)) current = "internships";
-  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => ["internships","internshipDocuments","studentPortal","projectSubmissions"].includes(t[0])) : tabs;
+  if(currentRole === "coordinator" && !["internships","internshipDocuments","studentPortal","projectSubmissions","tasks","impactPassport"].includes(current)) current = "internships";
+  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => ["internships","internshipDocuments","studentPortal","projectSubmissions","tasks","impactPassport"].includes(t[0])) : tabs;
 
   app.innerHTML = `
 
@@ -691,6 +693,9 @@ async function render(){
       await renderStudentPortal();
       return;
     }
+
+    if(current === "tasks"){ await renderTasks(); return; }
+    if(current === "impactPassport"){ await renderImpactPassport(); return; }
 
     if(current === "projectSubmissions"){
 
@@ -1396,6 +1401,53 @@ async function renderStudentPortal(){
 }
 function downloadStudentQR(id,name){const box=document.getElementById(id);if(!box)return;const canvas=box.querySelector('canvas');const img=box.querySelector('img');const data=canvas?canvas.toDataURL('image/png'):(img?img.src:'');if(!data){alert('QR अभी तैयार नहीं हुआ। Refresh करके फिर प्रयास करें।');return;}const a=document.createElement('a');a.href=data;a.download='NSF-Student-QR-'+String(name||'student').replace(/[^a-z0-9_-]/gi,'_')+'.png';a.click();}
 async function copyStudentProfile(url){try{await navigator.clipboard.writeText(url);alert('Student public profile URL copied.');}catch(e){const t=document.createElement('textarea');t.value=url;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();alert('Student public profile URL copied.');}}
+
+
+/* =========================================================
+   COORDINATOR TASK MANAGEMENT
+   ========================================================= */
+async function renderTasks(){
+ const content=document.getElementById('content');
+ content.innerHTML='<h2>✅ Coordinator Task Management</h2><p>Loading tasks...</p>';
+ try{
+  const result=await api('/api/tasks');
+  const rows=Array.isArray(result.tasks)?result.tasks:[];
+  let html='<div class="row"><div><h2>Task Management</h2><p class="small">कार्य बनाएं, छात्र/टीम को दें और प्रगति ट्रैक करें।</p></div><button class="primary" onclick="renderTasks()">↻ Refresh</button></div>';
+  html+='<form id="nsfTaskForm" class="item"><h3>नया Task बनाएं</h3><label>Task Title<input name="title" maxlength="180" required></label><label style="display:block;margin-top:10px">Description<textarea name="description" maxlength="3000" rows="3"></textarea></label><div class="internship-admin-grid"><label>Student Account ID (optional)<input name="assignedStudentAccountId" type="number" min="1"></label><label>Team<input name="assignedTeam" maxlength="120"></label><label>Priority<select name="priority"><option value="normal">Normal</option><option value="low">Low</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label>Due Date<input name="dueDate" type="date"></label></div><button class="primary" type="submit" style="margin-top:12px">+ Create Task</button><span id="nsfTaskMessage" class="small" style="margin-left:10px"></span></form>';
+  html+='<h3>Task List ('+rows.length+')</h3>';
+  html+=rows.length?rows.map(t=>'<div class="item"><div class="row"><div><h3>'+esc(t.title)+'</h3><p>'+esc(t.description||'')+'</p><span class="small">Team: '+esc(t.assigned_team||'-')+' · Student Account: '+esc(t.assigned_student_account_id||'-')+' · Priority: '+esc(t.priority||'normal')+' · Due: '+esc(t.due_date||'-')+'</span></div><div><label>Status<select id="nsfTaskStatus_'+Number(t.id)+'"><option value="todo" '+(t.status==='todo'?'selected':'')+'>To do</option><option value="in_progress" '+(t.status==='in_progress'?'selected':'')+'>In progress</option><option value="blocked" '+(t.status==='blocked'?'selected':'')+'>Blocked</option><option value="review" '+(t.status==='review'?'selected':'')+'>Review</option><option value="done" '+(t.status==='done'?'selected':'')+'>Done</option><option value="cancelled" '+(t.status==='cancelled'?'selected':'')+'>Cancelled</option></select></label><button class="primary" onclick="saveNsfTaskStatus('+Number(t.id)+')">Save Status</button></div></div></div>').join(''):'<div class="ok">अभी कोई task नहीं है। ऊपर से पहला task बनाएं।</div>';
+  content.innerHTML=html;
+  document.getElementById('nsfTaskForm').addEventListener('submit',async ev=>{ev.preventDefault();const form=ev.currentTarget;const fd=new FormData(form);const body=Object.fromEntries(fd.entries());const msg=document.getElementById('nsfTaskMessage');msg.textContent='Saving...';try{await api('/api/tasks',{method:'POST',body:JSON.stringify(body)});await renderTasks();}catch(e){msg.textContent=e.message;}});
+ }catch(e){content.innerHTML='<div class="err">'+esc(e.message)+'</div><button class="primary" onclick="renderTasks()">Retry</button>';}
+}
+async function saveNsfTaskStatus(id){const select=document.getElementById('nsfTaskStatus_'+id);if(!select)return;try{await api('/api/tasks/'+id+'/status',{method:'PATCH',body:JSON.stringify({status:select.value})});await renderTasks();}catch(e){alert('Task status सेव नहीं हुआ: '+e.message);}}
+/* =========================================================
+   STUDENT IMPACT PASSPORT
+   ========================================================= */
+async function renderImpactPassport(){
+ const content=document.getElementById('content');
+ content.innerHTML='<h2>🏅 Student Impact Passport</h2><p>Loading student accounts...</p>';
+ try{
+  const result=await api('/api/student/accounts');
+  const students=Array.isArray(result.students)?result.students:[];
+  let html='<div class="row"><div><h2>Student Impact Passport</h2><p class="small">Student Account ID चुनकर उपलब्धियाँ जोड़ें और प्रमाणित करें।</p></div><button class="primary" onclick="renderImpactPassport()">↻ Refresh</button></div>';
+  if(!students.length){content.innerHTML=html+'<div class="ok">अभी कोई student account उपलब्ध नहीं है।</div>';return;}
+  html+='<label>Student<select id="nsfPassportStudent" onchange="loadNsfPassport()"><option value="">-- छात्र चुनें --</option>'+students.map(st=>'<option value="'+Number(st.id)+'">'+esc(st.studentName||st.username)+' · ID '+Number(st.id)+'</option>').join('')+'</select></label><div id="nsfPassportDetails" style="margin-top:18px"><p class="small">ऊपर से छात्र चुनें।</p></div>';
+  content.innerHTML=html;
+ }catch(e){content.innerHTML='<div class="err">'+esc(e.message)+'</div><button class="primary" onclick="renderImpactPassport()">Retry</button>';}
+}
+async function loadNsfPassport(){
+ const select=document.getElementById('nsfPassportStudent'),box=document.getElementById('nsfPassportDetails');if(!select||!box||!select.value){if(box)box.innerHTML='';return;}
+ const sid=Number(select.value);box.innerHTML='<p>Loading passport...</p>';
+ try{
+  const data=await api('/api/impact-passport/'+sid);const rows=Array.isArray(data.entries)?data.entries:[];
+  let html='<div class="item"><h3>'+esc(data.student.username||'Student')+'</h3><p class="small">'+esc(data.student.email||'')+'</p><form id="nsfPassportForm"><h4>नई उपलब्धि जोड़ें</h4><label>Title<input name="title" maxlength="180" required></label><label style="display:block;margin-top:8px">Description<textarea name="description" rows="2" maxlength="3000"></textarea></label><div class="internship-admin-grid"><label>Type<select name="entryType"><option value="achievement">Achievement</option><option value="skill">Skill</option><option value="service_hours">Service Hours</option><option value="project">Project</option><option value="certificate">Certificate</option></select></label><label>Metric Value (optional)<input type="number" min="0" step="0.01" name="metricValue"></label><label>Metric Unit<input name="metricUnit" placeholder="hours, tasks, points"></label><label>Evidence URL (optional)<input name="evidenceUrl" type="url"></label></div><button class="primary" style="margin-top:10px" type="submit">Add Entry</button><span id="nsfPassportMsg" class="small" style="margin-left:8px"></span></form></div><h3>Passport Entries ('+rows.length+')</h3>';
+  html+=rows.length?rows.map(e=>'<div class="item"><div class="row"><div><b>'+esc(e.title)+'</b><p>'+esc(e.description||'')+'</p><span class="small">'+esc(e.entry_type)+' · '+esc(e.metric_value==null?'':e.metric_value)+' '+esc(e.metric_unit||'')+' · '+esc(e.verification_status)+'</span>'+(e.evidence_url?'<p><a href="'+esc(e.evidence_url)+'" target="_blank" rel="noopener noreferrer">View evidence</a></p>':'')+'</div><div><select id="nsfPassportStatus_'+Number(e.id)+'"><option value="pending" '+(e.verification_status==='pending'?'selected':'')+'>Pending</option><option value="verified" '+(e.verification_status==='verified'?'selected':'')+'>Verified</option><option value="rejected" '+(e.verification_status==='rejected'?'selected':'')+'>Rejected</option></select><button class="primary" onclick="reviewNsfPassport('+Number(e.id)+','+sid+')">Save Review</button></div></div></div>').join(''):'<div class="ok">अभी कोई passport entry नहीं है।</div>';
+  box.innerHTML=html;
+  document.getElementById('nsfPassportForm').addEventListener('submit',async ev=>{ev.preventDefault();const fd=new FormData(ev.currentTarget);const body=Object.fromEntries(fd.entries());const msg=document.getElementById('nsfPassportMsg');msg.textContent='Saving...';try{await api('/api/impact-passport/'+sid+'/entries',{method:'POST',body:JSON.stringify(body)});await loadNsfPassport();}catch(e){msg.textContent=e.message;}});
+ }catch(e){box.innerHTML='<div class="err">'+esc(e.message)+'</div>';}
+}
+async function reviewNsfPassport(entryId,studentId){const sel=document.getElementById('nsfPassportStatus_'+entryId);if(!sel)return;try{await api('/api/impact-passport/entries/'+entryId+'/review',{method:'PATCH',body:JSON.stringify({verificationStatus:sel.value})});await loadNsfPassport();}catch(e){alert('Passport review सेव नहीं हुई: '+e.message);}}
 
 /* =========================================================
    STUDENT INTERNSHIPS
