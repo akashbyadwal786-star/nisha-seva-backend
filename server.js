@@ -70,6 +70,7 @@ const configuredOrigins = String(process.env.ALLOWED_ORIGINS || '')
 const allowedOrigins = new Set([
   'https://nishasevafoundation.org',
   'https://www.nishasevafoundation.org',
+  'https://api.nishasevafoundation.org',
   ...configuredOrigins
 ].map(value => value.toLowerCase()));
 app.use(cors({
