@@ -18,6 +18,8 @@ jobs:
           node-version: 22
       - name: Install dependencies and reconcile lockfile in CI workspace
         run: npm ci --ignore-scripts
+      - name: Run feature contract tests
+        run: node --test tests/feature-contract.test.js
       - name: Check backend syntax
         run: node --check server.js
       - name: Check inline JavaScript in portal files
