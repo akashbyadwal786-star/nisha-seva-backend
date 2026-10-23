@@ -59,15 +59,25 @@ const PUBLIC_BASE_URL =
    MIDDLEWARE
    ========================================================= */
 
-const allowedOrigins = String(process.env.ALLOWED_ORIGINS || 'https://nishasevafoundation.org')
-  .split(',').map(value => value.trim()).filter(Boolean);
+// Explicitly allow the production domain and its www variant, plus any
+// additional exact origins configured in Render's ALLOWED_ORIGINS variable.
+const configuredOrigins = String(process.env.ALLOWED_ORIGINS || '')
+  .split(',').map(value => value.trim().replace(/\\/$/, '')).filter(Boolean);
+const allowedOrigins = new Set([
+  'https://nishasevafoundation.org',
+  'https://www.nishasevafoundation.org',
+  ...configuredOrigins
+].map(value => value.toLowerCase()));
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    const normalizedOrigin = String(origin || '').trim().replace(/\\/$/, '').toLowerCase();
+    if (!origin || allowedOrigins.has(normalizedOrigin)) return callback(null, true);
+    console.warn('[CORS] Rejected Origin:', origin);
     return callback(new Error('Origin not allowed by CORS'));
   },
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization']
+  methods: ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  optionsSuccessStatus: 204
 }));
 
 app.use(
