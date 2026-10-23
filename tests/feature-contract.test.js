@@ -34,12 +34,14 @@ test('all requested feature API foundations exist', () => {
     '/api/opportunities','/api/opportunities/:id/apply','/api/challenges',
     '/api/challenges/:id/checkins','/api/voice/transcript','/api/issues',
     '/api/issues/:reference/timeline','/api/public/villages/:id/scorecard',
-    '/api/impact-profile/me','/api/admin/impact-transactions'
+    '/api/impact-profile/me','/api/admin/impact-transactions',
+    '/api/admin/indicators','/api/admin/indicators/:id/verify',
+    '/api/admin/villages/:id/projects','/api/public/villages/:id/scorecard'
   ]) assert.ok(server.includes(route), 'Missing feature API: ' + route);
 });
 
 test('admin and student portals include their feature sections', () => {
-  for (const name of ['Coordinator Task Management','Student Impact Passport','NSF Impact Platform'])
+  for (const name of ['Coordinator Task Management','Student Impact Passport','NSF Impact Platform','Village Projects & Verification','Village Development Scorecard Indicators'])
     assert.ok(admin.includes(name), 'Missing admin UI section: ' + name);
   for (const id of ['studentTasksList','studentPassportList','studentOpportunities',
     'studentChallenges','studentVoiceForm','studentIssueForm','studentImpactDNA'])
