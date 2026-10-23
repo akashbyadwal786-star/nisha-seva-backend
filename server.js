@@ -61,8 +61,12 @@ const PUBLIC_BASE_URL =
 
 // Explicitly allow the production domain and its www variant, plus any
 // additional exact origins configured in Render's ALLOWED_ORIGINS variable.
+const normalizeOrigin = value => {
+  const trimmed = String(value || '').trim().toLowerCase();
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+};
 const configuredOrigins = String(process.env.ALLOWED_ORIGINS || '')
-  .split(',').map(value => value.trim().replace(/\\/$/, '')).filter(Boolean);
+  .split(',').map(normalizeOrigin).filter(Boolean);
 const allowedOrigins = new Set([
   'https://nishasevafoundation.org',
   'https://www.nishasevafoundation.org',
@@ -70,7 +74,7 @@ const allowedOrigins = new Set([
 ].map(value => value.toLowerCase()));
 app.use(cors({
   origin: (origin, callback) => {
-    const normalizedOrigin = String(origin || '').trim().replace(/\\/$/, '').toLowerCase();
+    const normalizedOrigin = normalizeOrigin(origin);
     if (!origin || allowedOrigins.has(normalizedOrigin)) return callback(null, true);
     console.warn('[CORS] Rejected Origin:', origin);
     return callback(new Error('Origin not allowed by CORS'));
