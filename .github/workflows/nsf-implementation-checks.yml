@@ -16,6 +16,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install dependencies and reconcile lockfile in CI workspace
+        run: npm install --ignore-scripts
       - name: Check backend syntax
         run: node --check server.js
       - name: Check inline JavaScript in portal files
