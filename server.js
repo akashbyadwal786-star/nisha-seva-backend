@@ -3579,6 +3579,8 @@ app.get('/api/community-requests', requireAdmin, async (req, res) => {
   }
 });
 
+require('./student-impact-routes')({ app, pool, requireAdmin, publicFormLimiter });
+
 /* =========================================================
    START SERVER
    ========================================================= */
