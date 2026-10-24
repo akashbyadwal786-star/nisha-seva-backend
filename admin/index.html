@@ -1490,47 +1490,69 @@ function internshipCard(x){
  else if(status==='active')actions=`<button class="primary" onclick="showOfferLetterById(${x.id})">📄 Offer Letter</button><button class="warning" onclick="revokeInternship(${x.id})">Revoke Approval</button>`;
  else if(status==='rejected')actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button>`;
  else actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button>`;
- actions += `<button class="warning" onclick="editInternshipApplication(${Number(x.id)})">✏️ Edit Form</button><button class="primary" onclick="downloadInternshipApplication(${Number(x.id)})">⬇️ Download Form</button><button class="danger" onclick="deleteAdminRecord('internships',${Number(x.id)},'internship application')">🗑 Delete</button>`;
+ const pendingRevision=x.formRevisionStatus==='pending_approval'&&x.pendingFormRevision&&typeof x.pendingFormRevision==='object';
+ actions += `<button class="warning" onclick="editInternshipApplication(${Number(x.id)})">✏️ Edit Form</button>`;
+ if(pendingRevision) actions += `<button class="success" onclick="approveEditedInternshipForm(${Number(x.id)})">✓ Approve Edited Form</button>`;
+ actions += pendingRevision
+  ? `<button class="primary" disabled title="Edited form approval pending">⬇️ Download Form (Pending Approval)</button>`
+  : `<button class="primary" onclick="downloadInternshipApplication(${Number(x.id)})">⬇️ Download Form</button>`;
+ actions += `<button class="danger" onclick="deleteAdminRecord('internships',${Number(x.id)},'internship application')">🗑 Delete</button>`;
  const interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'-');
- return `<div class="item"><div class="row"><div><h3 style="margin:0 0 6px">${esc(x.studentName||x.name||'Student')}</h3><span class="status ${cls}">${esc(status.toUpperCase())}</span></div><div class="actions">${actions}</div></div><div class="internship-admin-grid">
- <div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId||'Not issued')}</div><div class="info-box"><strong>Application ID</strong>${esc(x.id)}</div><div class="info-box"><strong>Reference Number</strong>${esc(x.referenceNo||x.applicationReference||('NSF-INT-'+x.id))}</div><div class="info-box"><strong>Father / Mother</strong>${esc(x.parentName||'-')}</div><div class="info-box"><strong>Mobile</strong>${esc(x.mobile||x.phone||'-')}</div><div class="info-box"><strong>Email</strong>${esc(x.email||'-')}</div><div class="info-box"><strong>College</strong>${esc(x.collegeName||x.educationCollege||'-')}</div><div class="info-box"><strong>University</strong>${esc(x.university||'-')}</div><div class="info-box"><strong>Class / Year</strong>${esc((x.className||'BA')+' / '+(x.yearSemester||'-'))}</div><div class="info-box"><strong>Enrollment / Roll</strong>${esc(x.enrollmentRoll||'-')}</div><div class="info-box"><strong>Previous %</strong>${esc(x.previousPercentage||'-')}%</div><div class="info-box"><strong>Duration</strong>${esc(x.duration||'-')}</div><div class="info-box"><strong>Availability</strong>${esc(x.availability||'-')}</div><div class="info-box"><strong>Preferred Area</strong>${esc(x.preferredPlace||'-')}</div><div class="info-box"><strong>Application Date</strong>${esc(x.applicationDate||'-')}</div></div><div style="margin-top:12px"><b>Internship Interest:</b> ${esc(interests)}</div>${x.otherInterest?`<div style="margin-top:7px"><b>Other:</b> ${esc(x.otherInterest)}</div>`:''}${x.address?`<div style="margin-top:7px"><b>Address:</b> ${esc(x.address)}</div>`:''}${x.studentNote?`<div style="margin-top:7px"><b>Student Note:</b> ${esc(x.studentNote)}</div>`:''}${x.recommendation?`<div style="margin-top:7px"><b>College Recommendation:</b> ${esc(x.recommendation)}</div>`:''}<div class="upload-field"><b>📎 Uploaded Documents</b><div style="display:grid;gap:8px;margin-top:10px"><div><b>10th Marksheet:</b> ${documentLink(docValue(x,['tenthMarksheet','marksheet10','class10Marksheet','tenthMarksheetUrl','marksheet10Url']),'10th_Marksheet')}</div><div><b>Last Year Marksheet:</b> ${documentLink(docValue(x,['lastYearMarksheet','previousYearMarksheet','lastYearMarksheetUrl','previousMarksheet']),'Last_Year_Marksheet')}</div><div><b>Aadhaar Card:</b> ${documentLink(docValue(x,['aadharCard','aadhaarCard','aadhaar','aadharCardUrl','aadhaarCardUrl']),'Aadhaar_Card')}</div></div></div></div>`;
+ const pendingHtml=pendingRevision?'<div class="info-box" style="grid-column:1/-1;border:1px solid #e0a52b;background:#fff8e6"><strong>Edited form awaiting approval</strong>The current PDF download is locked until you approve these edits.<div style="margin-top:8px">'+Object.entries(x.pendingFormRevision).map(([key,value])=>'<div style="padding:5px 0;border-top:1px solid #f0dfb7"><b>'+esc(internshipFieldLabel(key))+':</b> '+esc(Array.isArray(value)?value.join(', '):value)+'</div>').join('')+'</div></div>':'';
+ return `<div class="item"><div class="row"><div><h3 style="margin:0 0 6px">${esc(x.studentName||x.name||'Student')}</h3><span class="status ${cls}">${esc(status.toUpperCase())}</span>${pendingRevision?'<span class="status pending" style="margin-left:8px">EDIT APPROVAL PENDING</span>':''}</div><div class="actions">${actions}</div></div><div class="internship-admin-grid">
+ <div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId||'Not issued')}</div><div class="info-box"><strong>Application ID</strong>${esc(x.id)}</div><div class="info-box"><strong>Reference Number</strong>${esc(x.referenceNo||x.applicationReference||('NSF-INT-'+x.id))}</div><div class="info-box"><strong>Father / Mother</strong>${esc(x.parentName||'-')}</div><div class="info-box"><strong>Mobile</strong>${esc(x.mobile||x.phone||'-')}</div><div class="info-box"><strong>Email</strong>${esc(x.email||'-')}</div><div class="info-box"><strong>College</strong>${esc(x.collegeName||x.educationCollege||'-')}</div><div class="info-box"><strong>University</strong>${esc(x.university||'-')}</div><div class="info-box"><strong>Class / Year</strong>${esc((x.className||'BA')+' / '+(x.yearSemester||'-'))}</div><div class="info-box"><strong>Enrollment / Roll</strong>${esc(x.enrollmentRoll||'-')}</div>
+ ${pendingHtml}
+ </div></div>`;
 }
-const INTERNSHIP_EDIT_PROTECTED = new Set(['id','status','internshipId','approvedAt','issuedAt','rejectedAt','revokedAt','publicProfileId','studentAccount']);
+const INTERNSHIP_EDIT_PROTECTED = new Set(['id','status','internshipId','approvedAt','issuedAt','rejectedAt','revokedAt','publicProfileId','studentAccount','pendingFormRevision','formRevisionStatus','formRevisionSubmittedAt','formRevisionApprovedAt']);
 function internshipFieldLabel(key){
  const labels={studentName:'Student Name',name:'Student Name',parentName:'Father / Mother Name',email:'Email',mobile:'Mobile Number',phone:'Phone Number',collegeName:'College Name',educationCollege:'College Name',university:'University',className:'Class / Course',yearSemester:'Year / Semester',enrollmentRoll:'Enrollment / Roll Number',duration:'Internship Duration',applicationDate:'Application Date',preferredPlace:'Preferred Area',availability:'Availability',interests:'Areas of Interest',address:'Address',city:'City',state:'State',pincode:'PIN Code',gender:'Gender',dateOfBirth:'Date of Birth',studentNote:'Student Note',recommendation:'Recommendation',coordinatorName:'Coordinator Name',submittedAt:'Submitted At',referenceNo:'Reference Number',applicationReference:'Application Reference'};
  return labels[key]||key.replace(/([a-z])([A-Z])/g,'$1 $2').replace(/^./,c=>c.toUpperCase());
 }
 function editInternshipApplication(id){
  const x=internshipCache[id]; if(!x){alert('Application record नहीं मिला।');return;}
+ const source={...x,...(x.pendingFormRevision&&typeof x.pendingFormRevision==='object'?x.pendingFormRevision:{})};
  const old=document.getElementById('internshipEditModal');if(old)old.remove();
- const editableKeys=Object.keys(x).filter(k=>!INTERNSHIP_EDIT_PROTECTED.has(k)&&!['studentPhoto','studentSignature','parentSignature','documents','aadharCard','aadhaarCard','tenthMarksheet','lastYearMarksheet'].includes(k));
+ const editableKeys=Object.keys(source).filter(k=>!INTERNSHIP_EDIT_PROTECTED.has(k)&&!['studentPhoto','studentSignature','parentSignature','documents','aadharCard','aadhaarCard','tenthMarksheet','lastYearMarksheet'].includes(k));
  const fields=editableKeys.map(key=>{
-   const value=x[key];
+   const value=source[key];
    if(value!==null && typeof value==='object' && !Array.isArray(value)) return '';
    const val=Array.isArray(value)?value.join(', '):(value??'');
    return `<label style="display:block;margin:12px 0 5px;font-weight:700">${esc(internshipFieldLabel(key))}<input data-app-key="${esc(key)}" value="${esc(val)}" style="display:block;width:100%;margin-top:6px;padding:11px;border:1px solid #d5dfe7;border-radius:9px"></label>`;
  }).join('');
- document.body.insertAdjacentHTML('beforeend',`<div class="modal" id="internshipEditModal"><div class="modalbox" style="max-width:900px"><div class="row"><div><h2>✏️ Internship Application Edit</h2><p class="small">बदलाव सेव करने के बाद इसी आवेदन का अपडेटेड PDF डाउनलोड कर सकते हैं। Approval और Internship ID सुरक्षित रहेंगे।</p></div><button class="muted" onclick="document.getElementById('internshipEditModal').remove()">✕ बंद करें</button></div><form id="internshipEditForm">${fields}<div class="actions" style="margin-top:20px"><button class="primary" type="submit">💾 Save Changes</button><button class="muted" type="button" onclick="document.getElementById('internshipEditModal').remove()">Cancel</button></div><div id="internshipEditMessage" class="small" style="margin-top:10px"></div></form></div></div>`);
+ document.body.insertAdjacentHTML('beforeend',`<div class="modal" id="internshipEditModal"><div class="modalbox" style="max-width:900px"><div class="row"><div><h2>✏️ Internship Application Edit</h2><p class="small">Save करने पर बदलाव अलग pending revision में रहेंगे। Review करके “Approve Edited Form” दबाने के बाद ही नया PDF download होगा। मूल approved application तब तक सुरक्षित रहेगी।</p></div><button class="muted" onclick="document.getElementById('internshipEditModal').remove()">✕ बंद करें</button></div><form id="internshipEditForm">${fields}<div class="actions" style="margin-top:20px"><button class="primary" type="submit">💾 Save for Approval</button><button class="muted" type="button" onclick="document.getElementById('internshipEditModal').remove()">Cancel</button></div><div id="internshipEditMessage" class="small" style="margin-top:10px"></div></form></div></div>`);
  document.getElementById('internshipEditForm').addEventListener('submit',async ev=>{
    ev.preventDefault();
-   const updated={...x};
+   const revision={};
    document.querySelectorAll('#internshipEditForm [data-app-key]').forEach(input=>{
-     const key=input.getAttribute('data-app-key'),prior=x[key],value=input.value.trim();
-     updated[key]=Array.isArray(prior)?value.split(',').map(v=>v.trim()).filter(Boolean):value;
+     const key=input.getAttribute('data-app-key'),prior=source[key],value=input.value.trim();
+     revision[key]=Array.isArray(prior)?value.split(',').map(v=>v.trim()).filter(Boolean):value;
    });
-   INTERNSHIP_EDIT_PROTECTED.forEach(k=>{if(k in x)updated[k]=x[k];});
-   const message=document.getElementById('internshipEditMessage');message.textContent='Saving...';
+   const message=document.getElementById('internshipEditMessage');message.textContent='Saving revision for approval...';
    try{
-     const saved=await api('/api/internships/'+id,{method:'PUT',body:JSON.stringify(updated)});
-     internshipCache[id]={...x,...(saved&&typeof saved==='object'?saved:updated)};
+     const saved=await api('/api/internships/'+id,{method:'PUT',body:JSON.stringify({pendingFormRevision:revision,formRevisionStatus:'pending_approval',formRevisionSubmittedAt:new Date().toISOString(),formRevisionApprovedAt:null})});
+     internshipCache[id]={...x,...(saved&&typeof saved==='object'?saved:{pendingFormRevision:revision,formRevisionStatus:'pending_approval'})};
      await renderInternships();
      const modal=document.getElementById('internshipEditModal');if(modal)modal.remove();
-     alert('आवेदन अपडेट हो गया। अब Download Form दबाएँ।');
+     alert('Edited form review के लिए सेव हो गया। Approval के बाद Download Form सक्रिय होगा।');
    }catch(e){message.textContent='Save नहीं हुआ: '+e.message;}
  });
 }
+async function approveEditedInternshipForm(id){
+ const x=internshipCache[id];
+ if(!x||x.formRevisionStatus!=='pending_approval'||!x.pendingFormRevision){alert('कोई pending edited form नहीं मिला।');return;}
+ if(!confirm('क्या आप इन edits को approve करके आवेदन में लागू करना और updated PDF download सक्रिय करना चाहते हैं?'))return;
+ try{
+   const revision=x.pendingFormRevision;
+   const payload={...revision,pendingFormRevision:null,formRevisionStatus:'approved',formRevisionApprovedAt:new Date().toISOString()};
+   const saved=await api('/api/internships/'+id,{method:'PUT',body:JSON.stringify(payload)});
+   internshipCache[id]={...x,...(saved&&typeof saved==='object'?saved:payload)};
+   await renderInternships();
+   alert('Edited form approve हो गया। अब updated form उसी PDF format में download किया जा सकता है।');
+ }catch(e){alert('Edited form approve नहीं हुआ: '+e.message);}
+}
 function downloadInternshipApplication(id){
- const x=internshipCache[id];if(!x){alert('Application record नहीं मिला।');return;}
+ const x=internshipCache[id];if(!x){alert('Application record नहीं मिला।');return;}if(x.formRevisionStatus==='pending_approval'&&x.pendingFormRevision){alert('Edited form approval pending है। पहले Approve Edited Form करें।');return;}
  const {jsPDF}=window.jspdf||{};if(!jsPDF){alert('PDF library load नहीं हुई।');return;}
  const pdf=new jsPDF({unit:'mm',format:'a4'}),left=15,right=195;let y=17;
  const ref=x.referenceNo||x.applicationReference||('NSF-INT-'+x.id);
