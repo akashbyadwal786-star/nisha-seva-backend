@@ -7,6 +7,8 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const {
   readDB,
@@ -21,12 +23,30 @@ const {
 
 
 /* =========================================================
+   REQUIRED SERVER CONFIGURATION
+   ========================================================= */
+const requiredEnv = [
+  'DATABASE_URL',
+  'ADMIN_USERNAME',
+  'ADMIN_PASSWORD',
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY'
+];
+const missingEnv = requiredEnv.filter((key) => !String(process.env[key] || '').trim());
+if (missingEnv.length) {
+  throw new Error(`Missing required environment variables: ${missingEnv.join(', ')}. Configure them in Hostinger Environment; do not commit secrets.`);
+}
+if (String(process.env.ADMIN_PASSWORD).length < 12) {
+  throw new Error('ADMIN_PASSWORD must be at least 12 characters long.');
+}
+
+/* =========================================================
    SUPABASE
    ========================================================= */
-
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
 );
 
 
@@ -36,15 +56,31 @@ const supabase = createClient(
 
 const app = express();
 
+// Security headers. CSP is disabled because the existing HTML uses inline scripts
+// and trusted CDN assets; enable a nonce-based CSP before removing this exception.
+app.disable('x-powered-by');
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Please wait 15 minutes and try again.' }
+});
+const publicFormLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please wait and try again.' }
+});
+
 const PORT =
   process.env.PORT || 4000;
 
-const ADMIN_USERNAME =
-  process.env.ADMIN_USERNAME || 'admin';
-
-const ADMIN_PASSWORD =
-  process.env.ADMIN_PASSWORD ||
-  'change-this-password';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 // Set both values in Hostinger Environment for a separate coordinator account.
 const COORDINATOR_USERNAME = process.env.COORDINATOR_USERNAME || '';
@@ -172,6 +208,7 @@ function requireAdmin(
 
 app.post(
   '/api/admin/login',
+  authLimiter,
   (req, res) => {
 
     const {
@@ -206,7 +243,7 @@ app.post(
 /* =========================================================
    COORDINATOR LOGIN — internship-only access
    ========================================================= */
-app.post('/api/coordinator/login', (req, res) => {
+app.post('/api/coordinator/login', authLimiter, (req, res) => {
   const { username, password } = req.body || {};
   if (!COORDINATOR_USERNAME || !COORDINATOR_PASSWORD) {
     return res.status(503).json({ error: 'Coordinator account is not configured. Set COORDINATOR_USERNAME and COORDINATOR_PASSWORD in Hostinger Environment.' });
@@ -610,6 +647,7 @@ function crudRoutes(name) {
 
   app.post(
     `/api/${name}`,
+    publicFormLimiter,
     requireAdmin,
     async (req, res) => {
 
@@ -659,12 +697,9 @@ function crudRoutes(name) {
 
         const item = {
 
-          id:
-            nextId(
-              db[name]
-            ),
+          ...body,
 
-          ...body
+          id: nextId(db[name])
 
         };
 
@@ -1017,7 +1052,7 @@ app.get('/api/certificates', requireAdmin, async (req, res) => {
 });
 app.post('/api/certificates', requireAdmin, async (req, res) => {
   try { const db = await readDB(); db.certificates = Array.isArray(db.certificates) ? db.certificates : [];
-    const body = req.body || {}; const item = {id: nextId(db.certificates), ...body}; db.certificates.push(item); await writeDB(db); res.status(201).json(item);
+    const body = req.body || {}; const item = {...body, id: nextId(db.certificates)}; db.certificates.push(item); await writeDB(db); res.status(201).json(item);
   } catch(e) { console.error('POST /api/certificates',e); res.status(500).json({error:'Database error'}); }
 });
 app.put('/api/certificates/:id', requireAdmin, async (req, res) => {
@@ -1093,6 +1128,7 @@ function submissionRoutes(
 
   app.post(
     `/api/${name}`,
+    publicFormLimiter,
     async (req, res) => {
 
       try {
@@ -1403,6 +1439,96 @@ const internshipTableReady =
     throw error;
   });
 
+
+/* ---------------------------------------------------------
+   EDIT INTERNSHIP APPLICATION — staged until explicit approval
+   --------------------------------------------------------- */
+const INTERNSHIP_SYSTEM_FIELDS = new Set([
+  'id', 'status', 'internshipId', 'approvedAt', 'issuedAt',
+  'rejectedAt', 'revokedAt', 'publicProfileId', 'studentAccount',
+  'pendingFormRevision', 'formRevisionStatus',
+  'formRevisionSubmittedAt', 'formRevisionApprovedAt'
+]);
+
+app.put('/api/internships/:id', requireAdmin, async (req, res) => {
+  try {
+    await internshipTableReady;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Invalid internship application ID' });
+    }
+    const incoming = req.body?.pendingFormRevision;
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+      return res.status(400).json({ error: 'pendingFormRevision object is required' });
+    }
+    const result = await pool.query(
+      'SELECT id, data, created_at FROM internships WHERE id = $1 LIMIT 1',
+      [id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Internship application not found' });
+
+    const revision = {};
+    for (const [key, value] of Object.entries(incoming)) {
+      if (INTERNSHIP_SYSTEM_FIELDS.has(key)) continue;
+      if (typeof key !== 'string' || key.length > 100) continue;
+      if (typeof value === 'string') revision[key] = value.slice(0, 5000);
+      else if (Array.isArray(value)) revision[key] = value.slice(0, 100).map(v => String(v).slice(0, 500));
+      else if (value === null || typeof value === 'number' || typeof value === 'boolean') revision[key] = value;
+    }
+
+    const current = result.rows[0].data || {};
+    const updated = {
+      ...current,
+      pendingFormRevision: revision,
+      formRevisionStatus: 'pending_approval',
+      formRevisionSubmittedAt: new Date().toISOString(),
+      formRevisionApprovedAt: null
+    };
+    const saved = await pool.query(
+      'UPDATE internships SET data = $1::jsonb WHERE id = $2 RETURNING id, data, created_at',
+      [JSON.stringify(updated), id]
+    );
+    return res.json({ id, ...(saved.rows[0].data || {}), submittedAt: saved.rows[0].created_at });
+  } catch (error) {
+    console.error('PUT /api/internships/:id:', error);
+    return res.status(500).json({ error: 'Could not save edited application for approval.' });
+  }
+});
+
+app.post('/api/internships/:id/approve-edit', requireAdmin, async (req, res) => {
+  try {
+    await internshipTableReady;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Invalid internship application ID' });
+    }
+    const result = await pool.query(
+      'SELECT id, data, created_at FROM internships WHERE id = $1 LIMIT 1',
+      [id]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Internship application not found' });
+    const current = result.rows[0].data || {};
+    const revision = current.pendingFormRevision;
+    if (!revision || typeof revision !== 'object' || Array.isArray(revision) || current.formRevisionStatus !== 'pending_approval') {
+      return res.status(409).json({ error: 'No edited application is waiting for approval.' });
+    }
+    const approved = { ...current };
+    for (const [key, value] of Object.entries(revision)) {
+      if (!INTERNSHIP_SYSTEM_FIELDS.has(key)) approved[key] = value;
+    }
+    approved.pendingFormRevision = null;
+    approved.formRevisionStatus = 'approved';
+    approved.formRevisionApprovedAt = new Date().toISOString();
+    const saved = await pool.query(
+      'UPDATE internships SET data = $1::jsonb WHERE id = $2 RETURNING id, data, created_at',
+      [JSON.stringify(approved), id]
+    );
+    return res.json({ id, ...(saved.rows[0].data || {}), submittedAt: saved.rows[0].created_at });
+  } catch (error) {
+    console.error('POST /api/internships/:id/approve-edit:', error);
+    return res.status(500).json({ error: 'Could not approve edited application.' });
+  }
+});
 
 /* ---------------------------------------------------------
    APPROVE STUDENT INTERNSHIP
@@ -2886,7 +3012,7 @@ const projectSubmissionTableReady = pool.query(`
   throw error;
 });
 
-app.post('/api/projectSubmissions', async (req, res) => {
+app.post('/api/projectSubmissions', publicFormLimiter, async (req, res) => {
   try {
     await projectSubmissionTableReady;
     const body = req.body || {};
@@ -3061,7 +3187,7 @@ function getMailTransport() {
     connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000
   });
 }
-app.post('/api/student/forgot-password', async (req,res) => {
+app.post('/api/student/forgot-password', authLimiter, async (req,res) => {
   const email = String((req.body||{}).email||'').trim().toLowerCase();
   const generic = {ok:true,message:'यदि यह ईमेल Student Portal अकाउंट से जुड़ा है, तो OTP भेज दिया गया है।'};
   if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(200).json(generic);
@@ -3093,7 +3219,7 @@ app.post('/api/student/forgot-password', async (req,res) => {
     return res.status(200).json(generic);
   }
 });
-app.post('/api/student/reset-password', async (req,res) => {
+app.post('/api/student/reset-password', authLimiter, async (req,res) => {
   try {
     await Promise.all([studentAccountsTableReady,passwordResetTableReady]);
     const body=req.body||{};
@@ -3129,7 +3255,7 @@ app.post('/api/student/reset-password', async (req,res) => {
   }
 });
 
-app.post('/api/student/signup', async (req,res)=>{
+app.post('/api/student/signup', authLimiter, async (req,res)=>{
   try {
     await Promise.all([studentAccountsTableReady, internshipTableReady]);
     const body = req.body || {};
@@ -3176,7 +3302,7 @@ app.post('/api/student/signup', async (req,res)=>{
   }
 });
 
-app.post('/api/student/login', async (req,res)=>{
+app.post('/api/student/login', authLimiter, async (req,res)=>{
   try{
     await studentAccountsTableReady;
     const usernameOrEmail=String((req.body||{}).username||'').trim();
@@ -3415,7 +3541,7 @@ const communityRequestsTableReady = pool.query(`
   )
 `);
 
-app.post('/api/community-requests', async (req, res) => {
+app.post('/api/community-requests', publicFormLimiter, async (req, res) => {
   try {
     await communityRequestsTableReady;
     const body = req.body || {};
