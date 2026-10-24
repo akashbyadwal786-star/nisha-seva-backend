@@ -444,7 +444,8 @@ const tabs = [
   ["impactStories","Impact Stories"],
   ["communityEvents","Community Calendar"],
   ["knowledgeLibrary","Knowledge Library"],
-  ["newsletter","Newsletter"]
+  ["newsletter","Newsletter"],
+  ["studentImpactSuite","Student Impact Suite"]
 ];
 const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳",communityRequests:"🤝"};
 
@@ -601,6 +602,111 @@ async function logout(){
 
 
 /* =========================================================
+   STUDENT IMPACT SUITE ADMIN
+   ========================================================= */
+
+const studentImpactAdminFeatures = [
+  ["passport","Student Impact Passport","nsf_student_impact_passports"],
+  ["tasks","Coordinator Tasks","nsf_coordinator_tasks"],
+  ["research","AI Field Research","nsf_ai_field_research"],
+  ["map","Gram Impact Map","nsf_gram_impact_map"],
+  ["tracker","Impact Tracker","nsf_impact_tracker"],
+  ["opportunities","Seva Opportunity Exchange","nsf_seva_opportunity_exchange"],
+  ["challenge","90-Day Impact Challenge","nsf_impact_challenges"],
+  ["voice","Voice Seva","nsf_voice_seva"],
+  ["issues","Jan Samasya Timeline","nsf_jan_samasya_timeline"],
+  ["scorecard","Village Scorecards","nsf_village_scorecards"],
+  ["dna","Impact DNA","nsf_impact_dna"]
+];
+
+async function renderStudentImpactSuite(){
+  const content = document.getElementById("content");
+  content.innerHTML =
+    '<div class="row"><div><h2>Student Impact Suite</h2><p class="small">11 PostgreSQL tables · admin-only review · submitted records stay private</p></div>' +
+    '<button class="primary" id="impactRefresh">Refresh Records</button></div>' +
+    '<div class="easy-help">Choose a feature to review submissions. New public submissions start with status <b>submitted</b>. Approve or update a record only after review.</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:16px 0">' +
+    '<label>Feature<select id="impactAdminFeature">' +
+    studentImpactAdminFeatures.map(function(f){return '<option value="'+esc(f[0])+'">'+esc(f[1])+'</option>';}).join("") +
+    '</select></label>' +
+    '<label>Status filter<select id="impactAdminStatus"><option value="">All statuses</option><option>draft</option><option>submitted</option><option>under_review</option><option>approved</option><option>rejected</option><option>in_progress</option><option>completed</option><option>resolved</option></select></label>' +
+    '<label>Rows to load<select id="impactAdminLimit"><option>25</option><option selected>50</option><option>100</option></select></label>' +
+    '</div><div id="impactAdminMessage" class="small" role="status"></div><div id="impactAdminRecords"></div>';
+
+  const featureSelect = document.getElementById("impactAdminFeature");
+  const statusSelect = document.getElementById("impactAdminStatus");
+  const limitSelect = document.getElementById("impactAdminLimit");
+  const recordsBox = document.getElementById("impactAdminRecords");
+  const message = document.getElementById("impactAdminMessage");
+
+  async function loadRecords(){
+    recordsBox.innerHTML = '<p class="small">Loading records…</p>';
+    message.textContent = "";
+    try{
+      const qs = new URLSearchParams({limit:limitSelect.value});
+      if(statusSelect.value) qs.set("status",statusSelect.value);
+      const result = await api("/api/admin/student-impact/"+encodeURIComponent(featureSelect.value)+"?"+qs.toString());
+      const records = Array.isArray(result.records) ? result.records : [];
+      message.textContent = records.length+" record(s) loaded.";
+      if(!records.length){
+        recordsBox.innerHTML = '<div class="item"><b>No records found</b><p class="small">This feature has no records for the selected filter yet.</p></div>';
+        return;
+      }
+      recordsBox.innerHTML = records.map(function(record){
+        const payload = record.payload && typeof record.payload === "object" ? record.payload : {};
+        const statusOptions = ["draft","submitted","under_review","approved","rejected","in_progress","completed","resolved"];
+        return '<article class="item" data-impact-record="'+esc(record.id)+'">' +
+          '<div class="row"><div><b>Record #'+esc(record.id)+'</b><div class="small">Created: '+esc(record.created_at||"—")+' · By: '+esc(record.created_by_role||"—")+'</div></div>' +
+          '<span class="status '+(record.status==="approved"||record.status==="completed"||record.status==="resolved"?"active":record.status==="rejected"?"rejected":"pending")+'">'+esc(record.status)+'</span></div>' +
+          '<details style="margin:12px 0"><summary>View submitted payload</summary><pre>'+esc(JSON.stringify(payload,null,2))+'</pre></details>' +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">' +
+          '<label style="flex:1;min-width:180px">Update status<select class="impact-record-status">'+statusOptions.map(function(st){return '<option value="'+st+'" '+(st===record.status?'selected':'')+'>'+st+'</option>';}).join("")+'</select></label>' +
+          '<button class="success impact-record-save">Save Status</button><button class="danger impact-record-delete">Delete</button></div></article>';
+      }).join("");
+    }catch(error){
+      recordsBox.innerHTML = '<div class="err">'+esc(error.message||"Could not load records.")+'</div>';
+      message.textContent = "API request failed.";
+    }
+  }
+
+  document.getElementById("impactRefresh").addEventListener("click",loadRecords);
+  featureSelect.addEventListener("change",loadRecords);
+  statusSelect.addEventListener("change",loadRecords);
+  limitSelect.addEventListener("change",loadRecords);
+
+  recordsBox.addEventListener("click",async function(event){
+    const card = event.target.closest("[data-impact-record]");
+    if(!card) return;
+    const id = card.getAttribute("data-impact-record");
+    if(event.target.closest(".impact-record-save")){
+      const status = card.querySelector(".impact-record-status").value;
+      try{
+        await api("/api/admin/student-impact/"+encodeURIComponent(featureSelect.value)+"/"+encodeURIComponent(id),{
+          method:"PATCH",
+          body:JSON.stringify({status:status})
+        });
+        message.textContent = "Record #"+id+" updated.";
+        await loadRecords();
+      }catch(error){
+        message.textContent = "Update failed: "+(error.message||"Unknown error");
+      }
+    }
+    if(event.target.closest(".impact-record-delete")){
+      if(!window.confirm("Permanently delete record #"+id+"? This cannot be undone.")) return;
+      try{
+        await api("/api/admin/student-impact/"+encodeURIComponent(featureSelect.value)+"/"+encodeURIComponent(id),{method:"DELETE"});
+        message.textContent = "Record #"+id+" deleted.";
+        await loadRecords();
+      }catch(error){
+        message.textContent = "Delete failed: "+(error.message||"Unknown error");
+      }
+    }
+  });
+
+  await loadRecords();
+}
+
+/* =========================================================
    MAIN RENDER
    ========================================================= */
 
@@ -689,6 +795,11 @@ async function render(){
 
     if(current === "studentPortal"){
       await renderStudentPortal();
+      return;
+    }
+
+    if(current === "studentImpactSuite"){
+      await renderStudentImpactSuite();
       return;
     }
 
