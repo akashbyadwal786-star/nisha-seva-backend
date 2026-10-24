@@ -1415,6 +1415,22 @@ function submissionRoutes(
 
 
 /* =========================================================
+   SERIALIZED DATABASE SCHEMA INITIALIZATION
+   Avoid opening many Supabase session-pool connections at startup.
+   ========================================================= */
+let schemaInitQueue = Promise.resolve();
+function initializeTable(sql, label) {
+  const operation = schemaInitQueue.then(() => pool.query(sql));
+  // Keep the queue usable after an individual initialization fails;
+  // the returned operation still rejects and startup reports the failure.
+  schemaInitQueue = operation.then(() => undefined, () => undefined);
+  return operation.catch((error) => {
+    console.error(`${label} TABLE INIT ERROR:`, error.message || error);
+    throw error;
+  });
+}
+
+/* =========================================================
    STUDENT INTERNSHIP APPROVAL SYSTEM
    ========================================================= */
 
@@ -1423,21 +1439,13 @@ function submissionRoutes(
  * already exist. The rest of this server stores submission
  * payloads in JSONB, so this follows the same pattern.
  */
-const internshipTableReady =
-  pool.query(`
+const internshipTableReady = initializeTable(`
     CREATE TABLE IF NOT EXISTS internships (
       id SERIAL PRIMARY KEY,
       data JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
-  `)
-  .catch(error => {
-    console.error(
-      'INTERNSHIP TABLE INIT ERROR:',
-      error
-    );
-    throw error;
-  });
+  `, 'INTERNSHIP');
 
 
 /* ---------------------------------------------------------
@@ -3001,16 +3009,13 @@ app.get(
    STUDENT PROJECT SUBMISSIONS
    Public POST + Admin GET/DELETE
    ========================================================= */
-const projectSubmissionTableReady = pool.query(`
+const projectSubmissionTableReady = initializeTable(`
   CREATE TABLE IF NOT EXISTS project_submissions (
     id SERIAL PRIMARY KEY,
     data JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
-`).catch(error => {
-  console.error('PROJECT SUBMISSIONS TABLE INIT ERROR:', error);
-  throw error;
-});
+`, 'PROJECT SUBMISSIONS');
 
 app.post('/api/projectSubmissions', publicFormLimiter, async (req, res) => {
   try {
@@ -3118,7 +3123,7 @@ app.use(
    ========================================================= */
 const studentSessions = new Map();
 const STUDENT_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
-const studentAccountsTableReady = pool.query(`
+const studentAccountsTableReady = initializeTable(`
   CREATE TABLE IF NOT EXISTS internship_student_accounts (
     id BIGSERIAL PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -3130,7 +3135,7 @@ const studentAccountsTableReady = pool.query(`
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
-`).catch(error => { console.error('STUDENT ACCOUNTS TABLE INIT ERROR:', error); throw error; });
+`, 'STUDENT ACCOUNTS');
 
 function makeStudentToken(){ return crypto.randomBytes(32).toString('hex'); }
 function makePublicStudentId(){ return crypto.randomBytes(16).toString('hex'); }
@@ -3164,7 +3169,7 @@ async function getStudentApplication(account){
   return {id:result.rows[0].id,submittedAt:result.rows[0].created_at,...(result.rows[0].data||{})};
 }
 
-const passwordResetTableReady = pool.query(`
+const passwordResetTableReady = initializeTable(`
   CREATE TABLE IF NOT EXISTS internship_password_resets (
     id BIGSERIAL PRIMARY KEY,
     email TEXT NOT NULL,
@@ -3174,7 +3179,7 @@ const passwordResetTableReady = pool.query(`
     used BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
-`).catch(error => { console.error('PASSWORD RESET TABLE INIT ERROR:', error); throw error; });
+`, 'PASSWORD RESET');
 const resetRequestLimiter = new Map();
 function makeOtpHash(otp, salt) { return crypto.createHash('sha256').update(`${salt}:${otp}`).digest('hex'); }
 function getMailTransport() {
@@ -3413,12 +3418,12 @@ const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID || '';
 const MSG91_SENDER_ID = process.env.MSG91_SENDER_ID || '';
 const CASHFREE_BASE = CASHFREE_MODE === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
 
-const donationsTableReady = pool.query(`CREATE TABLE IF NOT EXISTS donations (
+const donationsTableReady = initializeTable(`CREATE TABLE IF NOT EXISTS donations (
  id BIGSERIAL PRIMARY KEY, order_id VARCHAR(80) UNIQUE NOT NULL, receipt_no VARCHAR(80) UNIQUE NOT NULL,
  donor_name VARCHAR(120) NOT NULL, donor_phone VARCHAR(20) NOT NULL, donor_email VARCHAR(180), amount NUMERIC(12,2) NOT NULL,
  currency VARCHAR(3) NOT NULL DEFAULT 'INR', payment_status VARCHAR(20) NOT NULL DEFAULT 'PENDING', cf_payment_id VARCHAR(100),
  payment_time TIMESTAMPTZ, sms_status VARCHAR(30) NOT NULL DEFAULT 'NOT_SENT', sms_error TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)`).catch(e=>{console.error('DONATIONS TABLE INIT ERROR:',e);throw e;});
+)`, 'DONATIONS');
 
 async function cashfreeRequest(url, options={}) {
   if (!CASHFREE_APP_ID || !CASHFREE_SECRET_KEY) throw new Error('Cashfree API credentials are not configured in Render Environment.');
@@ -3527,7 +3532,7 @@ app.get('/api/admin/donations',requireAdmin,async(req,res)=>{
 /* =========================================================
    COMMUNITY HELP DESK — Phase 03/04
    ========================================================= */
-const communityRequestsTableReady = pool.query(`
+const communityRequestsTableReady = initializeTable(`
   CREATE TABLE IF NOT EXISTS community_help_requests (
     id BIGSERIAL PRIMARY KEY,
     reference_id VARCHAR(32) UNIQUE NOT NULL,
@@ -3539,7 +3544,7 @@ const communityRequestsTableReady = pool.query(`
     status VARCHAR(24) NOT NULL DEFAULT 'pending',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )
-`);
+`, 'COMMUNITY REQUESTS');
 
 app.post('/api/community-requests', publicFormLimiter, async (req, res) => {
   try {
@@ -3579,13 +3584,11 @@ app.get('/api/community-requests', requireAdmin, async (req, res) => {
   }
 });
 
-require('./student-impact-routes')({ app, pool, requireAdmin, publicFormLimiter });
-
 /* =========================================================
    START SERVER
    ========================================================= */
 
-Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, donationsTableReady])
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, passwordResetTableReady, donationsTableReady, communityRequestsTableReady])
   .then(() => {
 
     app.listen(
