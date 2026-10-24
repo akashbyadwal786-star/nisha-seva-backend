@@ -203,211 +203,8 @@ function requireAdmin(
 
 
 /* =========================================================
-   NSF STUDENT IMPACT API
-   Maps the 11 public impact-suite forms to dedicated PostgreSQL
-   tables. Public users may submit; only admins may review/edit.
+   ADMIN LOGIN
    ========================================================= */
-
-const studentImpactTables = Object.freeze({
-  passport: 'nsf_student_impact_passports',
-  tasks: 'nsf_coordinator_tasks',
-  research: 'nsf_ai_field_research',
-  map: 'nsf_gram_impact_map',
-  tracker: 'nsf_impact_tracker',
-  opportunities: 'nsf_seva_opportunity_exchange',
-  challenge: 'nsf_impact_challenges',
-  voice: 'nsf_voice_seva',
-  issues: 'nsf_jan_samasya_timeline',
-  scorecard: 'nsf_village_scorecards',
-  dna: 'nsf_impact_dna'
-});
-
-const studentImpactStatuses = new Set([
-  'draft', 'submitted', 'under_review', 'approved',
-  'rejected', 'in_progress', 'completed', 'resolved'
-]);
-
-function getStudentImpactTable(feature) {
-  return Object.prototype.hasOwnProperty.call(studentImpactTables, feature)
-    ? studentImpactTables[feature]
-    : null;
-}
-
-function isPlainJsonObject(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-app.get('/api/student-impact/health', (req, res) => {
-  res.set('Cache-Control', 'no-store');
-  return res.json({
-    success: true,
-    service: 'student-impact',
-    storage: 'postgresql',
-    features: Object.keys(studentImpactTables)
-  });
-});
-
-// Public intake endpoint. New records remain unapproved until admin review.
-app.post('/api/student-impact/:feature', publicFormLimiter, async (req, res) => {
-  const table = getStudentImpactTable(req.params.feature);
-  if (!table) return res.status(400).json({ error: 'Unsupported student-impact feature.' });
-
-  if (!isPlainJsonObject(req.body)) {
-    return res.status(400).json({ error: 'A JSON object is required.' });
-  }
-
-  const payload = { ...req.body };
-  delete payload.feature;
-  delete payload.createdAt;
-  payload.feature = req.params.feature;
-  payload.submittedAt = new Date().toISOString();
-
-  let payloadJson;
-  try {
-    payloadJson = JSON.stringify(payload);
-  } catch (_) {
-    return res.status(400).json({ error: 'The submitted data is not valid JSON.' });
-  }
-  if (Buffer.byteLength(payloadJson, 'utf8') > 20000) {
-    return res.status(413).json({ error: 'Submitted data is too large. Maximum size is 20 KB.' });
-  }
-
-  try {
-    const result = await pool.query(
-      'INSERT INTO ' + table + ' (payload, status, created_by_role, updated_by_role) ' +
-      "VALUES ($1::jsonb, 'submitted', 'public', 'public') RETURNING id, status, created_at",
-      [payloadJson]
-    );
-    const record = result.rows[0];
-    res.set('Cache-Control', 'no-store');
-    return res.status(201).json({
-      success: true,
-      id: String(record.id),
-      status: record.status,
-      createdAt: record.created_at
-    });
-  } catch (error) {
-    console.error('STUDENT IMPACT SUBMISSION ERROR:', req.params.feature, error.message);
-    return res.status(500).json({ error: 'Record could not be saved. Please try again later.' });
-  }
-});
-
-// Admin-only list. Submitted personal data is never exposed through a public GET.
-app.get('/api/admin/student-impact/:feature', requireAdmin, async (req, res) => {
-  const table = getStudentImpactTable(req.params.feature);
-  if (!table) return res.status(404).json({ error: 'Unknown student-impact feature.' });
-
-  const requestedLimit = Number.parseInt(req.query.limit, 10);
-  const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 50;
-  const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
-
-  try {
-    let result;
-    if (status && !studentImpactStatuses.has(status)) {
-      return res.status(400).json({ error: 'Invalid status filter.' });
-    }
-    if (status) {
-      result = await pool.query(
-        'SELECT id, payload, status, created_by_role, updated_by_role, created_at, updated_at ' +
-        'FROM ' + table + ' WHERE status = $1 ORDER BY created_at DESC LIMIT $2',
-        [status, limit]
-      );
-    } else {
-      result = await pool.query(
-        'SELECT id, payload, status, created_by_role, updated_by_role, created_at, updated_at ' +
-        'FROM ' + table + ' ORDER BY created_at DESC LIMIT $1',
-        [limit]
-      );
-    }
-    res.set('Cache-Control', 'no-store');
-    return res.json({ success: true, feature: req.params.feature, records: result.rows });
-  } catch (error) {
-    console.error('STUDENT IMPACT LIST ERROR:', req.params.feature, error.message);
-    return res.status(500).json({ error: 'Records could not be loaded.' });
-  }
-});
-
-// Admin-only record review/update.
-app.patch('/api/admin/student-impact/:feature/:id', requireAdmin, async (req, res) => {
-  const table = getStudentImpactTable(req.params.feature);
-  if (!table) return res.status(404).json({ error: 'Unknown student-impact feature.' });
-  if (!/^[0-9]{1,19}$/.test(String(req.params.id || ''))) {
-    return res.status(400).json({ error: 'Invalid record ID.' });
-  }
-
-  const body = req.body || {};
-  const hasPayload = Object.prototype.hasOwnProperty.call(body, 'payload');
-  const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status');
-  if (!hasPayload && !hasStatus) {
-    return res.status(400).json({ error: 'Provide payload and/or status to update.' });
-  }
-  if (hasPayload && !isPlainJsonObject(body.payload)) {
-    return res.status(400).json({ error: 'payload must be a JSON object.' });
-  }
-  if (hasStatus && (typeof body.status !== 'string' || !studentImpactStatuses.has(body.status))) {
-    return res.status(400).json({ error: 'Invalid status.' });
-  }
-
-  try {
-    const values = [];
-    const updates = [];
-    if (hasPayload) {
-      const payloadJson = JSON.stringify(body.payload);
-      if (Buffer.byteLength(payloadJson, 'utf8') > 20000) {
-        return res.status(413).json({ error: 'Payload is too large. Maximum size is 20 KB.' });
-      }
-      values.push(payloadJson);
-      updates.push('payload = $' + values.length + '::jsonb');
-    }
-    if (hasStatus) {
-      values.push(body.status);
-      updates.push('status = $' + values.length);
-    }
-
-    values.push(req.userRole || 'admin');
-    updates.push('updated_by_role = $' + values.length);
-    updates.push('updated_at = NOW()');
-    values.push(req.params.id);
-
-    const result = await pool.query(
-      'UPDATE ' + table + ' SET ' + updates.join(', ') +
-      ' WHERE id = $' + values.length +
-      ' RETURNING id, status, updated_at',
-      values
-    );
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Record not found.' });
-    }
-    res.set('Cache-Control', 'no-store');
-    return res.json({ success: true, record: result.rows[0] });
-  } catch (error) {
-    console.error('STUDENT IMPACT UPDATE ERROR:', req.params.feature, error.message);
-    return res.status(500).json({ error: 'Record could not be updated.' });
-  }
-});
-
-// Admin-only delete.
-app.delete('/api/admin/student-impact/:feature/:id', requireAdmin, async (req, res) => {
-  const table = getStudentImpactTable(req.params.feature);
-  if (!table) return res.status(404).json({ error: 'Unknown student-impact feature.' });
-  if (!/^[0-9]{1,19}$/.test(String(req.params.id || ''))) {
-    return res.status(400).json({ error: 'Invalid record ID.' });
-  }
-  try {
-    const result = await pool.query(
-      'DELETE FROM ' + table + ' WHERE id = $1 RETURNING id',
-      [req.params.id]
-    );
-    if (!result.rows.length) {
-      return res.status(404).json({ error: 'Record not found.' });
-    }
-    res.set('Cache-Control', 'no-store');
-    return res.json({ success: true, deletedId: String(result.rows[0].id) });
-  } catch (error) {
-    console.error('STUDENT IMPACT DELETE ERROR:', req.params.feature, error.message);
-    return res.status(500).json({ error: 'Record could not be deleted.' });
-  }
-});
 
 app.post(
   '/api/admin/login',
@@ -3779,6 +3576,397 @@ app.get('/api/community-requests', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('COMMUNITY REQUEST LIST ERROR:', error);
     return res.status(500).json({ error: 'Community requests load नहीं हो सके।' });
+  }
+});
+
+
+/* =========================================================
+   STUDENT IMPACT SUITE API — PostgreSQL
+   ========================================================= */
+const studentImpactTables = {
+  passport: 'nsf_student_impact_passports',
+  tasks: 'nsf_coordinator_tasks',
+  research: 'nsf_ai_field_research',
+  map: 'nsf_gram_impact_map',
+  tracker: 'nsf_impact_tracker',
+  opportunities: 'nsf_seva_opportunity_exchange',
+  challenge: 'nsf_impact_challenges',
+  voice: 'nsf_voice_seva',
+  issues: 'nsf_jan_samasya_timeline',
+  scorecard: 'nsf_village_scorecards',
+  dna: 'nsf_impact_dna'
+};
+const studentImpactStatuses = new Set([
+  'draft','submitted','under_review','approved','rejected',
+  'in_progress','completed','resolved'
+]);
+function getStudentImpactTable(feature) {
+  return studentImpactTables[String(feature || '')] || null;
+}
+app.get('/api/student-impact/health', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  return res.json({
+    success: true,
+    service: 'student-impact',
+    storage: 'postgresql',
+    features: Object.keys(studentImpactTables)
+  });
+});
+app.post('/api/student-impact/:feature', publicFormLimiter, async (req, res) => {
+  const table = getStudentImpactTable(req.params.feature);
+  if (!table) return res.status(404).json({ error: 'Unknown Student Impact feature.' });
+  const payload = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : null;
+  if (!payload) return res.status(400).json({ error: 'Payload must be a JSON object.' });
+  let payloadJson;
+  try {
+    payloadJson = JSON.stringify(payload);
+    if (Buffer.byteLength(payloadJson, 'utf8') > 20480) {
+      return res.status(413).json({ error: 'Payload exceeds the 20 KB limit.' });
+    }
+  } catch (_) {
+    return res.status(400).json({ error: 'Invalid JSON payload.' });
+  }
+  try {
+    const result = await pool.query(
+      'INSERT INTO ' + table + ' (payload, status, created_by_role, updated_by_role) VALUES ($1::jsonb, $2, $3, $4) RETURNING id, status, created_at',
+      [payloadJson, 'submitted', 'public', 'public']
+    );
+    return res.status(201).json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    console.error('STUDENT IMPACT SUBMIT ERROR:', error);
+    return res.status(500).json({ error: 'Submission could not be saved.' });
+  }
+});
+app.get('/api/admin/student-impact/:feature', requireAdmin, async (req, res) => {
+  const table = getStudentImpactTable(req.params.feature);
+  if (!table) return res.status(404).json({ error: 'Unknown Student Impact feature.' });
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+  const values = [];
+  let where = '';
+  if (req.query.status) {
+    if (!studentImpactStatuses.has(String(req.query.status))) return res.status(400).json({ error: 'Invalid status.' });
+    values.push(String(req.query.status));
+    where = ' WHERE status = $1';
+  }
+  values.push(limit);
+  try {
+    const result = await pool.query(
+      'SELECT id, payload, status, created_by_role, updated_by_role, created_at, updated_at FROM ' + table + where + ' ORDER BY created_at DESC LIMIT 
+
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, donationsTableReady])
+  .then(() => {
+
+    app.listen(
+      PORT,
+      () => {
+
+        console.log(
+          '======================================'
+        );
+
+    console.log(
+      'Nisha Seva backend running'
+    );
+
+    console.log(
+      `Port: ${PORT}`
+    );
+
+    console.log(
+      'Admin panel: /admin'
+    );
+
+        console.log(
+          `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
+        );
+
+        console.log(
+          'Student internship API: /api/internships'
+        );
+
+        console.log(
+          '======================================'
+        );
+
+      }
+    );
+
+  })
+  .catch(error => {
+
+    console.error(
+      'SERVER STARTUP FAILED:',
+      error
+    );
+
+    process.exit(1);
+
+  });
+ + values.length,
+      values
+    );
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, records: result.rows });
+  } catch (error) {
+    console.error('STUDENT IMPACT LIST ERROR:', error);
+    return res.status(500).json({ error: 'Records could not be loaded.' });
+  }
+});
+app.patch('/api/admin/student-impact/:feature/:id', requireAdmin, async (req, res) => {
+  const table = getStudentImpactTable(req.params.feature);
+  if (!table) return res.status(404).json({ error: 'Unknown Student Impact feature.' });
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid record ID.' });
+  const body = req.body || {};
+  const updates = [];
+  const values = [];
+  if (Object.prototype.hasOwnProperty.call(body, 'payload')) {
+    if (!body.payload || typeof body.payload !== 'object' || Array.isArray(body.payload)) {
+      return res.status(400).json({ error: 'Payload must be a JSON object.' });
+    }
+    const payloadJson = JSON.stringify(body.payload);
+    if (Buffer.byteLength(payloadJson, 'utf8') > 20480) return res.status(413).json({ error: 'Payload exceeds the 20 KB limit.' });
+    values.push(payloadJson);
+    updates.push('payload = 
+
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, donationsTableReady])
+  .then(() => {
+
+    app.listen(
+      PORT,
+      () => {
+
+        console.log(
+          '======================================'
+        );
+
+    console.log(
+      'Nisha Seva backend running'
+    );
+
+    console.log(
+      `Port: ${PORT}`
+    );
+
+    console.log(
+      'Admin panel: /admin'
+    );
+
+        console.log(
+          `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
+        );
+
+        console.log(
+          'Student internship API: /api/internships'
+        );
+
+        console.log(
+          '======================================'
+        );
+
+      }
+    );
+
+  })
+  .catch(error => {
+
+    console.error(
+      'SERVER STARTUP FAILED:',
+      error
+    );
+
+    process.exit(1);
+
+  });
+ + values.length + '::jsonb');
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'status')) {
+    if (!studentImpactStatuses.has(String(body.status))) return res.status(400).json({ error: 'Invalid status.' });
+    values.push(String(body.status));
+    updates.push('status = 
+
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, donationsTableReady])
+  .then(() => {
+
+    app.listen(
+      PORT,
+      () => {
+
+        console.log(
+          '======================================'
+        );
+
+    console.log(
+      'Nisha Seva backend running'
+    );
+
+    console.log(
+      `Port: ${PORT}`
+    );
+
+    console.log(
+      'Admin panel: /admin'
+    );
+
+        console.log(
+          `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
+        );
+
+        console.log(
+          'Student internship API: /api/internships'
+        );
+
+        console.log(
+          '======================================'
+        );
+
+      }
+    );
+
+  })
+  .catch(error => {
+
+    console.error(
+      'SERVER STARTUP FAILED:',
+      error
+    );
+
+    process.exit(1);
+
+  });
+ + values.length);
+  }
+  if (!updates.length) return res.status(400).json({ error: 'Provide payload or status to update.' });
+  values.push('admin');
+  updates.push('updated_by_role = 
+
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, donationsTableReady])
+  .then(() => {
+
+    app.listen(
+      PORT,
+      () => {
+
+        console.log(
+          '======================================'
+        );
+
+    console.log(
+      'Nisha Seva backend running'
+    );
+
+    console.log(
+      `Port: ${PORT}`
+    );
+
+    console.log(
+      'Admin panel: /admin'
+    );
+
+        console.log(
+          `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
+        );
+
+        console.log(
+          'Student internship API: /api/internships'
+        );
+
+        console.log(
+          '======================================'
+        );
+
+      }
+    );
+
+  })
+  .catch(error => {
+
+    console.error(
+      'SERVER STARTUP FAILED:',
+      error
+    );
+
+    process.exit(1);
+
+  });
+ + values.length);
+  updates.push('updated_at = NOW()');
+  values.push(id);
+  try {
+    const result = await pool.query(
+      'UPDATE ' + table + ' SET ' + updates.join(', ') + ' WHERE id = 
+
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, donationsTableReady])
+  .then(() => {
+
+    app.listen(
+      PORT,
+      () => {
+
+        console.log(
+          '======================================'
+        );
+
+    console.log(
+      'Nisha Seva backend running'
+    );
+
+    console.log(
+      `Port: ${PORT}`
+    );
+
+    console.log(
+      'Admin panel: /admin'
+    );
+
+        console.log(
+          `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
+        );
+
+        console.log(
+          'Student internship API: /api/internships'
+        );
+
+        console.log(
+          '======================================'
+        );
+
+      }
+    );
+
+  })
+  .catch(error => {
+
+    console.error(
+      'SERVER STARTUP FAILED:',
+      error
+    );
+
+    process.exit(1);
+
+  });
+ + values.length + ' RETURNING id, status, updated_at',
+      values
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Record not found.' });
+    return res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    console.error('STUDENT IMPACT UPDATE ERROR:', error);
+    return res.status(500).json({ error: 'Record could not be updated.' });
+  }
+});
+app.delete('/api/admin/student-impact/:feature/:id', requireAdmin, async (req, res) => {
+  const table = getStudentImpactTable(req.params.feature);
+  if (!table) return res.status(404).json({ error: 'Unknown Student Impact feature.' });
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid record ID.' });
+  try {
+    const result = await pool.query('DELETE FROM ' + table + ' WHERE id = $1 RETURNING id', [id]);
+    if (!result.rowCount) return res.status(404).json({ error: 'Record not found.' });
+    return res.json({ success: true, deletedId: result.rows[0].id });
+  } catch (error) {
+    console.error('STUDENT IMPACT DELETE ERROR:', error);
+    return res.status(500).json({ error: 'Record could not be deleted.' });
   }
 });
 
