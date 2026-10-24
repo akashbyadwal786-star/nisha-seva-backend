@@ -201,6 +201,13 @@ function requireAdmin(
   next();
 }
 
+/* =========================================================
+   STUDENT IMPACT SUITE ROUTES
+   ========================================================= */
+// Register after requireAdmin is defined so all admin routes use the same session auth.
+const registerStudentImpactRoutes = require('./student-impact-routes');
+registerStudentImpactRoutes({ app, pool, requireAdmin, publicFormLimiter });
+
 
 /* =========================================================
    ADMIN LOGIN
