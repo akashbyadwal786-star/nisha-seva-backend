@@ -357,7 +357,57 @@ app.patch('/api/admin/student-impact/:feature/:id', requireAdmin, async (req, re
         return res.status(413).json({ error: 'Payload is too large. Maximum size is 20 KB.' });
       }
       values.push(payloadJson);
-      updates.push('payload = 
+      updates.push('payload = $' + values.length + '::jsonb');
+    }
+    if (hasStatus) {
+      values.push(body.status);
+      updates.push('status = $' + values.length);
+    }
+
+    values.push(req.userRole || 'admin');
+    updates.push('updated_by_role = $' + values.length);
+    updates.push('updated_at = NOW()');
+    values.push(req.params.id);
+
+    const result = await pool.query(
+      'UPDATE ' + table + ' SET ' + updates.join(', ') +
+      ' WHERE id = $' + values.length +
+      ' RETURNING id, status, updated_at',
+      values
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Record not found.' });
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, record: result.rows[0] });
+  } catch (error) {
+    console.error('STUDENT IMPACT UPDATE ERROR:', req.params.feature, error.message);
+    return res.status(500).json({ error: 'Record could not be updated.' });
+  }
+});
+
+// Admin-only delete.
+app.delete('/api/admin/student-impact/:feature/:id', requireAdmin, async (req, res) => {
+  const table = getStudentImpactTable(req.params.feature);
+  if (!table) return res.status(404).json({ error: 'Unknown student-impact feature.' });
+  if (!/^[0-9]{1,19}$/.test(String(req.params.id || ''))) {
+    return res.status(400).json({ error: 'Invalid record ID.' });
+  }
+  try {
+    const result = await pool.query(
+      'DELETE FROM ' + table + ' WHERE id = $1 RETURNING id',
+      [req.params.id]
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: 'Record not found.' });
+    }
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, deletedId: String(result.rows[0].id) });
+  } catch (error) {
+    console.error('STUDENT IMPACT DELETE ERROR:', req.params.feature, error.message);
+    return res.status(500).json({ error: 'Record could not be deleted.' });
+  }
+});
 
 app.post(
   '/api/admin/login',
