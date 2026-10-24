@@ -1,64 +1,77 @@
+'use strict';
+
 const { Pool } = require('pg');
 
-const defaultDB = {
-  programs: [],
-  events: [],
-  gallery: [],
-  documents: [],
-  donors: [],
-  volunteers: [],
-  members: [],
-  contactMessages: [],
-  newsletter: [],
-  impactLocations: [],
-  missions: [],
-  certificates: [],
-  impactStories: [],
-  communityEvents: [],
-  knowledgeLibrary: []
-};
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL is required. Configure it in your environment; never commit credentials.');
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  max: Number.parseInt(process.env.PGPOOL_MAX || '10', 10),
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  ...(process.env.PGSSLMODE === 'require'
+    ? { ssl: { rejectUnauthorized: process.env.PGSSL_REJECT_UNAUTHORIZED !== 'false' } }
+    : {})
 });
 
+pool.on('error', (error) => {
+  console.error('Unexpected PostgreSQL pool error:', error.message);
+});
+
+const ready = pool.query(`
+  CREATE TABLE IF NOT EXISTS nsf_app_state (
+    id SMALLINT PRIMARY KEY CHECK (id = 1),
+    data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`).then(() => pool.query(`
+  INSERT INTO nsf_app_state (id, data)
+  VALUES (1, '{}'::jsonb)
+  ON CONFLICT (id) DO NOTHING
+`)).then(() => undefined);
+
+let writeQueue = Promise.resolve();
+
 async function readDB() {
-  const result = await pool.query(
-    'SELECT data FROM app_data WHERE id = true'
-  );
-
-  if (!result.rows.length) {
-    await writeDB(defaultDB);
-    return defaultDB;
-  }
-
-  return result.rows[0].data;
+  await ready;
+  const result = await pool.query('SELECT data FROM nsf_app_state WHERE id = 1');
+  return result.rows[0]?.data && typeof result.rows[0].data === 'object'
+    ? result.rows[0].data
+    : {};
 }
 
+/*
+ * The existing CRUD handlers read the complete collection object and then
+ * write it back. Serialize writes in this Node process so overlapping admin
+ * saves do not overwrite each other. For horizontal scaling, replace this
+ * legacy whole-document interface with row-level CRUD operations.
+ */
 async function writeDB(data) {
-  await pool.query(
-    `INSERT INTO app_data (id, data)
-     VALUES (true, $1::jsonb)
-     ON CONFLICT (id)
-     DO UPDATE SET data = EXCLUDED.data`,
-    [JSON.stringify(data)]
-  );
-
-  return data;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new TypeError('writeDB expects a collection object');
+  }
+  const snapshot = JSON.stringify(data);
+  const operation = writeQueue.then(async () => {
+    await ready;
+    await pool.query(
+      'UPDATE nsf_app_state SET data = $1::jsonb, updated_at = NOW() WHERE id = 1',
+      [snapshot]
+    );
+  });
+  writeQueue = operation.catch(() => undefined);
+  return operation;
 }
 
-function nextId(collection) {
-  return collection.length
-    ? Math.max(...collection.map(i => Number(i.id) || 0)) + 1
-    : 1;
+function nextId(items) {
+  if (!Array.isArray(items) || items.length === 0) return 1;
+  let max = 0;
+  for (const item of items) {
+    const id = Number(item?.id);
+    if (Number.isSafeInteger(id) && id > max) max = id;
+  }
+  return max + 1;
 }
 
-module.exports = {
-  readDB,
-  writeDB,
-  nextId,
-  pool
-};
+module.exports = { pool, readDB, writeDB, nextId };
