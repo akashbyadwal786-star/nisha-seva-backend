@@ -1151,68 +1151,6 @@ function submissionRoutes(
 
 
         /*
-         * Volunteer applications:
-         * reject duplicate email or mobile before saving.
-         * Advisory transaction lock prevents simultaneous requests
-         * from passing the duplicate check together.
-         */
-        if (name === 'volunteers') {
-          const email = String(submissionData.email || '').trim().toLowerCase();
-          const phone = String(submissionData.phone || submissionData.mobile || '').replace(/\\D/g, '').slice(-10);
-          if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
-            return res.status(400).json({ error: 'Valid email address देना जरूरी है।' });
-          }
-          if (phone.length !== 10) {
-            return res.status(400).json({ error: 'Valid 10-digit mobile number देना जरूरी है।' });
-          }
-          const client = await pool.connect();
-          try {
-            await client.query('BEGIN');
-            await client.query('SELECT pg_advisory_xact_lock($1)', [734219]);
-            const duplicate = await client.query(
-              `SELECT lower(trim(COALESCE(data->>'email',''))) AS email,
-                      right(regexp_replace(COALESCE(data->>'phone', data->>'mobile',''), '[^0-9]', '', 'g'), 10) AS phone
-                 FROM volunteers
-                WHERE lower(trim(COALESCE(data->>'email',''))) = $1
-                   OR right(regexp_replace(COALESCE(data->>'phone', data->>'mobile',''), '[^0-9]', '', 'g'), 10) = $2
-                LIMIT 1`,
-              [email, phone]
-            );
-            if (duplicate.rows.length) {
-              await client.query('ROLLBACK');
-              const sameEmail = duplicate.rows[0].email === email;
-              const samePhone = duplicate.rows[0].phone === phone;
-              return res.status(409).json({
-                error: sameEmail && samePhone
-                  ? 'इस Gmail और मोबाइल नंबर से Volunteer Form पहले ही submit हो चुका है।'
-                  : sameEmail
-                    ? 'इस Gmail से Volunteer Form पहले ही submit हो चुका है।'
-                    : 'इस मोबाइल नंबर से Volunteer Form पहले ही submit हो चुका है।'
-              });
-            }
-            submissionData.status = 'pending';
-            submissionData.volunteerId = null;
-            submissionData.verificationCode = null;
-            submissionData.verificationUrl = null;
-            submissionData.approvedAt = null;
-            submissionData.issuedAt = null;
-            submissionData.revokedAt = null;
-            submissionData.rejectedAt = null;
-            const saved = await client.query(
-              `INSERT INTO volunteers (data) VALUES ($1::jsonb) RETURNING id`,
-              [JSON.stringify(submissionData)]
-            );
-            await client.query('COMMIT');
-            return res.status(201).json({ ok: true, id: saved.rows[0].id, referenceNo: null });
-          } catch (volunteerError) {
-            await client.query('ROLLBACK').catch(()=>{});
-            throw volunteerError;
-          } finally {
-            client.release();
-          }
-        }
-
-        /*
          * Volunteer applications
          * always start as pending.
          */
@@ -1279,20 +1217,85 @@ function submissionRoutes(
         }
 
 
-        const result =
-          await pool.query(
+        let result;
 
+        if (name === 'volunteers') {
+          // Normalize identifiers consistently so +91, spaces and hyphens
+          // cannot be used to submit the same volunteer application again.
+          const email = String(submissionData.email || submissionData.gmail || '')
+            .trim().toLowerCase();
+          const rawPhone = String(
+            submissionData.phone || submissionData.mobile || submissionData.mobileNumber || ''
+          ).trim();
+          let phone = rawPhone.replace(/\D/g, '');
+          if (phone.length === 12 && phone.startsWith('91')) phone = phone.slice(2);
+
+          if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ error: 'कृपया सही Email/Gmail दर्ज करें।' });
+          }
+          if (!/^\d{10}$/.test(phone)) {
+            return res.status(400).json({ error: 'कृपया 10 अंकों का सही मोबाइल नंबर दर्ज करें।' });
+          }
+
+          submissionData.email = email;
+          submissionData.phone = phone;
+
+          // A transaction-level advisory lock serializes volunteer submissions;
+          // this closes the race where two identical requests arrive together.
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
+            await client.query('SELECT pg_advisory_xact_lock($1)', [847261903]);
+
+            const duplicate = await client.query(
+              `SELECT id, data->>'email' AS email, data->>'phone' AS phone
+                 FROM volunteers
+                WHERE lower(trim(coalesce(data->>'email', data->>'gmail', ''))) = $1
+                   OR (
+                     CASE
+                       WHEN length(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g')) = 12
+                        AND left(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g'), 2) = '91'
+                       THEN right(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g'), 10)
+                       ELSE regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g')
+                     END
+                   ) = $2
+                LIMIT 1`,
+              [email, phone]
+            );
+
+            if (duplicate.rows.length) {
+              const oldEmail = String(duplicate.rows[0].email || '').trim().toLowerCase();
+              const oldPhone = String(duplicate.rows[0].phone || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+              await client.query('ROLLBACK');
+              if (oldEmail === email) {
+                return res.status(409).json({ error: 'इस Email/Gmail से Volunteer Form पहले ही जमा हो चुका है। एक Email से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_EMAIL' });
+              }
+              if (oldPhone === phone) {
+                return res.status(409).json({ error: 'इस मोबाइल नंबर से Volunteer Form पहले ही जमा हो चुका है। एक मोबाइल नंबर से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_PHONE' });
+              }
+              return res.status(409).json({ error: 'इस Email या मोबाइल नंबर से आवेदन पहले ही जमा हो चुका है।', code: 'DUPLICATE_VOLUNTEER' });
+            }
+
+            result = await client.query(
+              `INSERT INTO volunteers (data) VALUES ($1::jsonb)
+               RETURNING id, data, created_at`,
+              [JSON.stringify(submissionData)]
+            );
+            await client.query('COMMIT');
+          } catch (volunteerError) {
+            try { await client.query('ROLLBACK'); } catch (_) {}
+            throw volunteerError;
+          } finally {
+            client.release();
+          }
+        } else {
+          result = await pool.query(
             `INSERT INTO ${table} (data)
              VALUES ($1::jsonb)
              RETURNING id, data, created_at`,
-
-            [
-              JSON.stringify(
-                submissionData
-              )
-            ]
-
+            [JSON.stringify(submissionData)]
           );
+        }
 
 
         const row = result.rows[0];
