@@ -1151,6 +1151,68 @@ function submissionRoutes(
 
 
         /*
+         * Volunteer applications:
+         * reject duplicate email or mobile before saving.
+         * Advisory transaction lock prevents simultaneous requests
+         * from passing the duplicate check together.
+         */
+        if (name === 'volunteers') {
+          const email = String(submissionData.email || '').trim().toLowerCase();
+          const phone = String(submissionData.phone || submissionData.mobile || '').replace(/\\D/g, '').slice(-10);
+          if (!email || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+            return res.status(400).json({ error: 'Valid email address देना जरूरी है।' });
+          }
+          if (phone.length !== 10) {
+            return res.status(400).json({ error: 'Valid 10-digit mobile number देना जरूरी है।' });
+          }
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
+            await client.query('SELECT pg_advisory_xact_lock($1)', [734219]);
+            const duplicate = await client.query(
+              `SELECT lower(trim(COALESCE(data->>'email',''))) AS email,
+                      right(regexp_replace(COALESCE(data->>'phone', data->>'mobile',''), '[^0-9]', '', 'g'), 10) AS phone
+                 FROM volunteers
+                WHERE lower(trim(COALESCE(data->>'email',''))) = $1
+                   OR right(regexp_replace(COALESCE(data->>'phone', data->>'mobile',''), '[^0-9]', '', 'g'), 10) = $2
+                LIMIT 1`,
+              [email, phone]
+            );
+            if (duplicate.rows.length) {
+              await client.query('ROLLBACK');
+              const sameEmail = duplicate.rows[0].email === email;
+              const samePhone = duplicate.rows[0].phone === phone;
+              return res.status(409).json({
+                error: sameEmail && samePhone
+                  ? 'इस Gmail और मोबाइल नंबर से Volunteer Form पहले ही submit हो चुका है।'
+                  : sameEmail
+                    ? 'इस Gmail से Volunteer Form पहले ही submit हो चुका है।'
+                    : 'इस मोबाइल नंबर से Volunteer Form पहले ही submit हो चुका है।'
+              });
+            }
+            submissionData.status = 'pending';
+            submissionData.volunteerId = null;
+            submissionData.verificationCode = null;
+            submissionData.verificationUrl = null;
+            submissionData.approvedAt = null;
+            submissionData.issuedAt = null;
+            submissionData.revokedAt = null;
+            submissionData.rejectedAt = null;
+            const saved = await client.query(
+              `INSERT INTO volunteers (data) VALUES ($1::jsonb) RETURNING id`,
+              [JSON.stringify(submissionData)]
+            );
+            await client.query('COMMIT');
+            return res.status(201).json({ ok: true, id: saved.rows[0].id, referenceNo: null });
+          } catch (volunteerError) {
+            await client.query('ROLLBACK').catch(()=>{});
+            throw volunteerError;
+          } finally {
+            client.release();
+          }
+        }
+
+        /*
          * Volunteer applications
          * always start as pending.
          */
