@@ -1644,9 +1644,33 @@ async function downloadInternshipApplication(id){
   page.drawLine({start:{x:margin,y:dividerY},end:{x:W-margin,y:dividerY},thickness:1,color:rgb(.16,.29,.21)});
   // Uploaded student photo and signatures are placed in the same designated areas as the reference form.
   async function embedImage(value){
-   if(!value||typeof value!=='string'||!value.startsWith('data:image/'))return null;
-   const bits=value.split(','),bytes=Uint8Array.from(atob(bits[1]||''),c=>c.charCodeAt(0));
-   return value.startsWith('data:image/png')?await pdf.embedPng(bytes):await pdf.embedJpg(bytes);
+   // A missing or malformed photo/signature must never stop the whole PDF.
+   if(!value || typeof value !== 'string') return null;
+   const input=value.trim();
+   if(!input.startsWith('data:image/')) return null;
+   try{
+    const match=input.match(/^data:(image\/(?:png|jpe?g));([^,]*),(.*)$/is);
+    if(!match) return null;
+    const mime=match[1].toLowerCase(),meta=match[2].toLowerCase();
+    let bytes;
+    if(meta.split(';').includes('base64')){
+      let b64=match[3].replace(/\s+/g,'').replace(/-/g,'+').replace(/_/g,'/');
+      if(!b64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) return null;
+      b64=b64.replace(/=+$/,'');
+      if(b64.length % 4 === 1) return null;
+      b64 += '='.repeat((4-b64.length%4)%4);
+      const raw=atob(b64);
+      bytes=new Uint8Array(raw.length);
+      for(let i=0;i<raw.length;i++) bytes[i]=raw.charCodeAt(i);
+    }else{
+      const decoded=decodeURIComponent(match[3]);
+      bytes=new TextEncoder().encode(decoded);
+    }
+    return mime==='image/png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+   }catch(imageError){
+    console.warn('Skipping invalid internship image; PDF will still download:',imageError);
+    return null;
+   }
   }
   const photo=await embedImage(x.studentPhoto);
   if(photo){page.drawImage(photo,{x:W-margin-66,y:H-135,width:55,height:66});page.drawText('STUDENT PHOTO',{x:W-margin-66,y:H-141,size:5.8,font:bold,color:muted});}
