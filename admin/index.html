@@ -1574,33 +1574,100 @@ async function approveEditedInternshipForm(id){
    alert('Edited form approve हो गया है। अब PDF डाउनलोड कर सकते हैं।');
  }catch(e){alert('Approval नहीं हुआ: '+e.message);}
 }
-function downloadInternshipApplication(id){
- const x=internshipCache[id];if(!x){alert('Application record नहीं मिला।');return;}
- if(x.pendingFormRevision && x.formRevisionStatus==='pending_approval'){alert('Edited Form अभी approval के लिए pending है। पहले Approve Edited Form करें।');return;}
- const {jsPDF}=window.jspdf||{};if(!jsPDF){alert('PDF library load नहीं हुई।');return;}
- const pdf=new jsPDF({unit:'mm',format:'a4'}),left=15,right=195;let y=17;
- const ref=x.referenceNo||x.applicationReference||('NSF-INT-'+x.id);
- pdf.setFillColor(11,32,53);pdf.rect(0,0,210,28,'F');
- pdf.setTextColor(255,255,255);pdf.setFont('helvetica','bold');pdf.setFontSize(16);pdf.text('NISHA SEVA FOUNDATION',left,12);
- pdf.setFont('helvetica','normal');pdf.setFontSize(10);pdf.text('STUDENT INTERNSHIP APPLICATION',left,20);
- pdf.setTextColor(25,43,58);y=37;pdf.setFont('helvetica','bold');pdf.setFontSize(10);
- pdf.text('Reference Number: '+String(ref),left,y);pdf.text('Application ID: '+String(x.id),120,y);y+=8;
- pdf.setDrawColor(220,228,235);pdf.line(left,y,right,y);y+=7;
- const preferred=[['Student Name',x.studentName||x.name],['Father / Mother Name',x.parentName],['Email',x.email],['Mobile Number',x.mobile||x.phone],['Date of Birth',x.dateOfBirth],['Gender',x.gender],['Address',x.address],['City',x.city],['State',x.state],['PIN Code',x.pincode],['College Name',x.collegeName||x.educationCollege],['University',x.university],['Class / Course',x.className||x.program],['Year / Semester',x.yearSemester],['Enrollment / Roll Number',x.enrollmentRoll],['Internship Duration',x.duration],['Application Date',x.applicationDate],['Preferred Area',x.preferredPlace],['Availability',x.availability],['Areas of Interest',Array.isArray(x.interests)?x.interests.join(', '):x.interests],['Student Note',x.studentNote],['Application Status',x.status],['Internship ID',x.internshipId]];
- const excluded=new Set(['id','studentPhoto','studentSignature','parentSignature','documents','aadharCard','aadhaarCard','tenthMarksheet','lastYearMarksheet','marksheet10','class10Marksheet','aadharCardUrl','aadhaarCardUrl','tenthMarksheetUrl','lastYearMarksheetUrl','previousYearMarksheet','previousMarksheet','publicProfileId','studentAccount']);
- const all=[...preferred,...Object.keys(x).filter(k=>!excluded.has(k)&&!preferred.some(([label])=>label===internshipFieldLabel(k))).map(k=>[internshipFieldLabel(k),x[k]])];
- const used=new Set();pdf.setFont('helvetica','normal');pdf.setFontSize(10);
- all.forEach(([label,value])=>{
-   if(value===undefined||value===null||String(value)==='')return;
-   const key=label+'|'+String(value);if(used.has(key))return;used.add(key);
-   let text=Array.isArray(value)?value.join(', '):(typeof value==='object'?JSON.stringify(value):String(value));
-   const lines=pdf.splitTextToSize(label+': '+text,178);
-   if(y+lines.length*5>278){pdf.addPage();y=17;}
-   pdf.setTextColor(35,52,68);pdf.text(lines,left,y);y+=lines.length*5+2.2;
- });
- const pages=pdf.getNumberOfPages();
- for(let p=1;p<=pages;p++){pdf.setPage(p);pdf.setFontSize(8);pdf.setTextColor(100,115,128);pdf.text('Nisha Seva Foundation · Internship Application · '+ref,15,289);pdf.text('Page '+p+' of '+pages,195,289,{align:'right'});}
- pdf.save(String(ref).replace(/[^a-z0-9_-]/gi,'_')+'_Internship_Application.pdf');
+async function downloadInternshipApplication(id){
+ const original=internshipCache[id];
+ if(!original){alert('Application record नहीं मिला।');return;}
+ if(original.pendingFormRevision && original.formRevisionStatus==='pending_approval'){
+   alert('Edited Form अभी approval के लिए pending है। पहले Approve Edited Form करें।');return;
+ }
+ if(!window.PDFLib){alert('PDF library load नहीं हुई। Internet connection check करके दोबारा प्रयास करें।');return;}
+ const x=original;
+ try{
+  const {PDFDocument,StandardFonts,rgb}=window.PDFLib;
+  const pdf=await PDFDocument.create();
+  const W=595.28,H=841.89,margin=38;
+  const page=pdf.addPage([W,H]);
+  const navy=rgb(0.035,0.105,0.19),gold=rgb(0.94,0.61,0.04),green=rgb(0.82,0.89,0.83);
+  const ink=rgb(0.16,0.19,0.18),muted=rgb(0.38,0.41,0.39),line=rgb(0.72,0.75,0.72),white=rgb(1,1,1);
+  const regular=await pdf.embedFont(StandardFonts.Helvetica);
+  const bold=await pdf.embedFont(StandardFonts.HelveticaBold);
+  const safe=v=>Array.isArray(v)?v.join(', '):(v===undefined||v===null?'':String(v));
+  const field=(label,value)=>[label,safe(value)||'—'];
+  const drawText=(value,x,y,size=8,font=regular,color=ink,maxWidth=250)=>{
+   const text=safe(value);
+   const words=text.split(/\s+/);let rows=[],row='';
+   for(const word of words){const test=row?row+' '+word:word;if(font.widthOfTextAtSize(test,size)>maxWidth&&row){rows.push(row);row=word;}else row=test;}
+   if(row)rows.push(row);
+   rows.slice(0,2).forEach((r,i)=>page.drawText(r,{x,y:y-i*(size+2),size,font,color}));
+  };
+  const section=(label,y)=>{
+   page.drawRectangle({x:margin,y:y-20,width:W-2*margin,height:24,color:green});
+   page.drawText(label,{x:margin+10,y:y-12,size:9,font:bold,color:rgb(.16,.29,.21)});
+   return y-34;
+  };
+  const drawFields=(items,y)=>{
+   const gap=22,colW=(W-2*margin-gap)/2,rowH=43;
+   items.forEach((it,i)=>{
+    const col=i%2,row=Math.floor(i/2),xx=margin+col*(colW+gap),yy=y-row*rowH;
+    page.drawText(it[0].toUpperCase(),{x:xx,y:yy,size:6.6,font:bold,color:muted});
+    page.drawLine({start:{x:xx,y:yy-19},end:{x:xx+colW,y:yy-19},thickness:.55,color:line});
+    drawText(it[1],xx,yy-12,8.1,regular,ink,colW-5);
+   });
+   return y-Math.ceil(items.length/2)*rowH;
+  };
+  // Header, matching the supplied application-form reference.
+  page.drawRectangle({x:0,y:H-112,width:W,height:112,color:navy});
+  page.drawRectangle({x:0,y:H-117,width:W,height:5,color:gold});
+  page.drawText('NISHA SEVA FOUNDATION',{x:margin,y:H-43,size:15,font:bold,color:white});
+  page.drawText('STUDENT INTERNSHIP PROGRAMME',{x:margin,y:H-63,size:8.5,font:regular,color:rgb(.86,.9,.94)});
+  page.drawText('INTERNSHIP REGISTRATION FORM',{x:margin,y:H-91,size:13,font:bold,color:white});
+  page.drawText('REGISTRATION',{x:W-126,y:H-29,size:6.5,font:bold,color:rgb(1,.76,.25)});
+  let y=H-145;
+  const ref=x.referenceNo||x.applicationReference||('NSF-INT-'+x.id);
+  page.drawRectangle({x:margin,y:y-23,width:W-2*margin,height:34,color:rgb(.97,.975,.96),borderColor:line,borderWidth:.5});
+  page.drawText('Application Date: '+safe(x.applicationDate||x.submittedAt||'-'),{x:margin+10,y:y-3,size:8,font:bold,color:ink});
+  page.drawText('Internship ID: '+safe(x.internshipId||'________________'),{x:margin+270,y:y-3,size:8,font:bold,color:ink});
+  y-=50;
+  y=section('PROGRAMME DETAILS',y);
+  y=drawFields([field('Programme',x.program||'BA Internship Program'),field('Internship Duration',x.duration),field('College / Institution',x.collegeName),field('Preferred Internship Location',x.preferredPlace)],y-7);
+  y=section('STUDENT PERSONAL DETAILS',y-2);
+  y=drawFields([field('Student Full Name',x.studentName||x.name),field('Parent / Guardian Name',x.parentName||x.fatherName),field('Date of Birth',x.dob||x.dateOfBirth),field('Mobile Number',x.mobile||x.phone),field('Email Address',x.email),field('Full Address',x.address)],y-7);
+  y=section('EDUCATION DETAILS',y-2);
+  y=drawFields([field('College currently attending',x.educationCollege||x.collegeName),field('University',x.university),field('Course / Class',x.className||x.course||x.program),field('Year / Semester',x.yearSemester),field('Enrollment / Roll Number',x.enrollmentRoll),field('Previous Percentage / Marks',x.previousPercentage?x.previousPercentage+'%':'')],y-7);
+  y=section('INTERNSHIP PREFERENCES & DECLARATION',y-2);
+  const interests=Array.isArray(x.interests)?x.interests.join(', '):x.interests;
+  page.drawText('SELECTED FOCUS AREAS: '+safe(interests||x.focusAreas||'-').toUpperCase(),{x:margin,y:y-4,size:7.2,font:regular,color:ink,maxWidth:W-2*margin});
+  page.drawText('AVAILABILITY / PREFERRED TIME: '+safe(x.availability||x.preferredTime||'-').toUpperCase(),{x:margin,y:y-22,size:7.2,font:regular,color:ink});
+  page.drawText('STUDENT NOTE: '+safe(x.studentNote||'-').toUpperCase(),{x:margin,y:y-40,size:7.2,font:regular,color:ink});
+  page.drawText('I confirm that the information provided above is true and complete to the best of my knowledge.',{x:margin,y:y-65,size:7.2,font:bold,color:ink});
+  const dividerY=y-84;
+  page.drawLine({start:{x:margin,y:dividerY},end:{x:W-margin,y:dividerY},thickness:1,color:rgb(.16,.29,.21)});
+  // Uploaded student photo and signatures are placed in the same designated areas as the reference form.
+  async function embedImage(value){
+   if(!value||typeof value!=='string'||!value.startsWith('data:image/'))return null;
+   const bits=value.split(','),bytes=Uint8Array.from(atob(bits[1]||''),c=>c.charCodeAt(0));
+   return value.startsWith('data:image/png')?await pdf.embedPng(bytes):await pdf.embedJpg(bytes);
+  }
+  const photo=await embedImage(x.studentPhoto);
+  if(photo){page.drawImage(photo,{x:W-margin-66,y:H-135,width:55,height:66});page.drawText('STUDENT PHOTO',{x:W-margin-66,y:H-141,size:5.8,font:bold,color:muted});}
+  const sigY=dividerY-30,col=(W-2*margin)/3;
+  const studentSig=await embedImage(x.studentSignature),parentSig=await embedImage(x.parentSignature);
+  if(studentSig)page.drawImage(studentSig,{x:margin+5,y:sigY+7,width:70,height:20});
+  if(parentSig)page.drawImage(parentSig,{x:margin+col+5,y:sigY+7,width:70,height:20});
+  for(let n=0;n<3;n++){
+   const xx=margin+n*col+5;
+   page.drawLine({start:{x:xx,y:sigY},end:{x:xx+col-16,y:sigY},thickness:.55,color:line});
+  }
+  drawText('Candidate Signature: '+safe(x.studentSignatureName||x.studentName||x.name),margin+5,sigY-12,6.2,regular,muted,col-15);
+  drawText('Parent / Guardian Signature: '+safe(x.parentSignatureName||x.parentName),margin+col+5,sigY-12,6.2,regular,muted,col-15);
+  drawText('NSF Coordinator Signature / Office Use',margin+2*col+5,sigY-12,6.2,regular,muted,col-15);
+  page.drawText('NISHA SEVA FOUNDATION  •  INTERNSHIP REGISTRATION',{x:margin,y:20,size:6.2,font:bold,color:muted});
+  page.drawText('Application Ref: '+safe(ref),{x:W-margin-150,y:20,size:6.2,font:regular,color:muted});
+  const bytes=await pdf.save();
+  const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=String(ref).replace(/[^a-z0-9_-]/gi,'_')+'_Internship_Registration_Form.pdf';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000);
+ }catch(err){console.error('Internship form PDF error:',err);alert('PDF download नहीं हो सका: '+err.message);}
 }
 async function renderInternshipDocuments(){
  content.innerHTML='<h2>📎 Internship Documents</h2><p>Loading uploaded documents...</p>';
