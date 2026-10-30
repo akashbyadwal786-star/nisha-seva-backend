@@ -1500,7 +1500,7 @@ if (volunteerForm) {
  fatherName: document.getElementById('vFatherName').value.trim(),
  gender: document.getElementById('vGender').value,
  age: document.getElementById('vAge').value,
- email: document.getElementById('vEmail').value.trim(),
+ email: document.getElementById('vEmail').value.trim().toLowerCase(),
  phone: document.getElementById('vPhone').value.trim(),
  city: document.getElementById('vCity').value.trim(),
  availability: document.getElementById('vAvail').value,
@@ -1509,6 +1509,14 @@ if (volunteerForm) {
  message: document.getElementById('vMessage').value.trim(),
  photoUrl
  };
+ if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+ throw new Error('कृपया सही Email/Gmail दर्ज करें।');
+ }
+ const normalizedPhone = data.phone.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+ if (!/^\d{10}$/.test(normalizedPhone)) {
+ throw new Error('कृपया 10 अंकों का सही मोबाइल नंबर दर्ज करें।');
+ }
+ data.phone = normalizedPhone;
  const response = await fetch(
  apiUrl('/api/volunteers'),
  {
@@ -1517,7 +1525,7 @@ if (volunteerForm) {
  body: JSON.stringify(data)
  }
  );
- const result = await response.json().catch(()=>({}));
+ const result = await response.json();
  if (!response.ok) throw new Error(result.error || 'Submission failed');
  alert('Volunteer application successfully submit ho gayi!');
  volunteerForm.reset();
