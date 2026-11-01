@@ -95,16 +95,45 @@ const PUBLIC_BASE_URL =
    MIDDLEWARE
    ========================================================= */
 
-const allowedOrigins = String(process.env.ALLOWED_ORIGINS || 'https://nishasevafoundation.org')
+// CORS: allow the production website on both apex and www hosts.
+// ALLOWED_ORIGINS can add extra trusted origins, but cannot remove these defaults.
+const defaultAllowedOrigins = [
+  'https://nishasevafoundation.org',
+  'https://www.nishasevafoundation.org'
+];
+const configuredAllowedOrigins = String(process.env.ALLOWED_ORIGINS || '')
   .split(',').map(value => value.trim()).filter(Boolean);
+const allowedOrigins = [...new Set([...defaultAllowedOrigins, ...configuredAllowedOrigins])];
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('Origin not allowed by CORS'));
+    console.warn('CORS blocked origin:', origin);
+    return callback(null, false);
   },
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization']
+  allowedHeaders: ['Content-Type','Authorization'],
+  optionsSuccessStatus: 204,
+  maxAge: 86400
 }));
+// Explicit preflight response for browsers sending Authorization headers.
+app.options('*', cors({
+  origin: (origin, callback) => callback(null, !origin || allowedOrigins.includes(origin)),
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  optionsSuccessStatus: 204,
+  maxAge: 86400
+}));
+
+// Lightweight API diagnostic. Does not expose credentials or database contents.
+app.get('/api/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    return res.json({ success: true, service: 'nisha-seva-api', database: 'connected' });
+  } catch (error) {
+    console.error('API HEALTH CHECK ERROR:', error);
+    return res.status(503).json({ success: false, service: 'nisha-seva-api', database: 'unavailable' });
+  }
+});
 
 app.use(
   express.json({
