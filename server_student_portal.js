@@ -2974,7 +2974,24 @@ async function getStudentApplication(account){
   await internshipTableReady;
   const result=await pool.query('SELECT id, data, created_at FROM internships WHERE id=$1 LIMIT 1',[account.internship_id]);
   if(!result.rows.length) return null;
-  return {id:result.rows[0].id,submittedAt:result.rows[0].created_at,...(result.rows[0].data||{})};
+  const application = {id:result.rows[0].id,submittedAt:result.rows[0].created_at,...(result.rows[0].data||{})};
+  // Only return project records tied to this student's verified account email or internship ID.
+  await projectSubmissionTableReady;
+  const projectResult = await pool.query(
+    `SELECT id, data, created_at
+       FROM project_submissions
+      WHERE lower(trim(coalesce(data->>'email',''))) = lower(trim($1))
+         OR ($2 <> '' AND lower(trim(coalesce(data->>'internshipId',''))) = lower(trim($2)))
+      ORDER BY created_at DESC`,
+    [account.email || '', application.internshipId || '']
+  );
+  application.attendance = application.attendance || {presentDays:0,totalDays:0,absentDays:0,percentage:0,dates:[]};
+  application.projects = projectResult.rows.map(row => {
+    const p = row.data || {};
+    const f = p.projectFile && typeof p.projectFile === 'object' ? {name:p.projectFile.name||'',type:p.projectFile.type||''} : null;
+    return {id:row.id,title:p.title||p.projectTitle||'Project',description:p.description||'',status:p.status||'submitted',submittedAt:p.submittedAt||row.created_at,feedback:p.feedback||'',projectFile:f};
+  });
+  return application;
 }
 
 app.post('/api/student/signup', async (req,res)=>{
