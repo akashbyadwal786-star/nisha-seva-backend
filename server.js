@@ -1077,7 +1077,19 @@ app.get('/api/certificate-verify/:certificateId', async (req, res) => {
     const db=await readDB(); const list=Array.isArray(db.certificates)?db.certificates:[];
     const item=list.find(x=>String(x.certificateId||x.certificate_id||'').trim().toLowerCase()===wanted);
     if(!item || String(item.status||'active').toLowerCase()==='revoked') return res.json({valid:false,message:'Certificate not found or revoked'});
-    res.json({valid:true,certificate:{certificateId:item.certificateId||item.certificate_id,name:item.name||item.studentName||'',course:item.course||item.program||'',issueDate:item.issueDate||item.issuedAt||'',issuer:'Nisha Seva Foundation',status:'Valid'}});
+    const attendance = item.attendance && typeof item.attendance === 'object' ? item.attendance : {};
+    const projects = Array.isArray(item.projects) ? item.projects : [];
+    res.json({valid:true,certificate:{
+      certificateId:item.certificateId||item.certificate_id,
+      name:item.name||item.studentName||'',
+      course:item.course||item.program||'',
+      internshipId:item.internshipId||'',
+      issueDate:item.issueDate||item.issuedAt||'',
+      attendance:{presentDays:Number(attendance.presentDays||0),totalDays:Number(attendance.totalDays||0),percentage:Number(attendance.percentage||0)},
+      projectTitles:projects.map(p=>String(p.title||p.projectTitle||'')).filter(Boolean).slice(0,10),
+      issuer:'Nisha Seva Foundation',
+      status:'Valid'
+    }});
   } catch(e) { console.error('GET /api/certificate-verify',e); res.status(500).json({valid:false,error:'Verification unavailable'}); }
 });
 
@@ -1219,7 +1231,70 @@ function submissionRoutes(
 
         let result;
 
-        if (name === 'volunteers') {
+        if (name === 'internships') {
+          // One internship application per normalized email OR mobile number.
+          // Transaction-level advisory lock prevents concurrent duplicate submissions.
+          const email = String(submissionData.email || submissionData.gmail || '').trim().toLowerCase();
+          const rawPhone = String(submissionData.mobile || submissionData.phone || submissionData.mobileNumber || '').trim();
+          let phone = rawPhone.replace(/\D/g, '');
+          if (phone.length === 12 && phone.startsWith('91')) phone = phone.slice(2);
+          if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ error: 'कृपया सही Email दर्ज करें।' });
+          }
+          if (!/^\d{10}$/.test(phone)) {
+            return res.status(400).json({ error: 'कृपया 10 अंकों का सही मोबाइल नंबर दर्ज करें।' });
+          }
+          submissionData.email = email;
+          submissionData.mobile = phone;
+          const client = await pool.connect();
+          try {
+            await client.query('BEGIN');
+            await client.query('SELECT pg_advisory_xact_lock($1)', [847261904]);
+            const duplicate = await client.query(
+              `SELECT id,
+                      lower(trim(coalesce(data->>'email', data->>'gmail', ''))) AS email,
+                      CASE
+                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')) = 12
+                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 2) = '91'
+                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 10)
+                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')
+                      END AS phone
+                 FROM internships
+                WHERE lower(trim(coalesce(data->>'email', data->>'gmail', ''))) = $1
+                   OR (
+                      CASE
+                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')) = 12
+                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 2) = '91'
+                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 10)
+                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')
+                      END
+                   ) = $2
+                LIMIT 1`,
+              [email, phone]
+            );
+            if (duplicate.rows.length) {
+              const old = duplicate.rows[0];
+              await client.query('ROLLBACK');
+              if (String(old.email || '').toLowerCase() === email) {
+                return res.status(409).json({ error: 'इस Email से Internship Form पहले ही जमा हो चुका है। एक Email से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_EMAIL' });
+              }
+              if (String(old.phone || '') === phone) {
+                return res.status(409).json({ error: 'इस मोबाइल नंबर से Internship Form पहले ही जमा हो चुका है। एक मोबाइल नंबर से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_PHONE' });
+              }
+              return res.status(409).json({ error: 'इस Email या मोबाइल नंबर से आवेदन पहले ही जमा हो चुका है।', code: 'DUPLICATE_INTERNSHIP' });
+            }
+            result = await client.query(
+              `INSERT INTO internships (data) VALUES ($1::jsonb) RETURNING id, data, created_at`,
+              [JSON.stringify(submissionData)]
+            );
+            await client.query('COMMIT');
+          } catch (internshipError) {
+            try { await client.query('ROLLBACK'); } catch (_) {}
+            throw internshipError;
+          } finally {
+            client.release();
+          }
+        } else if (name === 'volunteers') {
           // Normalize identifiers consistently so +91, spaces and hyphens
           // cannot be used to submit the same volunteer application again.
           const email = String(submissionData.email || submissionData.gmail || '')
@@ -1607,6 +1682,46 @@ app.post('/api/internships/:id/approve-edit', requireAdmin, async (req, res) => 
   } catch (error) {
     console.error('POST /api/internships/:id/approve-edit:', error);
     return res.status(500).json({ error: 'Could not approve edited application.' });
+  }
+});
+
+/* ---------------------------------------------------------
+   ADMIN ATTENDANCE UPDATE
+   --------------------------------------------------------- */
+app.put('/api/internships/:id/attendance', requireAdmin, async (req, res) => {
+  try {
+    await internshipTableReady;
+    const id = Number(req.params.id);
+    const presentDays = Number(req.body && req.body.presentDays);
+    const totalDays = Number(req.body && req.body.totalDays);
+    const dates = Array.isArray(req.body && req.body.dates)
+      ? req.body.dates.map(v => String(v).slice(0, 30)).slice(0, 120)
+      : [];
+    if (!Number.isSafeInteger(id) || id < 1 || !Number.isInteger(presentDays) ||
+        !Number.isInteger(totalDays) || totalDays < 1 || presentDays < 0 || presentDays > totalDays) {
+      return res.status(400).json({ error: 'Attendance days सही दर्ज करें। Present days, total days से अधिक नहीं हो सकते।' });
+    }
+    const result = await pool.query('SELECT id, data, created_at FROM internships WHERE id=$1 LIMIT 1', [id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Internship application not found' });
+    const current = result.rows[0].data || {};
+    const attendance = {
+      presentDays,
+      totalDays,
+      absentDays: totalDays - presentDays,
+      percentage: Number((presentDays / totalDays * 100).toFixed(1)),
+      dates,
+      updatedAt: new Date().toISOString(),
+      updatedByRole: req.userRole || 'admin'
+    };
+    const updated = { ...current, attendance };
+    const saved = await pool.query(
+      'UPDATE internships SET data=$1::jsonb WHERE id=$2 RETURNING id,data,created_at',
+      [JSON.stringify(updated), id]
+    );
+    return res.json({ id, ...(saved.rows[0].data || {}), submittedAt: saved.rows[0].created_at });
+  } catch (error) {
+    console.error('PUT /api/internships/:id/attendance:', error);
+    return res.status(500).json({ error: 'Attendance save नहीं हो सकी।' });
   }
 });
 
