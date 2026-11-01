@@ -1240,8 +1240,10 @@ function submissionRoutes(
           submissionData.status =
             'pending';
 
-          submissionData.internshipId =
-            null;
+          // Permanent public token is created for EVERY application at submission.
+          // It is random, non-sequential and contains no personal information.
+          submissionData.publicProfileId = crypto.randomBytes(18).toString('hex');
+          submissionData.internshipId = null;
 
           submissionData.approvedAt =
             null;
@@ -1406,14 +1408,19 @@ function submissionRoutes(
         let referenceNo = null;
         if (name === 'internships') {
           referenceNo = `NSF-INT-${row.id}`;
-          const updatedData = { ...(row.data || {}), referenceNo, applicationReference: referenceNo };
+          const publicProfileUrl = `${(process.env.PUBLIC_STUDENT_VERIFY_BASE || 'https://nishasevafoundation.org/student-verification.html').replace(/\/$/, '')}?id=${encodeURIComponent((row.data || {}).publicProfileId)}`;
+          const updatedData = { ...(row.data || {}), referenceNo, applicationReference: referenceNo, studentId: `NSF-STU-${String(row.id).padStart(6,'0')}`, publicProfileUrl };
           await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify(updatedData), row.id]);
         }
 
+        const savedRow = name === 'internships' ? (await pool.query('SELECT data FROM internships WHERE id=$1', [row.id])).rows[0]?.data || {} : {};
         res.status(201).json({
           ok: true,
           id: row.id,
-          referenceNo
+          referenceNo,
+          publicProfileId: savedRow.publicProfileId || null,
+          publicProfileUrl: savedRow.publicProfileUrl || null,
+          studentId: savedRow.studentId || null
         });
 
 
@@ -1588,6 +1595,62 @@ function submissionRoutes(
   submissionRoutes
 );
 
+// Public QR verification for every submitted internship application.
+// Only deliberately selected basic fields are returned; no contact details or documents.
+app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => {
+  try {
+    await internshipTableReady;
+    const token = String(req.params.publicId || '');
+    if (!/^[a-f0-9]{36}$/i.test(token)) return res.status(404).json({ error: 'Student profile not found.' });
+    const result = await pool.query(
+      `SELECT id, data, created_at FROM internships WHERE data->>'publicProfileId'=$1 LIMIT 1`, [token]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Student profile not found.' });
+    const row=result.rows[0], d=row.data||{};
+    const safe = {
+      studentId: d.studentId || `NSF-STU-${String(row.id).padStart(6,'0')}`,
+      applicationId: row.id,
+      studentName: d.studentName || d.name || 'Student',
+      photo: typeof d.studentPhoto === 'string' && /^data:image\/(png|jpeg|webp);base64,/i.test(d.studentPhoto) ? d.studentPhoto : null,
+      college: d.collegeName || d.educationCollege || null,
+      university: d.university || null,
+      course: d.className || d.program || 'Student Internship',
+      yearSemester: d.yearSemester || null,
+      programme: d.program || 'Student Internship',
+      duration: d.duration || null,
+      interests: Array.isArray(d.interests) ? d.interests : (d.interests ? [String(d.interests)] : []),
+      internshipId: d.internshipId || null,
+      applicationStatus: d.status || 'pending',
+      submittedOn: d.applicationDate || row.created_at,
+      verificationStatus: ['revoked','rejected'].includes(String(d.status||'').toLowerCase()) ? 'Not Valid' : 'Record Found'
+    };
+    res.set('Cache-Control','no-store');
+    return res.json({ success:true, profile:safe });
+  } catch (error) {
+    console.error('STUDENT VERIFY ERROR:', error);
+    return res.status(500).json({ error:'Student verification is temporarily unavailable.' });
+  }
+});
+
+// Admin-only migration helper: issue a permanent public QR token to older applications.
+app.post('/api/internships/:id/ensure-public-id', requireAdmin, async (req,res) => {
+  try {
+    await internshipTableReady;
+    const id=Number(req.params.id);
+    if(!Number.isSafeInteger(id)||id<1) return res.status(400).json({error:'Invalid application ID.'});
+    const found=await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[id]);
+    if(!found.rows.length) return res.status(404).json({error:'Application not found.'});
+    const d=found.rows[0].data||{};
+    if(!d.publicProfileId) d.publicProfileId=crypto.randomBytes(18).toString('hex');
+    if(!d.studentId) d.studentId=`NSF-STU-${String(id).padStart(6,'0')}`;
+    d.publicProfileUrl=`${(process.env.PUBLIC_STUDENT_VERIFY_BASE || 'https://nishasevafoundation.org/student-verification.html').replace(/\/$/, '')}?id=${encodeURIComponent(d.publicProfileId)}`;
+    await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2',[JSON.stringify(d),id]);
+    return res.json({success:true,studentId:d.studentId,publicProfileId:d.publicProfileId,publicProfileUrl:d.publicProfileUrl,application:d});
+  } catch(error) {
+    console.error('ENSURE STUDENT QR ERROR:',error);
+    return res.status(500).json({error:'Could not prepare student ID card.'});
+  }
+});
 
 
 /* =========================================================
@@ -1628,7 +1691,7 @@ const internshipTableReady = initializeTable(`
    EDIT INTERNSHIP APPLICATION — staged until explicit approval
    --------------------------------------------------------- */
 const INTERNSHIP_SYSTEM_FIELDS = new Set([
-  'id', 'status', 'internshipId', 'approvedAt', 'issuedAt',
+  'id', 'status', 'studentId', 'internshipId', 'approvedAt', 'issuedAt',
   'rejectedAt', 'revokedAt', 'publicProfileId', 'studentAccount',
   'pendingFormRevision', 'formRevisionStatus',
   'formRevisionSubmittedAt', 'formRevisionApprovedAt'
