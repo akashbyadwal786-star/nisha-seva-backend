@@ -3641,6 +3641,43 @@ const donationsTableReady = initializeTable(`CREATE TABLE IF NOT EXISTS donation
  payment_time TIMESTAMPTZ, sms_status VARCHAR(30) NOT NULL DEFAULT 'NOT_SENT', sms_error TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )`, 'DONATIONS');
 
+
+/* ---------------------------------------------------------
+   PUBLIC LIVE IMPACT STATISTICS
+   Counts are calculated from saved records; no demo numbers.
+   --------------------------------------------------------- */
+app.get('/api/public-impact-stats', async (req, res) => {
+  try {
+    await Promise.all([internshipTableReady, donationsTableReady]);
+    const [volunteerCount, studentCount, donationTotal] = await Promise.all([
+      pool.query('SELECT COUNT(*)::int AS total FROM volunteers'),
+      pool.query('SELECT COUNT(*)::int AS total FROM internships'),
+      pool.query("SELECT COALESCE(SUM(amount),0)::numeric(14,2) AS total FROM donations WHERE payment_status='PAID'")
+    ]);
+    const state = await readDB();
+    const events = Array.isArray(state.events) ? state.events : [];
+    const missions = Array.isArray(state.missions) ? state.missions : [];
+    const camps = events.filter(event => {
+      const label = [event.title, event.name, event.category, event.type, event.description]
+        .filter(Boolean).join(' ').toLowerCase();
+      return /\b(camp|health camp|eye camp|medical camp|blood camp)\b/.test(label);
+    }).length;
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      volunteers: Number(volunteerCount.rows[0]?.total || 0),
+      students: Number(studentCount.rows[0]?.total || 0),
+      donations: Number(donationTotal.rows[0]?.total || 0),
+      camps,
+      missions: missions.length,
+      events: events.length,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('PUBLIC IMPACT STATS ERROR:', error);
+    return res.status(503).json({ error: 'Live impact statistics are temporarily unavailable.' });
+  }
+});
+
 async function cashfreeRequest(url, options={}) {
   if (!CASHFREE_APP_ID || !CASHFREE_SECRET_KEY) throw new Error('Cashfree API credentials are not configured in Render Environment.');
   const response = await fetch(url, { ...options, headers: { 'x-client-id': CASHFREE_APP_ID, 'x-client-secret': CASHFREE_SECRET_KEY, 'x-api-version': CASHFREE_API_VERSION, 'accept':'application/json', 'content-type':'application/json', ...(options.headers||{}) } });
