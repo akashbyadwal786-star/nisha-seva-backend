@@ -1652,56 +1652,98 @@ async function downloadInternshipIdCard(id){
  try{
   const x=await ensureInternshipQrRecord(id);
   if(!window.QRCode||!window.jspdf?.jsPDF)throw new Error('QR/PDF library उपलब्ध नहीं है।');
-  const publicUrl=x.publicProfileUrl||`https://nishasevafoundation.org/student-verification.html?id=${encodeURIComponent(x.publicProfileId)}`;
+  const publicUrl=x.publicProfileUrl||`https://nishasevafoundation.org/student-verification.html?id=${encodeURIComponent(x.publicProfileId||'')}`;
   const studentId=x.studentId||`NSF-STU-${String(x.id).padStart(6,'0')}`;
-  const host=document.createElement('div');host.style.cssText='position:fixed;left:-10000px;top:0;width:220px;height:220px;background:#fff';document.body.appendChild(host);
+  const host=document.createElement('div');
+  host.style.cssText='position:fixed;left:-10000px;top:0;width:220px;height:220px;background:#fff';
+  document.body.appendChild(host);
   try{
    new QRCode(host,{text:publicUrl,width:220,height:220,colorDark:'#075d50',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
-   await new Promise(r=>setTimeout(r,180));const qr=host.querySelector('canvas');if(!qr)throw new Error('QR code create नहीं हुआ।');
-   const {jsPDF}=window.jspdf,pdf=new jsPDF({orientation:'landscape',unit:'mm',format:[86,54]});
+   await new Promise(r=>setTimeout(r,250));
+   const qrCanvas=host.querySelector('canvas');
+   if(!qrCanvas)throw new Error('QR code create नहीं हुआ।');
+   const {jsPDF}=window.jspdf;
+   const pdf=new jsPDF({orientation:'landscape',unit:'mm',format:[86,54],compress:true});
    const C={green:[0,111,91],deep:[0,91,76],mint:[220,244,222],pale:[244,249,220],ink:[24,39,36],white:[255,255,255],lime:[42,194,151],gold:[255,205,100]};
    const fit=(txt,w,max,min=4)=>{let z=max;pdf.setFontSize(z);while(pdf.getTextWidth(String(txt))>w&&z>min){z-=.2;pdf.setFontSize(z);}return z;};
-   const base=()=>{pdf.setFillColor(...C.pale);pdf.roundedRect(1,1,84,52,3,3,'F');pdf.setFillColor(...C.mint);pdf.roundedRect(1.5,1.5,83,51,3,3,'F');};
-   const header=(back=false)=>{
+   const text=(value,x,y,size,color=C.ink,bold=false,align)=>{pdf.setFont('helvetica',bold?'bold':'normal');pdf.setFontSize(size);pdf.setTextColor(...color);pdf.text(String(value??''),x,y,align?{align}:{});};
+   const base=()=>{
+    pdf.setFillColor(...C.pale);pdf.roundedRect(1,1,84,52,3,3,'F');
+    pdf.setFillColor(...C.mint);pdf.roundedRect(1.5,1.5,83,51,3,3,'F');
+   };
+   const header=(subtitle)=>{
     pdf.setFillColor(...C.green);pdf.roundedRect(1.5,1.5,83,12.5,3,3,'F');pdf.rect(1.5,9,83,5,'F');
     pdf.setFillColor(...C.lime);pdf.roundedRect(1.5,1.5,13,12.5,3,3,'F');pdf.rect(1.5,8,13,6,'F');
-    // Actual NSF logo in a clean white tile, as in the approved preview.
+    // Original NSF logo in a white tile; watermark is kept subtle behind content.
     pdf.setFillColor(255,255,255);pdf.roundedRect(3,3,10,9.5,.5,.5,'F');
-    try{pdf.addImage(NSF_ID_LOGO,'WEBP',3.4,3.3,9.2,8.9,undefined,'FAST');}catch(_){}
-    pdf.setFont('helvetica','bold');pdf.setFontSize(fit('NISHA SEVA FOUNDATION',67,8.7,6.3));pdf.setTextColor(255,255,255);pdf.text('NISHA SEVA FOUNDATION',18,7.5);
-    pdf.setFont('helvetica','bold');pdf.setFontSize(back?4.5:4.7);pdf.setTextColor(...C.gold);pdf.text(back?'OFFICIAL STUDENT IDENTITY CARD':'STUDENT IDENTITY CARD',18,10.8);
+    try{pdf.addImage(NSF_ID_LOGO,'WEBP',3.4,3.3,9.2,8.9,undefined,'FAST');}catch(err){console.warn('NSF logo could not be embedded',err);}
+    pdf.setFont('helvetica','bold');pdf.setFontSize(fit('NISHA SEVA FOUNDATION',66,8.7,6.1));pdf.setTextColor(255,255,255);pdf.text('NISHA SEVA FOUNDATION',18,7.5);
+    pdf.setFont('helvetica','bold');pdf.setFontSize(fit(subtitle,64,4.7,3.8));pdf.setTextColor(...C.gold);pdf.text(subtitle,18,10.8);
     pdf.setFillColor(...C.deep);pdf.rect(1.5,47,83,5,'F');
    };
-   const watermark=()=>{try{if(pdf.GState)pdf.setGState(new pdf.GState({opacity:.09}));pdf.addImage(NSF_ID_LOGO,'WEBP',35,20,16,12,undefined,'FAST');if(pdf.GState)pdf.setGState(new pdf.GState({opacity:1}));}catch(_){}};
-   // FRONT — exactly follows the approved no-leaves layout: teal header, logo tile, mint body.
-   base();header(false);watermark();
+   const watermark=()=>{
+    try{
+     if(pdf.GState)pdf.setGState(new pdf.GState({opacity:.055}));
+     pdf.addImage(NSF_ID_LOGO,'WEBP',35,20,16,12,undefined,'FAST');
+     if(pdf.GState)pdf.setGState(new pdf.GState({opacity:1}));
+    }catch(_){}
+   };
+   const addPhoto=(photo)=>{
+    if(!photo||!/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(photo))return false;
+    try{
+     const fmt=/^data:image\/png/i.test(photo)?'PNG':(/^data:image\/webp/i.test(photo)?'WEBP':'JPEG');
+     pdf.addImage(photo,fmt,7,17.5,16.5,22,undefined,'FAST');return true;
+    }catch(e){console.warn('Student photo could not be embedded',e);return false;}
+   };
+
+   // FRONT — landscape 86 × 54 mm, no leaf decoration.
+   base();header('STUDENT IDENTITY CARD');watermark();
    pdf.setDrawColor(...C.green);pdf.setLineWidth(.65);pdf.roundedRect(6.5,17,17.5,23,1,1,'S');
-   if(x.studentPhoto&&/^data:image\/(png|jpeg|webp);base64,/i.test(x.studentPhoto)){
-    try{let fmt=x.studentPhoto.startsWith('data:image/png')?'PNG':(x.studentPhoto.startsWith('data:image/webp')?'WEBP':'JPEG');pdf.addImage(x.studentPhoto,fmt,7,17.5,16.5,22,undefined,'FAST');}
-    catch(_){pdf.setFont('helvetica','bold');pdf.setFontSize(5.3);pdf.setTextColor(...C.green);pdf.text('STUDENT PHOTO',15.25,29,{align:'center'});}
-   }else{pdf.setFont('helvetica','bold');pdf.setFontSize(5.5);pdf.setTextColor(...C.green);pdf.text('STUDENT',15.25,27.5,{align:'center'});pdf.text('PHOTO',15.25,31,{align:'center'});}
-   const dx=29,maxW=48,name=String(x.studentName||x.name||'Student').trim().toUpperCase();
-   pdf.setFont('helvetica','bold');pdf.setTextColor(...C.green);pdf.setFontSize(fit(name,maxW,7.5,5.2));pdf.text(name,dx,22.2);
+   if(!addPhoto(x.studentPhoto)){
+    text('STUDENT',15.25,27.5,5.2,C.green,true,'center');
+    text('PHOTO',15.25,31,5.2,C.green,true,'center');
+   }
+   const studentName=String(x.studentName||x.fullName||x.name||x.applicantName||'Student').replace(/\s+/g,' ').trim().toUpperCase();
+   const dx=29,maxW=47;
+   pdf.setFont('helvetica','bold');pdf.setTextColor(...C.green);pdf.setFontSize(fit(studentName,maxW,7.4,4.8));
+   pdf.text(studentName,dx,22.2,{maxWidth:maxW});
    pdf.setDrawColor(42,170,130);pdf.setLineWidth(.4);pdf.line(dx,24,dx+maxW,24);
-   const rows=[['Student ID',studentId],['Grade / Course',x.className||x.program||'Internship'],['College',x.collegeName||x.educationCollege||'-'],['Issued On',new Date().toLocaleDateString('en-IN')]];
-   rows.forEach((r,i)=>{const y=29+i*4.7;pdf.setFont('helvetica','normal');pdf.setTextColor(...C.ink);pdf.setFontSize(5.1);pdf.text(r[0],dx,y);pdf.setFont('helvetica','bold');pdf.text(':',dx+18,y);const val=String(r[1]).replace(/\s+/g,' ').trim();pdf.setFont('helvetica','normal');pdf.setFontSize(fit(val,27,5.1,3.8));pdf.text(val,dx+20,y,{maxWidth:27});});
-   pdf.setFillColor(255,255,255);pdf.roundedRect(68.5,37,10,10,1,1,'F');pdf.addImage(qr.toDataURL('image/png'),'PNG',68.7,37.2,9.6,9.6);
-   pdf.setFont('helvetica','bold');pdf.setFontSize(3.4);pdf.setTextColor(...C.deep);pdf.text('SCAN TO VERIFY',73.5,48.2,{align:'center'});
-   pdf.setFont('helvetica','bold');pdf.setFontSize(4.8);pdf.setTextColor(255,255,255);pdf.text('A proud member of NSF',43,50.4,{align:'center'});
-   // BACK — centered typography with generous spacing, matching the approved preview.
-   pdf.addPage([86,54],'landscape');base();header(true);watermark();
-   pdf.setFillColor(255,255,255);pdf.roundedRect(13,17,60,27,2,2,'F');
-   pdf.setFont('helvetica','bold');pdf.setFontSize(6.4);pdf.setTextColor(...C.green);pdf.text('FOUNDATION ADDRESS',43,22.5,{align:'center'});
+   const rows=[
+    ['Student ID',studentId],
+    ['Grade / Course',x.className||x.program||x.course||'Internship'],
+    ['College',x.collegeName||x.educationCollege||x.college||'-'],
+    ['Issued On',new Date().toLocaleDateString('en-IN')]
+   ];
+   rows.forEach((r,i)=>{
+    const y=29+i*4.5;
+    text(r[0],dx,y,4.8,C.ink,false);
+    text(':',dx+18,y,4.8,C.ink,true);
+    const val=String(r[1]??'-').replace(/\s+/g,' ').trim();
+    pdf.setFont('helvetica','normal');pdf.setFontSize(fit(val,26,4.8,3.4));pdf.setTextColor(...C.ink);
+    pdf.text(val,dx+20,y,{maxWidth:26});
+   });
+   pdf.setFillColor(255,255,255);pdf.roundedRect(68.5,36.5,10,10,1,1,'F');
+   pdf.addImage(qrCanvas.toDataURL('image/png'),'PNG',68.7,36.7,9.6,9.6,undefined,'FAST');
+   text('SCAN TO VERIFY',73.5,48,3.3,C.deep,true,'center');
+   text('A proud member of NSF',43,50.4,4.8,C.white,true,'center');
+
+   // BACK — balanced centered address block with readable line spacing.
+   pdf.addPage([86,54],'landscape');
+   base();header('OFFICIAL STUDENT IDENTITY CARD');watermark();
+   pdf.setFillColor(255,255,255);pdf.roundedRect(12,17,62,27,2,2,'F');
+   text('FOUNDATION ADDRESS',43,22.5,6.2,C.green,true,'center');
    pdf.setDrawColor(42,170,130);pdf.setLineWidth(.4);pdf.line(28,24.5,58,24.5);
-   pdf.setFont('helvetica','bold');pdf.setFontSize(5.8);pdf.setTextColor(...C.ink);pdf.text('Nisha Seva Foundation',43,29.5,{align:'center'});
-   pdf.setFont('helvetica','normal');pdf.setFontSize(5.2);pdf.text('Vinayak Vihar Colony',43,33.5,{align:'center'});pdf.text('Near Boys Hostel, Jamwa Ramgarh',43,37,{align:'center'});pdf.text('Rajasthan - 303109',43,40.5,{align:'center'});
-   pdf.setFont('helvetica','bold');pdf.setFontSize(3.5);pdf.setTextColor(...C.deep);pdf.text('SERVICE  •  EDUCATION  •  COMMUNITY DEVELOPMENT',43,45.5,{align:'center'});
-   pdf.setFont('helvetica','bold');pdf.setFontSize(4.8);pdf.setTextColor(255,255,255);pdf.text('NISHA SEVA FOUNDATION',43,50.4,{align:'center'});
+   text('Nisha Seva Foundation',43,29.5,5.6,C.ink,true,'center');
+   text('Vinayak Vihar Colony',43,33.5,4.9,C.ink,false,'center');
+   text('Near Boys Hostel, Jamwa Ramgarh',43,37,4.9,C.ink,false,'center');
+   text('Rajasthan - 303109',43,40.5,4.9,C.ink,false,'center');
+   text('SERVICE  •  EDUCATION  •  COMMUNITY DEVELOPMENT',43,45.5,3.25,C.deep,true,'center');
+   text('NISHA SEVA FOUNDATION',43,50.4,4.8,C.white,true,'center');
+
    pdf.save(`${studentId.replace(/[^a-z0-9_-]/gi,'_')}_ID_Card.pdf`);
   }finally{host.remove();}
- }catch(e){alert('Student ID Card नहीं बन सका: '+e.message);}
+ }catch(e){console.error('Student ID Card generation failed:',e);alert('Student ID Card नहीं बन सका: '+(e?.message||e));}
 }
-
 async function renderInternships(){
  content.innerHTML='<h2>Student Internship Applications</h2><p>Loading internship applications...</p>';
  try{const data=await api('/api/internships');const rows=Array.isArray(data)?data:[];internshipCache={};rows.forEach(x=>internshipCache[x.id]=x);let html=addRecordSearch('Student Internships',rows.length)+`<div class="row"><div><h2>BA Internship Applications</h2><span class="small">${rows.length} application(s)</span></div></div>`;html+=rows.length?rows.map(internshipCard).join(''):'<div class="ok">अभी कोई Student Internship application नहीं है।</div>';content.innerHTML=html;}catch(e){content.innerHTML=`<div class="err">${esc(e.message)}</div>`;}}
