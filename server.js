@@ -88,8 +88,8 @@ const COORDINATOR_PASSWORD = process.env.COORDINATOR_PASSWORD || '';
 
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
-  'https://api.nishasevafoundation.org
-   https://nishasevafoundation.org/admin';
+  'https://api.nishasevafoundation.org';
+   
 
 
 /* =========================================================
