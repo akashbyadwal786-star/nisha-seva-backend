@@ -1688,6 +1688,22 @@ async function downloadInternshipIdCard(id){
      if(pdf.GState)pdf.setGState(new pdf.GState({opacity:1}));
     }catch(_){}
    };
+   const resolveStudentPhoto=async(record)=>{
+    let photo=record.studentPhoto||record.photoUrl||record.photo||record.imageUrl||record.image||record.profilePhoto||record.passportPhoto||'';
+    if(photo&&typeof photo==='object')photo=photo.dataUrl||photo.url||photo.src||'';
+    if(!photo)return '';
+    if(typeof photo==='string'&&photo.startsWith('data:image/'))return photo;
+    if(typeof photo!=='string'||!/^https?:\/\//i.test(photo))return '';
+    try{
+     const response=await fetch(photo,{mode:'cors',credentials:'omit'});
+     if(!response.ok)throw new Error('Photo URL fetch failed');
+     const blob=await response.blob();
+     if(!blob.type.startsWith('image/'))throw new Error('Photo URL is not an image');
+     return await new Promise((resolve,reject)=>{
+      const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=reject;reader.readAsDataURL(blob);
+     });
+    }catch(e){console.warn('Could not load student photo URL; checking stored profile data',e);return '';}
+   };
    const addPhoto=(photo)=>{
     if(!photo||!/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(photo))return false;
     try{
@@ -1699,7 +1715,8 @@ async function downloadInternshipIdCard(id){
    // FRONT — landscape 86 × 54 mm, no leaf decoration.
    base();header('STUDENT IDENTITY CARD');watermark();
    pdf.setDrawColor(...C.green);pdf.setLineWidth(.65);pdf.roundedRect(6.5,17,17.5,23,1,1,'S');
-   if(!addPhoto(x.studentPhoto)){
+   const studentPhotoData=await resolveStudentPhoto(x);
+   if(!addPhoto(studentPhotoData)){
     text('STUDENT',15.25,27.5,5.2,C.green,true,'center');
     text('PHOTO',15.25,31,5.2,C.green,true,'center');
    }
