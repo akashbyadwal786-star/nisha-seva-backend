@@ -625,6 +625,7 @@ async function renderStudentImpactSuite(){
     '<div class="row"><div><h2>Student Impact Suite</h2><p class="small">11 PostgreSQL tables · admin-only review · submitted records stay private</p></div>' +
     '<button class="primary" id="impactRefresh">Refresh Records</button></div>' +
     '<div class="easy-help">Choose a feature to review submissions. New public submissions start with status <b>submitted</b>. Approve or update a record only after review.</div>' +
+    '<div id="impactSchemaHealth" class="easy-help" role="status">Checking API and PostgreSQL table structure…</div>' +
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:16px 0">' +
     '<label>Feature<select id="impactAdminFeature">' +
     studentImpactAdminFeatures.map(function(f){return '<option value="'+esc(f[0])+'">'+esc(f[1])+'</option>';}).join("") +
@@ -641,6 +642,7 @@ async function renderStudentImpactSuite(){
   const healthBox = document.getElementById("impactSchemaHealth");
 
   async function checkImpactBackend(){
+    if(!healthBox) return;
     healthBox.textContent = "Checking API and PostgreSQL table structure…";
     try{
       const health = await api("/api/student-impact/health");
