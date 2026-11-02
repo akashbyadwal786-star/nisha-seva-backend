@@ -30,9 +30,47 @@ module.exports = function registerStudentImpactRoutes({ app, pool, requireAdmin,
     return json;
   };
 
-  app.get('/api/student-impact/health', (req, res) => {
+  // Live schema check: confirms the 11 tables and columns used by these routes.
+  const requiredColumns = ['id', 'payload', 'status', 'created_by_role', 'updated_by_role', 'created_at', 'updated_at'];
+  async function inspectTables() {
+    const names = Object.values(tables);
+    const result = await pool.query(
+      `SELECT table_name, column_name
+         FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = ANY($1::text[])`,
+      [names]
+    );
+    const found = new Map();
+    for (const row of result.rows) {
+      if (!found.has(row.table_name)) found.set(row.table_name, new Set());
+      found.get(row.table_name).add(row.column_name);
+    }
+    return Object.entries(tables).map(([feature, table]) => {
+      const columns = found.get(table) || new Set();
+      const missing = requiredColumns.filter(column => !columns.has(column));
+      return { feature, table, ready: missing.length === 0, missingColumns: missing };
+    });
+  }
+
+  app.get('/api/student-impact/health', async (req, res) => {
     res.set('Cache-Control', 'no-store');
-    return res.json({ success: true, service: 'student-impact', storage: 'postgresql', features: Object.keys(tables) });
+    try {
+      await pool.query('SELECT 1');
+      const tableChecks = await inspectTables();
+      const ready = tableChecks.every(item => item.ready);
+      return res.status(ready ? 200 : 503).json({
+        success: ready,
+        service: 'student-impact',
+        storage: 'postgresql',
+        readyFeatures: tableChecks.filter(item => item.ready).length,
+        totalFeatures: Object.keys(tables).length,
+        features: tableChecks
+      });
+    } catch (error) {
+      console.error('STUDENT IMPACT HEALTH ERROR:', error);
+      return res.status(503).json({ success: false, service: 'student-impact', error: 'Database/schema unavailable.' });
+    }
   });
 
   app.post('/api/student-impact/:feature', publicFormLimiter, async (req, res) => {
