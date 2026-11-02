@@ -1,170 +1,213 @@
 'use strict';
 
-/**
- * Student Impact Suite routes.
- * Table names are fixed in this whitelist; request input is never used as SQL identifiers.
- */
-module.exports = function registerStudentImpactRoutes({ app, pool, requireAdmin, publicFormLimiter }) {
-  const tables = {
-    passport: 'nsf_student_impact_passports',
-    tasks: 'nsf_coordinator_tasks',
-    research: 'nsf_ai_field_research',
-    map: 'nsf_gram_impact_map',
-    tracker: 'nsf_impact_tracker',
-    opportunities: 'nsf_seva_opportunity_exchange',
-    challenge: 'nsf_impact_challenges',
-    voice: 'nsf_voice_seva',
-    issues: 'nsf_jan_samasya_timeline',
-    scorecard: 'nsf_village_scorecards',
-    dna: 'nsf_impact_dna'
-  };
-  const statuses = new Set([
-    'draft', 'submitted', 'under_review', 'approved', 'rejected',
-    'in_progress', 'completed', 'resolved'
-  ]);
-  const getTable = feature => tables[String(feature || '')] || null;
-  const validPayload = payload => payload && typeof payload === 'object' && !Array.isArray(payload);
-  const jsonPayload = payload => {
-    const json = JSON.stringify(payload);
-    if (Buffer.byteLength(json, 'utf8') > 20480) return null;
-    return json;
-  };
+const FEATURE_TABLES = Object.freeze({
+  passport: 'nsf_student_impact_passports',
+  tasks: 'nsf_coordinator_tasks',
+  research: 'nsf_ai_field_research',
+  map: 'nsf_gram_impact_map',
+  tracker: 'nsf_impact_tracker',
+  opportunities: 'nsf_seva_opportunity_exchange',
+  challenge: 'nsf_impact_challenges',
+  voice: 'nsf_voice_seva',
+  issues: 'nsf_jan_samasya_timeline',
+  scorecard: 'nsf_village_scorecards',
+  dna: 'nsf_impact_dna'
+});
 
-  // Live schema check: confirms the 11 tables and columns used by these routes.
-  const requiredColumns = ['id', 'payload', 'status', 'created_by_role', 'updated_by_role', 'created_at', 'updated_at'];
-  async function inspectTables() {
-    const names = Object.values(tables);
-    const result = await pool.query(
-      `SELECT table_name, column_name
-         FROM information_schema.columns
-        WHERE table_schema = current_schema()
-          AND table_name = ANY($1::text[])`,
-      [names]
-    );
-    const found = new Map();
-    for (const row of result.rows) {
-      if (!found.has(row.table_name)) found.set(row.table_name, new Set());
-      found.get(row.table_name).add(row.column_name);
+const REQUIRED_COLUMNS = [
+  'id', 'payload', 'status', 'created_by_role',
+  'updated_by_role', 'created_at', 'updated_at'
+];
+
+const ALLOWED_STATUSES = new Set([
+  'draft', 'submitted', 'under_review', 'approved',
+  'rejected', 'in_progress', 'completed', 'resolved'
+]);
+
+function cleanPayload(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return null;
+  }
+  const output = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (!/^[A-Za-z][A-Za-z0-9_]{0,49}$/.test(key)) continue;
+    if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) {
+      output[key] = typeof value === 'string' ? value.trim().slice(0, 10000) : value;
     }
-    return Object.entries(tables).map(([feature, table]) => {
-      const columns = found.get(table) || new Set();
-      const missing = requiredColumns.filter(column => !columns.has(column));
-      return { feature, table, ready: missing.length === 0, missingColumns: missing };
-    });
+  }
+  return output;
+}
+
+module.exports = function registerStudentImpactRoutes({
+  app, pool, requireAdmin, publicFormLimiter
+}) {
+  if (!app || !pool || typeof requireAdmin !== 'function') {
+    throw new TypeError('Student Impact routes require app, pool and requireAdmin.');
   }
 
+  // Health check exposes schema readiness only, never records or credentials.
   app.get('/api/student-impact/health', async (req, res) => {
-    res.set('Cache-Control', 'no-store');
     try {
-      await pool.query('SELECT 1');
-      const tableChecks = await inspectTables();
-      const ready = tableChecks.every(item => item.ready);
-      return res.status(ready ? 200 : 503).json({
-        success: ready,
+      const tables = Object.values(FEATURE_TABLES);
+      const result = await pool.query(
+        `SELECT table_name, column_name
+           FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = ANY($1::text[])`,
+        [tables]
+      );
+      const found = new Map();
+      for (const row of result.rows) {
+        if (!found.has(row.table_name)) found.set(row.table_name, new Set());
+        found.get(row.table_name).add(row.column_name);
+      }
+      const features = Object.entries(FEATURE_TABLES).map(([feature, table]) => {
+        const columns = found.get(table) || new Set();
+        const missingColumns = REQUIRED_COLUMNS.filter(column => !columns.has(column));
+        return { feature, table, ready: missingColumns.length === 0, missingColumns };
+      });
+      const readyFeatures = features.filter(item => item.ready).length;
+      return res.status(readyFeatures === features.length ? 200 : 503).json({
+        success: readyFeatures === features.length,
         service: 'student-impact',
         storage: 'postgresql',
-        readyFeatures: tableChecks.filter(item => item.ready).length,
-        totalFeatures: Object.keys(tables).length,
-        features: tableChecks
+        readyFeatures,
+        totalFeatures: features.length,
+        features
       });
     } catch (error) {
       console.error('STUDENT IMPACT HEALTH ERROR:', error);
-      return res.status(503).json({ success: false, service: 'student-impact', error: 'Database/schema unavailable.' });
+      return res.status(503).json({
+        success: false, service: 'student-impact',
+        error: 'Could not verify Student Impact database schema.'
+      });
     }
   });
 
-  app.post('/api/student-impact/:feature', publicFormLimiter, async (req, res) => {
-    const table = getTable(req.params.feature);
-    if (!table) return res.status(404).json({ error: 'Unknown Student Impact feature.' });
-    if (!validPayload(req.body)) return res.status(400).json({ error: 'Payload must be a JSON object.' });
-    const payload = jsonPayload(req.body);
-    if (payload === null) return res.status(413).json({ error: 'Payload exceeds the 20 KB limit.' });
-    try {
-      const result = await pool.query(
-        'INSERT INTO ' + table + ' (payload, status, created_by_role, updated_by_role) VALUES ($1::jsonb, $2, $3, $4) RETURNING id, status, created_at',
-        [payload, 'submitted', 'public', 'public']
-      );
-      return res.status(201).json({ success: true, record: result.rows[0] });
-    } catch (error) {
-      console.error('STUDENT IMPACT SUBMIT ERROR:', error);
-      return res.status(500).json({ error: 'Submission could not be saved.' });
-    }
-  });
+  // Public submissions are rate-limited and validated server-side.
+  app.post('/api/student-impact/:feature',
+    ...(publicFormLimiter ? [publicFormLimiter] : []),
+    async (req, res) => {
+      const table = FEATURE_TABLES[req.params.feature];
+      if (!table) return res.status(404).json({ error: 'Unknown Student Impact feature.' });
 
+      const payload = cleanPayload(req.body);
+      if (!payload) return res.status(400).json({ error: 'A valid record is required.' });
+
+      if (req.params.feature === 'challenge') {
+        const goal = typeof payload.goal === 'string' ? payload.goal : '';
+        const progress = typeof payload.progress === 'string' ? payload.progress : '';
+        const day = Number(payload.day);
+        if (!goal || goal.length > 300) {
+          return res.status(400).json({ error: 'Challenge Goal is required (maximum 300 characters).' });
+        }
+        if (!Number.isInteger(day) || day < 1 || day > 90) {
+          return res.status(400).json({ error: 'Challenge Day must be a whole number from 1 to 90.' });
+        }
+        if (!progress || progress.length > 10000) {
+          return res.status(400).json({ error: 'Progress / Check-in is required (maximum 10,000 characters).' });
+        }
+        payload.day = day;
+      }
+
+      if (!Object.keys(payload).length) {
+        return res.status(400).json({ error: 'Record fields cannot be empty.' });
+      }
+
+      try {
+        const result = await pool.query(
+          `INSERT INTO ${table}
+             (payload, status, created_by_role, updated_by_role, created_at, updated_at)
+           VALUES ($1::jsonb, 'submitted', 'public', 'public', NOW(), NOW())
+           RETURNING id, status, created_at`,
+          [JSON.stringify(payload)]
+        );
+        const record = result.rows[0];
+        return res.status(201).json({
+          success: true,
+          id: record.id,
+          status: record.status,
+          created_at: record.created_at
+        });
+      } catch (error) {
+        console.error(`STUDENT IMPACT CREATE ERROR (${req.params.feature}):`, error);
+        return res.status(500).json({ error: 'Record could not be saved. Please try again later.' });
+      }
+    }
+  );
+
+  // Admin-only read. Table identifiers are selected only from the fixed allowlist above.
   app.get('/api/admin/student-impact/:feature', requireAdmin, async (req, res) => {
-    const table = getTable(req.params.feature);
+    const table = FEATURE_TABLES[req.params.feature];
     if (!table) return res.status(404).json({ error: 'Unknown Student Impact feature.' });
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
-    const values = [];
-    let where = '';
-    if (req.query.status) {
-      if (!statuses.has(String(req.query.status))) return res.status(400).json({ error: 'Invalid status.' });
-      values.push(String(req.query.status));
-      where = ' WHERE status = $1';
+
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+    const status = String(req.query.status || '').trim();
+    if (status && !ALLOWED_STATUSES.has(status)) {
+      return res.status(400).json({ error: 'Invalid status filter.' });
     }
-    values.push(limit);
+
     try {
+      const params = status ? [status, limit] : [limit];
+      const where = status ? 'WHERE status = $1' : '';
+      const limitParam = status ? '$2' : '$1';
       const result = await pool.query(
-        'SELECT id, payload, status, created_by_role, updated_by_role, created_at, updated_at FROM ' + table + where + ' ORDER BY created_at DESC LIMIT $' + values.length,
-        values
+        `SELECT id, payload, status, created_by_role, updated_by_role, created_at, updated_at
+           FROM ${table}
+           ${where}
+          ORDER BY created_at DESC, id DESC
+          LIMIT ${limitParam}`,
+        params
       );
-      res.set('Cache-Control', 'no-store');
       return res.json({ success: true, records: result.rows });
     } catch (error) {
-      console.error('STUDENT IMPACT LIST ERROR:', error);
+      console.error(`STUDENT IMPACT LIST ERROR (${req.params.feature}):`, error);
       return res.status(500).json({ error: 'Records could not be loaded.' });
     }
   });
 
+  // Admin-only status update.
   app.patch('/api/admin/student-impact/:feature/:id', requireAdmin, async (req, res) => {
-    const table = getTable(req.params.feature);
+    const table = FEATURE_TABLES[req.params.feature];
     if (!table) return res.status(404).json({ error: 'Unknown Student Impact feature.' });
-    const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid record ID.' });
-    const body = req.body || {};
-    const updates = [];
-    const values = [];
-    if (Object.prototype.hasOwnProperty.call(body, 'payload')) {
-      if (!validPayload(body.payload)) return res.status(400).json({ error: 'Payload must be a JSON object.' });
-      const payload = jsonPayload(body.payload);
-      if (payload === null) return res.status(413).json({ error: 'Payload exceeds the 20 KB limit.' });
-      values.push(payload);
-      updates.push('payload = $' + values.length + '::jsonb');
-    }
-    if (Object.prototype.hasOwnProperty.call(body, 'status')) {
-      if (!statuses.has(String(body.status))) return res.status(400).json({ error: 'Invalid status.' });
-      values.push(String(body.status));
-      updates.push('status = $' + values.length);
-    }
-    if (!updates.length) return res.status(400).json({ error: 'Provide payload or status to update.' });
-    values.push('admin');
-    updates.push('updated_by_role = $' + values.length);
-    updates.push('updated_at = NOW()');
-    values.push(id);
+
+    const id = String(req.params.id || '').trim();
+    const status = String((req.body || {}).status || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) return res.status(400).json({ error: 'Invalid record ID.' });
+    if (!ALLOWED_STATUSES.has(status)) return res.status(400).json({ error: 'Invalid status.' });
+
     try {
       const result = await pool.query(
-        'UPDATE ' + table + ' SET ' + updates.join(', ') + ' WHERE id = $' + values.length + ' RETURNING id, status, updated_at',
-        values
+        `UPDATE ${table}
+            SET status = $1, updated_by_role = 'admin', updated_at = NOW()
+          WHERE id = $2
+          RETURNING id, status, updated_at`,
+        [status, id]
       );
       if (!result.rowCount) return res.status(404).json({ error: 'Record not found.' });
       return res.json({ success: true, record: result.rows[0] });
     } catch (error) {
-      console.error('STUDENT IMPACT UPDATE ERROR:', error);
-      return res.status(500).json({ error: 'Record could not be updated.' });
+      console.error(`STUDENT IMPACT UPDATE ERROR (${req.params.feature}):`, error);
+      return res.status(500).json({ error: 'Record status could not be updated.' });
     }
   });
 
+  // Admin-only delete.
   app.delete('/api/admin/student-impact/:feature/:id', requireAdmin, async (req, res) => {
-    const table = getTable(req.params.feature);
+    const table = FEATURE_TABLES[req.params.feature];
     if (!table) return res.status(404).json({ error: 'Unknown Student Impact feature.' });
-    const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid record ID.' });
+    const id = String(req.params.id || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) return res.status(400).json({ error: 'Invalid record ID.' });
+
     try {
-      const result = await pool.query('DELETE FROM ' + table + ' WHERE id = $1 RETURNING id', [id]);
+      const result = await pool.query(
+        `DELETE FROM ${table} WHERE id = $1 RETURNING id`,
+        [id]
+      );
       if (!result.rowCount) return res.status(404).json({ error: 'Record not found.' });
       return res.json({ success: true, deletedId: result.rows[0].id });
     } catch (error) {
-      console.error('STUDENT IMPACT DELETE ERROR:', error);
+      console.error(`STUDENT IMPACT DELETE ERROR (${req.params.feature}):`, error);
       return res.status(500).json({ error: 'Record could not be deleted.' });
     }
   });
