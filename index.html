@@ -838,12 +838,12 @@ header#site-header .admin-login-btn,header#site-header .donate-btn{white-space:n
   $('nsfImpactModalTitle').textContent=f.title;$('nsfImpactModalDesc').textContent=f.desc;
   let fields=f.fields.map(([id,label,type])=>{
    let control='';
-   if(type==='textarea')control=`<textarea id="impact_${id}" name="${esc(id)}"></textarea>`;
+   if(type==='textarea')control=`<textarea id="impact_${id}" name="${esc(id)}" ${key==='challenge'&&id==='progress'?'required':''}></textarea>`;
    else if(type.startsWith('select:'))control=`<select id="impact_${id}" name="${esc(id)}">${type.slice(7).split('|').map(x=>`<option>${esc(x)}</option>`).join('')}</select>`;
-   else control=`<input id="impact_${id}" name="${esc(id)}" type="${esc(type)}" ${type==='number'?'min="0"':''}>`;
+   else control=`<input id="impact_${id}" name="${esc(id)}" type="${esc(type)}" ${key==='challenge'&&id==='day'?'min="1" max="90" step="1" required':type==='number'?'min="0"':''} ${key==='challenge'&&id==='goal'?'required':''}>`;
    return `<label class="${type==='textarea'?'full':''}">${esc(label)}${control}</label>`;
   }).join('');
-  body.innerHTML=`<form class="nsf-impact-form" id="nsfImpactForm">${fields}<label class="full">Save destination<select id="impact_destination"><option value="draft">Save as local draft (this browser only)</option><option value="api">Submit to secure API (requires matching backend route)</option></select></label><div class="full"><button type="submit">Save / Submit Record</button></div></form><div class="nsf-impact-result" id="nsfImpactResult" hidden></div>`;
+  body.innerHTML=`<form class="nsf-impact-form" id="nsfImpactForm">${fields}<label class="full">Save destination<select id="impact_destination"><option value="api" selected>Submit to secure API (save to Admin Panel)</option><option value="draft">Save as local draft (this browser only)</option></select></label><div class="full"><button type="submit">Save / Submit Record</button></div></form><div class="nsf-impact-result" id="nsfImpactResult" hidden></div>`;
   $('nsfImpactModalStatus').textContent=f.note||'This interface is ready for backend integration. Server-side validation, role permissions and database routes are required for shared records.';
   modal.classList.add('open');modal.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';
   $('nsfImpactForm').addEventListener('submit',async e=>{
@@ -861,7 +861,7 @@ header#site-header .admin-login-btn,header#site-header .donate-btn{white-space:n
     const d=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(d.error||('API returned HTTP '+r.status));
     out.textContent='Record submitted successfully. Reference: '+(d.id||d.referenceId||'saved');
-   }catch(err){out.textContent='The secure backend route for this feature is not available yet. No shared record was saved. Draft your details locally or provide the backend/admin files so the API and role permissions can be added safely.';}
+   }catch(err){out.textContent='Submission failed: '+(err.message||'API request failed')+'. No shared record was saved. Please try again or contact the administrator.';}
   });
  }
  function close(){modal.classList.remove('open');modal.setAttribute('aria-hidden','true');document.body.style.overflow=''}
