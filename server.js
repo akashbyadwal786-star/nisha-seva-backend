@@ -99,7 +99,9 @@ const PUBLIC_BASE_URL =
 // ALLOWED_ORIGINS can add extra trusted origins, but cannot remove these defaults.
 const defaultAllowedOrigins = [
   'https://nishasevafoundation.org',
-  'https://www.nishasevafoundation.org'
+  'https://www.nishasevafoundation.org',
+  // The admin panel is also served from this API host (/admin).
+  'https://api.nishasevafoundation.org'
 ];
 const configuredAllowedOrigins = String(process.env.ALLOWED_ORIGINS || '')
   .split(',').map(value => value.trim()).filter(Boolean);
