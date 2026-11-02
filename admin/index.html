@@ -638,6 +638,21 @@ async function renderStudentImpactSuite(){
   const limitSelect = document.getElementById("impactAdminLimit");
   const recordsBox = document.getElementById("impactAdminRecords");
   const message = document.getElementById("impactAdminMessage");
+  const healthBox = document.getElementById("impactSchemaHealth");
+
+  async function checkImpactBackend(){
+    healthBox.textContent = "Checking API and PostgreSQL table structure…";
+    try{
+      const health = await api("/api/student-impact/health");
+      const ready = Number(health.readyFeatures || 0);
+      const total = Number(health.totalFeatures || 11);
+      const missing = (health.features || []).filter(item => !item.ready);
+      healthBox.innerHTML = '<b>Backend connected · '+ready+'/'+total+' feature tables ready</b>' +
+        (missing.length ? '<p class="small">Needs schema correction: '+missing.map(item => esc(item.feature)+' ('+esc((item.missingColumns||[]).join(', '))+')').join('; ')+'</p>' : '<p class="small">All 11 Student Impact APIs can use their expected database columns.</p>');
+    }catch(error){
+      healthBox.innerHTML = '<b>Backend/schema check failed</b><p class="small">'+esc(error.message||"API unavailable")+'</p>';
+    }
+  }
 
   async function loadRecords(){
     recordsBox.innerHTML = '<p class="small">Loading records…</p>';
@@ -703,6 +718,7 @@ async function renderStudentImpactSuite(){
     }
   });
 
+  await checkImpactBackend();
   await loadRecords();
 }
 
