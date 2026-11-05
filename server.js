@@ -221,7 +221,14 @@ function requireAdmin(
   }
 
   // Coordinator can access only internship application endpoints.
-  if (session.role === 'coordinator' && !(/^\/api\/internships(?:\/|$)/.test(req.path) || req.path === '/api/admin/logout' || req.path === '/api/student/accounts' || /^\/api\/projectSubmissions(?:\/|$)/.test(req.path))) {
+  if (session.role === 'coordinator' && !(
+    /^\/api\/internships(?:\/|$)/.test(req.path) ||
+    req.path === '/api/admin/logout' ||
+    req.path === '/api/student/accounts' ||
+    /^\/api\/projectSubmissions(?:\/|$)/.test(req.path) ||
+    /^\/api\/certificates(?:\/|$)/.test(req.path) ||
+    /^\/api\/admin\/student-impact(?:\/|$)/.test(req.path)
+  )) {
     return res.status(403).json({ error: 'Forbidden: coordinator access is limited to internship management' });
   }
 
@@ -1091,11 +1098,16 @@ app.get('/api/certificates', requireAdmin, async (req, res) => {
 });
 app.post('/api/certificates', requireAdmin, async (req, res) => {
   try { const db = await readDB(); db.certificates = Array.isArray(db.certificates) ? db.certificates : [];
-    const body = req.body || {}; const item = {...body, id: nextId(db.certificates)}; db.certificates.push(item); await writeDB(db); res.status(201).json(item);
+    const body = req.body || {}; const applicationId = Number(body.applicationId);
+    if (!Number.isSafeInteger(applicationId) || applicationId < 1) return res.status(400).json({error:'Valid applicationId required.'});
+    const appRow = await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]);
+    const appData = appRow.rows[0]?.data || {}; const attendance = appData.attendance || {};
+    if (Number(attendance.presentDays || 0) !== 21 || appData.projectApproved !== true) return res.status(409).json({error:'Certificate locked: 21/21 attendance and approved project are required.'});
+    const item = {...body, id: nextId(db.certificates)}; db.certificates.push(item); await writeDB(db); res.status(201).json(item);
   } catch(e) { console.error('POST /api/certificates',e); res.status(500).json({error:'Database error'}); }
 });
 app.put('/api/certificates/:id', requireAdmin, async (req, res) => {
-  try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const i=db.certificates.findIndex(x=>Number(x.id)===id); if(i<0)return res.status(404).json({error:'Not found'}); db.certificates[i]={...db.certificates[i],...(req.body||{}),id}; await writeDB(db); res.json(db.certificates[i]);
+  try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const i=db.certificates.findIndex(x=>Number(x.id)===id); if(i<0)return res.status(404).json({error:'Not found'}); const body=req.body||{}; const applicationId=Number(body.applicationId||db.certificates[i].applicationId); const appRow=await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]); const appData=appRow.rows[0]?.data||{}; if(Number(appData.attendance?.presentDays||0)!==21||appData.projectApproved!==true)return res.status(409).json({error:'Certificate locked: 21/21 attendance and approved project are required.'}); db.certificates[i]={...db.certificates[i],...body,id}; await writeDB(db); res.json(db.certificates[i]);
   } catch(e) { console.error('PUT /api/certificates',e); res.status(500).json({error:'Database error'}); }
 });
 app.delete('/api/certificates/:id', requireAdmin, async (req, res) => {
@@ -1114,10 +1126,15 @@ app.get('/api/certificate-verify/:certificateId', async (req, res) => {
     res.json({valid:true,certificate:{
       certificateId:item.certificateId||item.certificate_id,
       name:item.name||item.studentName||'',
+      fatherName:item.fatherName||'',
+      college:item.college||'',
       course:item.course||item.program||'',
       internshipId:item.internshipId||'',
+      referenceNo:item.referenceNo||item.internshipId||'',
       issueDate:item.issueDate||item.issuedAt||'',
       attendance:{presentDays:Number(attendance.presentDays||0),totalDays:Number(attendance.totalDays||0),percentage:Number(attendance.percentage||0)},
+      projectWork:projects.some(p=>String(p.status||'').toLowerCase()==='approved')?'Yes':'No',
+      projectApproved:projects.some(p=>String(p.status||'').toLowerCase()==='approved'),
       projectTitles:projects.map(p=>String(p.title||p.projectTitle||'')).filter(Boolean).slice(0,10),
       issuer:'Nisha Seva Foundation',
       status:'Valid'
@@ -1348,6 +1365,12 @@ function submissionRoutes(
 
           submissionData.email = email;
           submissionData.phone = phone;
+          if (submissionData.photoUrl) {
+            const photoMatch = /^data:image\/(?:jpeg|jpg|png|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(String(submissionData.photoUrl));
+            if (!photoMatch) return res.status(400).json({ error: 'Volunteer photo का format सही नहीं है। JPG/JPEG/PNG/WEBP इस्तेमाल करें।' });
+            const photoBytes = Math.floor(photoMatch[1].length * 3 / 4) - (photoMatch[1].endsWith('==') ? 2 : photoMatch[1].endsWith('=') ? 1 : 0);
+            if (photoBytes > 100 * 1024) return res.status(413).json({ error: 'Volunteer photo अधिकतम 100 KB की होनी चाहिए।' });
+          }
 
           // A transaction-level advisory lock serializes volunteer submissions;
           // this closes the race where two identical requests arrive together.
@@ -1787,32 +1810,43 @@ app.put('/api/internships/:id/attendance', requireAdmin, async (req, res) => {
   try {
     await internshipTableReady;
     const id = Number(req.params.id);
-    const presentDays = Number(req.body && req.body.presentDays);
-    const totalDays = Number(req.body && req.body.totalDays);
-    const dates = Array.isArray(req.body && req.body.dates)
-      ? req.body.dates.map(v => String(v).slice(0, 30)).slice(0, 120)
-      : [];
-    if (!Number.isSafeInteger(id) || id < 1 || !Number.isInteger(presentDays) ||
-        !Number.isInteger(totalDays) || totalDays < 1 || presentDays < 0 || presentDays > totalDays) {
-      return res.status(400).json({ error: 'Attendance days सही दर्ज करें। Present days, total days से अधिक नहीं हो सकते।' });
-    }
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid internship application ID.' });
     const result = await pool.query('SELECT id, data, created_at FROM internships WHERE id=$1 LIMIT 1', [id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Internship application not found' });
     const current = result.rows[0].data || {};
+    const totalDays = Math.min(21, Math.max(1, Number(req.body?.totalDays) || 21));
+    let days;
+    if (Array.isArray(req.body?.days)) {
+      days = req.body.days.slice(0, 21).map((d, index) => ({
+        day: index + 1,
+        date: String(d?.date || '').slice(0, 10),
+        status: d?.status === 'present' ? 'present' : 'absent'
+      }));
+      while (days.length < totalDays) days.push({ day: days.length + 1, date: '', status: 'absent' });
+    } else {
+      const presentDays = Number(req.body?.presentDays);
+      if (!Number.isInteger(presentDays) || presentDays < 0 || presentDays > totalDays) {
+        return res.status(400).json({ error: 'Attendance सही दर्ज करें।' });
+      }
+      const oldDates = Array.isArray(req.body?.dates) ? req.body.dates : [];
+      days = Array.from({length: totalDays}, (_, i) => ({
+        day: i + 1, date: String(oldDates[i] || '').slice(0, 10),
+        status: i < presentDays ? 'present' : 'absent'
+      }));
+    }
+    const presentDays = days.filter(d => d.status === 'present').length;
     const attendance = {
-      presentDays,
-      totalDays,
-      absentDays: totalDays - presentDays,
+      presentDays, totalDays, absentDays: totalDays - presentDays,
       percentage: Number((presentDays / totalDays * 100).toFixed(1)),
-      dates,
-      updatedAt: new Date().toISOString(),
-      updatedByRole: req.userRole || 'admin'
+      dates: days.filter(d => d.status === 'present').map(d => d.date).filter(Boolean),
+      days, updatedAt: new Date().toISOString(), updatedByRole: req.userRole || 'admin'
     };
-    const updated = { ...current, attendance };
-    const saved = await pool.query(
-      'UPDATE internships SET data=$1::jsonb WHERE id=$2 RETURNING id,data,created_at',
-      [JSON.stringify(updated), id]
-    );
+    const projectCount = await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId') = $1 AND lower(COALESCE(data->>'status','submitted')) = 'approved'`, [String(id)]);
+    const projectSubmitted = await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId') = $1`, [String(id)]);
+    const projectApproved = Number(projectCount.rows[0]?.total || 0) > 0;
+    const completionEligible = presentDays === 21 && projectApproved;
+    const updated = { ...current, attendance, projectSubmitted: Number(projectSubmitted.rows[0]?.total || 0) > 0, projectApproved, completionEligible };
+    const saved = await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2 RETURNING id,data,created_at', [JSON.stringify(updated), id]);
     return res.json({ id, ...(saved.rows[0].data || {}), submittedAt: saved.rows[0].created_at });
   } catch (error) {
     console.error('PUT /api/internships/:id/attendance:', error);
@@ -3343,6 +3377,37 @@ app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
   }
 });
 
+app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) => {
+  try {
+    await projectSubmissionTableReady;
+    const id = Number(req.params.id);
+    const status = String(req.body?.status || '').toLowerCase();
+    if (!Number.isSafeInteger(id) || id < 1 || !['approved','rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid project review request.' });
+    }
+    const found = await pool.query('SELECT id,data FROM project_submissions WHERE id=$1 LIMIT 1', [id]);
+    if (!found.rows.length) return res.status(404).json({ error: 'Project submission not found.' });
+    const data = { ...(found.rows[0].data || {}), status, reviewedAt: new Date().toISOString(), reviewedByRole: req.userRole || 'admin' };
+    await pool.query('UPDATE project_submissions SET data=$1::jsonb WHERE id=$2', [JSON.stringify(data), id]);
+    const applicationId = Number(data.applicationId || 0);
+    if (Number.isSafeInteger(applicationId) && applicationId > 0) {
+      const appRow = await pool.query('SELECT id,data FROM internships WHERE id=$1 LIMIT 1', [applicationId]);
+      if (appRow.rows.length) {
+        const appData = appRow.rows[0].data || {};
+        const approvedCount = await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId')=$1 AND lower(COALESCE(data->>'status','submitted'))='approved'`, [String(applicationId)]);
+        const projectApproved = Number(approvedCount.rows[0]?.total || 0) > 0;
+        const attendance = appData.attendance || {};
+        const completionEligible = Number(attendance.presentDays || 0) === 21 && projectApproved;
+        await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify({...appData,projectApproved,completionEligible}),applicationId]);
+      }
+    }
+    return res.json({ ok:true, id, status });
+  } catch (error) {
+    console.error('POST /api/projectSubmissions/:id/review:', error);
+    return res.status(500).json({ error: 'Project review could not be saved.' });
+  }
+});
+
 app.delete('/api/projectSubmissions/:id', requireAdmin, async (req, res) => {
   try {
     await projectSubmissionTableReady;
@@ -3450,6 +3515,66 @@ async function getStudentApplication(account){
   if(!result.rows.length) return null;
   return {id:result.rows[0].id,submittedAt:result.rows[0].created_at,...(result.rows[0].data||{})};
 }
+
+const studentProjectSubmissionTableReady = projectSubmissionTableReady;
+app.get('/api/student/projects', studentAuth, async (req, res) => {
+  try {
+    await Promise.all([studentAccountsTableReady, studentProjectSubmissionTableReady]);
+    const account = await getStudentAccount(req.studentAccountId);
+    if (!account) return res.status(404).json({ error: 'Student account नहीं मिला।' });
+    const result = await pool.query(
+      `SELECT id, data, created_at FROM project_submissions
+        WHERE (data->>'studentAccountId') = $1
+        ORDER BY created_at DESC`,
+      [String(account.id)]
+    );
+    return res.json({ projects: result.rows.map(r => ({ id:r.id, ...(r.data || {}), submittedAt:r.created_at })) });
+  } catch (error) {
+    console.error('GET /api/student/projects:', error);
+    return res.status(500).json({ error: 'Projects load नहीं हो सके।' });
+  }
+});
+app.post('/api/student/projects', studentAuth, publicFormLimiter, async (req, res) => {
+  try {
+    await Promise.all([studentAccountsTableReady, internshipTableReady, studentProjectSubmissionTableReady]);
+    const account = await getStudentAccount(req.studentAccountId);
+    if (!account) return res.status(404).json({ error: 'Student account नहीं मिला।' });
+    const appResult = await pool.query('SELECT id,data FROM internships WHERE id=$1 LIMIT 1', [account.internship_id]);
+    if (!appResult.rows.length) return res.status(404).json({ error: 'Internship application नहीं मिला।' });
+    const body = req.body || {};
+    const title = String(body.title || '').trim().slice(0, 160);
+    const description = String(body.description || '').trim().slice(0, 5000);
+    const file = body.projectFile || {};
+    const match = /^data:(application\/pdf|image\/(?:jpeg|jpg));base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(file.data || ''));
+    if (!title || !description || !match) return res.status(400).json({ error: 'Project title, description और PDF/JPG/JPEG file जरूरी हैं।' });
+    const base64 = match[2].replace(/\s/g, '');
+    const bytes = Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+    if (bytes > 20 * 1024 * 1024) return res.status(413).json({ error: 'Project file अधिकतम 20 MB हो सकती है।' });
+    const appData = appResult.rows[0].data || {};
+    const submission = {
+      studentAccountId: String(account.id), applicationId: account.internship_id,
+      studentName: appData.studentName || appData.name || account.username,
+      email: account.email, phone: appData.mobile || appData.phone || '',
+      college: appData.collegeName || appData.educationCollege || '',
+      internshipId: appData.internshipId || `NSF-INT-${account.internship_id}`,
+      title, description, projectFile: {
+        name: String(file.name || 'project-file').replace(/[^a-z0-9._ -]/gi, '_').slice(0, 180),
+        type: match[1].toLowerCase(), data: String(file.data)
+      },
+      status: 'submitted', submittedAt: new Date().toISOString()
+    };
+    const saved = await pool.query('INSERT INTO project_submissions (data) VALUES ($1::jsonb) RETURNING id,created_at', [JSON.stringify(submission)]);
+    const attendance = appData.attendance || {};
+    const eligible = Number(attendance.presentDays || 0) >= 21;
+    const updatedApp = { ...appData, projectSubmitted: true, projectSubmittedAt: saved.rows[0].created_at, completionEligible: eligible };
+    await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify(updatedApp), account.internship_id]);
+    return res.status(201).json({ ok:true, id:saved.rows[0].id, completionEligible:eligible, message:'Project successfully submit हो गया।' });
+  } catch (error) {
+    console.error('POST /api/student/projects:', error);
+    if (error?.type === 'entity.too.large') return res.status(413).json({ error:'Project file अधिकतम 20 MB हो सकती है।' });
+    return res.status(500).json({ error:'Project submit नहीं हो सका।' });
+  }
+});
 
 const passwordResetTableReady = initializeTable(`
   CREATE TABLE IF NOT EXISTS internship_password_resets (
