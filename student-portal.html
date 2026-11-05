@@ -61,6 +61,15 @@ button,.linkbtn{border:0;border-radius:10px;padding:12px 15px;font-weight:800;cu
  <h2>📁 My Project Submissions</h2>
  <p class="hint">Projects submitted using your verified student email or Internship ID.</p>
  <div id="projectList" class="project-list"></div>
+<div class="project-card" style="margin-top:16px">
+ <h3>⬆️ Submit Your Project Work</h3><p class="hint">PDF, JPG या JPEG · अधिकतम 20 MB</p>
+ <form id="studentProjectForm">
+  <label for="projectTitle">Project Title</label><input id="projectTitle" maxlength="160" required>
+  <label for="projectDescription">Project Description</label><input id="projectDescription" maxlength="5000" required>
+  <label for="projectFile">Project File</label><input id="projectFile" type="file" accept=".pdf,.jpg,.jpeg,application/pdf,image/jpeg" required>
+  <button class="wide gold" type="submit">📤 Submit Project</button>
+ </form><div id="projectUploadMsg" class="message"></div>
+</div>
 </section>
 <div id="dashMsg" class="message"></div>
 <div id="editApplicationArea" class="card hidden" style="margin-top:18px"><h2>✏️ Update Application Details</h2><p class="hint">आप अपनी संपर्क और शैक्षणिक जानकारी अपडेट कर सकते हैं। Application status और Internship ID केवल Foundation team बदल सकती है।</p><form id="applicationEditForm"><div class="grid" id="applicationEditFields"></div><button class="wide" type="submit">Save Application Changes</button><button class="secondary wide" id="cancelEditBtn" type="button">Cancel</button></form><div id="editApplicationMsg" class="message"></div></div></section>
@@ -79,11 +88,18 @@ function renderAttendance(app){
   ['Absent Days',a.absentDays??0],['Attendance',((Number(a.percentage)||0).toFixed(1))+'%']
  ];
  $('attendanceSummary').innerHTML=items.map(([k,v])=>'<div class="progress-stat"><b>'+escapeHtml(v)+'</b><span>'+escapeHtml(k)+'</span></div>').join('');
+ const days=Array.isArray(a.days)?a.days:[];
  const dates=Array.isArray(a.dates)?a.dates:[];
- $('attendanceDates').textContent=dates.length?'Attendance dates: '+dates.map(x=>typeof x==='string'?x:(x.date||x.day||'')).filter(Boolean).join(' · '):'Attendance dates will appear here when recorded by the Foundation team.';
+ const dayRows=days.length?days:Array.from({length:21},(_,i)=>({day:i+1,date:'',status:i<Number(a.presentDays||0)?'present':'pending'}));
+ const pct=Math.max(0,Math.min(100,Number(a.percentage)||0));
+ $('attendanceDates').innerHTML='<div style="margin:14px 0 8px;background:#e8eee9;border-radius:99px;height:10px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:linear-gradient(90deg,#13834e,#d5a33a);border-radius:99px"></div></div><b>'+pct.toFixed(1)+'% complete</b><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(86px,1fr));gap:8px;margin-top:12px">'+dayRows.slice(0,21).map((d,i)=>{const st=String(d.status||'pending').toLowerCase();const yes=st==='present';return '<div style="border:1px solid '+(yes?'#b9e4c8':'#e2e8f0')+';background:'+(yes?'#effaf2':'#f8fafc')+';border-radius:10px;padding:8px;text-align:center"><b>Day '+(i+1)+'</b><div style="font-size:18px;color:'+(yes?'#15803d':'#94a3b8')+'">'+(yes?'✓':st==='absent'?'✕':'—')+'</div><small>'+escapeHtml(d.date||'Not marked')+'</small></div>';}).join('')+'</div>';
+ const approved=Boolean(app.projectApproved); const complete=Number(a.presentDays||0)===21&&approved;
+ let cert=$('studentCertificateStatus'); if(!cert){cert=document.createElement('section');cert.id='studentCertificateStatus';cert.className='card';cert.style.marginTop='18px';$('dashMsg').before(cert);}
+ cert.innerHTML='<h2>🏅 Internship Certificate</h2><p class="hint">Certificate जारी करने के लिए 21/21 Attendance और Project Approval दोनों जरूरी हैं।</p><div style="padding:14px;border-radius:12px;background:'+(complete?'#ecfdf3':'#fff7e6')+';color:'+(complete?'#166534':'#92400e')+';font-weight:700">'+(complete?'✓ सभी शर्तें पूरी हैं। Certificate Foundation team द्वारा जारी किया जाएगा।':'Certificate Pending · Attendance: '+Number(a.presentDays||0)+'/21 · Project: '+(approved?'Approved':'Approval Pending'))+'</div>';
 }
-function renderProjects(app){
- const projects=Array.isArray(app.projects)?app.projects:[];
+async function renderProjects(app){
+ let projects=Array.isArray(app.projects)?app.projects:[];
+ try{const remote=await api('/api/student/projects');if(Array.isArray(remote.projects))projects=remote.projects;}catch(e){console.warn('Student projects could not refresh',e);}
  if(!projects.length){$('projectList').innerHTML='<div class="datum">No project submissions are linked to your account yet.</div>';return;}
  $('projectList').innerHTML=projects.map(p=>{
   const title=escapeHtml(p.title||'Project');
@@ -104,6 +120,22 @@ $('showForgot').addEventListener('click',()=>{$('authArea').classList.add('hidde
 $('backLogin').addEventListener('click',()=>{$('forgotArea').classList.add('hidden');$('authArea').classList.remove('hidden');});
 $('forgotForm').addEventListener('submit',async e=>{e.preventDefault();try{const email=$('forgotEmail').value.trim().toLowerCase();await api('/api/student/forgot-password',{method:'POST',body:JSON.stringify({email})});$('resetForm').classList.remove('hidden');showMsg('forgotMsg','If this email belongs to a student account, an OTP has been sent. Check your inbox and spam folder.',true);}catch(err){showMsg('forgotMsg',err.message)}});
 $('resetForm').addEventListener('submit',async e=>{e.preventDefault();try{const d=await api('/api/student/reset-password',{method:'POST',body:JSON.stringify({email:$('forgotEmail').value.trim().toLowerCase(),otp:$('otp').value.trim(),newPassword:$('newPass').value})});showMsg('forgotMsg',d.message||'Password reset. Please log in.',true);$('resetForm').classList.add('hidden');}catch(err){showMsg('forgotMsg',err.message)}});
+
+$('studentProjectForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const file=$('projectFile').files&&$('projectFile').files[0];
+ try{
+  if(!file)throw new Error('Project file चुनें।');
+  const ext=(file.name.split('.').pop()||'').toLowerCase();
+  if(!['pdf','jpg','jpeg'].includes(ext))throw new Error('केवल PDF, JPG या JPEG file स्वीकार होगी।');
+  if(file.size>20*1024*1024)throw new Error('Project file अधिकतम 20 MB की हो सकती है।');
+  const data=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result));r.onerror=()=>reject(new Error('File read नहीं हो सकी।'));r.readAsDataURL(file);});
+  const result=await api('/api/student/projects',{method:'POST',body:JSON.stringify({title:$('projectTitle').value.trim(),description:$('projectDescription').value.trim(),projectFile:{name:file.name,type:file.type,data}})});
+  showMsg('projectUploadMsg',result.message||'Project submit हो गया।',true);
+  $('studentProjectForm').reset();await renderProjects(currentStudent.application||{});
+ }catch(err){showMsg('projectUploadMsg',err.message);}
+});
+
 $('logoutBtn').addEventListener('click',()=>{sessionStorage.removeItem('nsfStudentToken');location.reload();});
 function downloadStudentApplicationPDF(){if(!currentStudent)return;const {jsPDF}=window.jspdf||{};if(!jsPDF){showMsg('dashMsg','PDF library load नहीं हुई। पेज refresh करके फिर प्रयास करें।');return;}const app=currentStudent.application||{},pdf=new jsPDF({unit:'mm',format:'a4'});let y=17;const ref=app.referenceNo||app.applicationReference||('NSF-INT-'+app.id);pdf.setFillColor(11,32,53);pdf.rect(0,0,210,28,'F');pdf.setTextColor(255,255,255);pdf.setFont('helvetica','bold');pdf.setFontSize(16);pdf.text('NISHA SEVA FOUNDATION',15,12);pdf.setFont('helvetica','normal');pdf.setFontSize(10);pdf.text('STUDENT INTERNSHIP APPLICATION',15,20);pdf.setTextColor(25,43,58);y=37;pdf.setFontSize(10);pdf.text('Reference Number: '+ref,15,y);pdf.text('Application ID: '+String(app.id||'-'),120,y);y+=9;const preferred=[['Student Name',app.studentName||app.name],['Father / Mother Name',app.parentName],['Email',app.email||currentStudent.email],['Mobile Number',app.mobile||app.phone],['College Name',app.collegeName||app.educationCollege],['University',app.university],['Class / Course',app.className||app.program],['Year / Semester',app.yearSemester],['Enrollment / Roll Number',app.enrollmentRoll],['Internship Duration',app.duration],['Application Date',app.applicationDate],['Preferred Area',app.preferredPlace],['Availability',app.availability],['Areas of Interest',Array.isArray(app.interests)?app.interests.join(', '):app.interests],['Address',app.address],['Application Status',app.status],['Internship ID',app.internshipId]];const skip=new Set(['id','studentPhoto','studentSignature','parentSignature','documents','aadharCard','aadhaarCard','tenthMarksheet','lastYearMarksheet','publicProfileId','studentAccount']);const items=[...preferred,...Object.keys(app).filter(k=>!skip.has(k)&&!preferred.some(([label])=>label.toLowerCase().replace(/[^a-z]/g,'')===k.toLowerCase().replace(/[^a-z]/g,''))).map(k=>[k.replace(/([a-z])([A-Z])/g,'$1 $2'),app[k]])];pdf.setFont('helvetica','normal');pdf.setFontSize(10);items.forEach(([label,value])=>{if(value===undefined||value===null||String(value)==='')return;let v=Array.isArray(value)?value.join(', '):(typeof value==='object'?JSON.stringify(value):String(value));const lines=pdf.splitTextToSize(label+': '+v,178);if(y+lines.length*5>278){pdf.addPage();y=17;}pdf.text(lines,15,y);y+=lines.length*5+2;});const pages=pdf.getNumberOfPages();for(let p=1;p<=pages;p++){pdf.setPage(p);pdf.setFontSize(8);pdf.setTextColor(100,115,128);pdf.text('Nisha Seva Foundation · Internship Application · '+ref,15,289);pdf.text('Page '+p+' of '+pages,195,289,{align:'right'});}pdf.save(String(ref).replace(/[^a-z0-9_-]/gi,'_')+'_Internship_Application.pdf');}
 $('downloadBtn').addEventListener('click',downloadStudentApplicationPDF);
