@@ -12,6 +12,7 @@ const rateLimit = require('express-rate-limit');
 
 const {
   readDB,
+  readCollection,
   writeDB,
   nextId,
   pool
@@ -55,6 +56,20 @@ const supabase = createClient(
    ========================================================= */
 
 const app = express();
+
+// Low-overhead API timing: logs only slow request path + status + duration.
+// Query strings, request bodies, tokens and personal data are never logged.
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api/')) return next();
+  const startedAt = process.hrtime.bigint();
+  res.once('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    if (durationMs >= 750) {
+      console.warn(`[API SLOW] ${req.method} ${req.route?.path || req.path} status=${res.statusCode} duration=${durationMs.toFixed(1)}ms`);
+    }
+  });
+  next();
+});
 
 // Security headers. CSP is disabled because the existing HTML uses inline scripts
 // and trusted CDN assets; enable a nonce-based CSP before removing this exception.
@@ -620,13 +635,7 @@ function crudRoutes(name) {
 
       try {
 
-        const db =
-          await readDB();
-
-        let items =
-          Array.isArray(db[name])
-            ? db[name]
-            : [];
+        let items = await readCollection(name);
 
 
         /*
@@ -1093,7 +1102,7 @@ function extractSupabaseGalleryPath(
 
 // Certificate records are private to admins. Public visitors can only verify one ID.
 app.get('/api/certificates', requireAdmin, async (req, res) => {
-  try { const db = await readDB(); res.json(Array.isArray(db.certificates) ? db.certificates : []); }
+  try { const records = await readCollection('certificates'); res.set('Cache-Control', 'no-store'); res.json(records); }
   catch (e) { console.error('GET /api/certificates', e); res.status(500).json({error:'Database error'}); }
 });
 app.post('/api/certificates', requireAdmin, async (req, res) => {
