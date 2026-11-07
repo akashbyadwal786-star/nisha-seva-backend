@@ -42,6 +42,22 @@ async function readDB() {
     : {};
 }
 
+// Read only one collection from the JSONB document for list endpoints.
+// This preserves the existing schema and records while avoiding transfer and
+// parsing of unrelated collections on every Admin Panel tab load.
+async function readCollection(name) {
+  if (typeof name !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/.test(name)) {
+    throw new TypeError('Invalid collection name');
+  }
+  await ready;
+  const result = await pool.query(
+    `SELECT COALESCE(data -> $1, '[]'::jsonb) AS items FROM nsf_app_state WHERE id = 1`,
+    [name]
+  );
+  const items = result.rows[0]?.items;
+  return Array.isArray(items) ? items : [];
+}
+
 /*
  * The existing CRUD handlers read the complete collection object and then
  * write it back. Serialize writes in this Node process so overlapping admin
@@ -74,4 +90,4 @@ function nextId(items) {
   return max + 1;
 }
 
-module.exports = { pool, readDB, writeDB, nextId };
+module.exports = { pool, readDB, readCollection, writeDB, nextId };
