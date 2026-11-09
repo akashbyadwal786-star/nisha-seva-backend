@@ -400,6 +400,63 @@ header .brand-mark{display:flex;align-items:center;gap:12px}header .brand-symbol
 .tabs button[data-section="impactLocations"]{--item:#0d9488}.tabs button[data-section="missions"]{--item:#f59e0b}.tabs button[data-section="certificates"]{--item:#6366f1}.tabs button[data-section="impactStories"]{--item:#ec4899}.tabs button[data-section="communityEvents"]{--item:#0284c7}.tabs button[data-section="knowledgeLibrary"]{--item:#7c3aed}
 .nsf-dynamic-admin-card{border-left:4px solid #159b69!important}.nsf-dynamic-admin-card .actions button{min-width:94px}
 </style>
+
+<style id="nsf-reference-dashboard-theme">
+:root{--adm-navy:#101827;--adm-navy2:#182438;--adm-blue:#2389d7;--adm-green:#14966d;--adm-gold:#f2b632;--adm-red:#c95748}
+body{background:#f3f5f9!important;color:#1c2939!important;font-family:Inter,Segoe UI,Arial,sans-serif!important}
+body:before{display:none!important}
+header{background:linear-gradient(100deg,#111a2a,#1c2b42)!important;border:0!important;border-bottom:3px solid #e8ad2e!important;border-radius:0!important;padding:15px 25px!important;box-shadow:0 5px 18px #10182724!important}
+header:before{display:none!important}
+header>div b{font-size:19px;letter-spacing:.02em;color:#fff}
+header>div small{color:#b9c6d6}
+header button{background:#f0b633!important;color:#182333!important}
+.wrap{max-width:1600px!important;grid-template-columns:255px minmax(0,1fr)!important;gap:18px!important;margin:20px auto!important;padding:0 20px!important}
+.tabs{top:88px!important;background:#172337!important;border:0!important;border-radius:12px!important;padding:13px!important;box-shadow:0 8px 24px #0d172622!important}
+.tabs:before{content:"MAIN NAVIGATION"!important;color:#91a2b8!important;padding:8px 10px 13px!important}
+.tabs button{background:transparent!important;border:0!important;border-left:3px solid transparent!important;border-radius:9px!important;color:#c7d2df!important;box-shadow:none!important;min-height:45px!important}
+.tabs button:before{background:#26374e!important;color:#dce8f5!important;box-shadow:none!important}
+.tabs button:after{color:#8293a9!important}
+.tabs button:hover{background:#22334a!important;transform:translateX(2px)!important}
+.tabs button.active{background:linear-gradient(90deg,#176d5b,#168365)!important;color:#fff!important;border-left-color:#f3bd45!important;box-shadow:0 6px 16px #071c2b55!important}
+.tabs button.active:before{background:#f1bb3e!important;color:#172638!important}
+#content{padding:25px!important;border:1px solid #e3e8ef!important;border-radius:14px!important;background:#fff!important;box-shadow:0 8px 28px #1723370c!important;min-height:calc(100vh - 140px)}
+#content h2{color:#1c2b40}
+.nsf-dashboard{display:flex;flex-direction:column;gap:24px}
+.nsf-welcome{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:4px 2px 8px}
+.nsf-eyebrow{font-size:10px;letter-spacing:.16em;font-weight:850;color:#8795a7}
+.nsf-welcome h1{font-size:27px;letter-spacing:-.04em;margin:7px 0;color:#18283c}
+.nsf-welcome p,.nsf-dashboard-heading p,.nsf-group-heading p{margin:0;color:#8491a1;font-size:13px}
+.nsf-date-chip{padding:10px 14px;border-radius:30px;background:#edf7f2;color:#247657;font-size:12px;font-weight:750;white-space:nowrap}
+.nsf-date-chip span{color:#19a66f;margin-right:6px}
+.nsf-stat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:13px}
+.nsf-stat{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:flex-start;gap:8px;min-height:142px;padding:18px!important;border:0!important;border-radius:12px!important;text-align:left!important;color:#fff!important;box-shadow:0 8px 20px #15243b18!important}
+.nsf-stat:after{content:"";position:absolute;width:110px;height:110px;border:18px solid #ffffff18;border-radius:50%;right:-27px;bottom:-48px}
+.nsf-stat:hover{transform:translateY(-3px)!important;filter:brightness(1.04)}
+.stat-blue{background:linear-gradient(135deg,#218bd7,#1766b5)!important}.stat-green{background:linear-gradient(135deg,#159b72,#087b59)!important}.stat-gold{background:linear-gradient(135deg,#f4c34d,#e99a19)!important;color:#1e2937!important}.stat-red{background:linear-gradient(135deg,#d76b59,#b9443f)!important}.stat-navy{background:linear-gradient(135deg,#263d65,#17294b)!important}
+.nsf-stat-icon{font-size:22px;opacity:.95}.nsf-stat b{font-size:13px;font-weight:700}.nsf-stat strong{font-size:27px;line-height:1;font-weight:850}.nsf-stat small{font-size:11px;opacity:.82}
+.nsf-dashboard-heading{display:flex;justify-content:space-between;align-items:end;gap:12px;border-bottom:1px solid #edf0f4;padding-bottom:13px}
+.nsf-dashboard-heading h2{font-size:20px!important;margin:0 0 5px!important}
+.nsf-module-count{font-size:11px;font-weight:750;color:#61758a;background:#f0f3f7;padding:7px 10px;border-radius:20px}
+.nsf-module-group{display:flex;flex-direction:column;gap:12px}
+.nsf-group-heading{display:flex;align-items:center;gap:11px}
+.nsf-group-icon{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;font-size:19px}
+.nsf-group-icon.blue,.nsf-module-icon.blue{background:#e8f2ff;color:#2674cf}.nsf-group-icon.green,.nsf-module-icon.green{background:#e5f6ee;color:#16835d}.nsf-group-icon.cyan,.nsf-module-icon.cyan{background:#e4f6fb;color:#1285a9}.nsf-group-icon.orange,.nsf-module-icon.orange{background:#fff3df;color:#d18a13}
+.nsf-group-heading h3{font-size:15px;margin:0 0 3px;color:#27384c}
+.nsf-group-heading p{font-size:11px}
+.nsf-module-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.nsf-module-card{display:flex;align-items:center;gap:12px;min-width:0;padding:13px!important;border:1px solid #e7ebf0!important;border-radius:11px!important;background:#fff!important;color:#24364a!important;text-align:left!important;box-shadow:0 3px 10px #17233708!important}
+.nsf-module-card:hover{border-color:#b8d7cb!important;background:#fbfefc!important;transform:translateY(-2px)!important}
+.nsf-module-icon{width:38px;height:38px;flex:none;display:grid;place-items:center;border-radius:10px;font-size:18px}
+.nsf-module-copy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.nsf-module-copy b{font-size:12px;white-space:normal}
+.nsf-module-copy small{font-size:10px;color:#8592a2;font-weight:500;line-height:1.35}
+.nsf-module-arrow{font-size:23px;color:#a2afbd}
+.nsf-dashboard-footer{display:flex;justify-content:space-between;padding-top:14px;border-top:1px solid #edf0f4;color:#91a0af;font-size:10px;letter-spacing:.04em}
+@media(max-width:1100px){.nsf-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:900px){.wrap{grid-template-columns:1fr!important}.tabs{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;position:static!important}.tabs:before{grid-column:1/-1}.tabs button{grid-template-columns:30px minmax(0,1fr)!important}.tabs button:after{display:none!important}#content{min-height:0}}
+@media(max-width:600px){.wrap{padding:0 10px!important}.nsf-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.nsf-stat{min-height:125px;padding:14px!important}.nsf-module-grid{grid-template-columns:1fr}.nsf-welcome{align-items:flex-start;flex-direction:column}.nsf-welcome h1{font-size:23px}.nsf-dashboard-footer{gap:8px;flex-direction:column}.tabs{grid-template-columns:1fr 1fr!important}#content{padding:15px!important}}
+</style>
+
 </head>
 
 <body>
@@ -416,7 +473,7 @@ const API = (window.NISHA_API_URL || 'https://api.nishasevafoundation.org').repl
 
 let token = localStorage.getItem("nisha_token") || "";
 let currentRole = localStorage.getItem("nisha_role") || "admin";
-let current = currentRole === "coordinator" ? "internships" : "programs";
+let current = currentRole === "coordinator" ? "internships" : "dashboard";
 let volunteerCache = {};
 
 
@@ -425,6 +482,7 @@ let volunteerCache = {};
    ========================================================= */
 
 const tabs = [
+  ["dashboard","Dashboard"],
   ["programs","Programs"],
   ["events","Events"],
   ["gallery","Gallery"],
@@ -568,7 +626,7 @@ async function doLogin(){
     const data = await api(endpoint, {method:"POST",body:JSON.stringify({username:document.getElementById("user").value,password:document.getElementById("pass").value})});
     token = data.token;
     currentRole = data.role || selectedLoginRole;
-    current = currentRole === "coordinator" ? "internships" : "programs";
+    current = currentRole === "coordinator" ? "internships" : "dashboard";
     localStorage.setItem("nisha_token",token);
     localStorage.setItem("nisha_role",currentRole);
     render();
@@ -599,7 +657,7 @@ async function logout(){
 
   token = "";
   currentRole = "admin";
-  current = "programs";
+  current = "dashboard";
 
   login();
 
@@ -729,6 +787,86 @@ async function renderStudentImpactSuite(){
   await loadRecords();
 }
 
+
+/* =========================================================
+   ADMIN HOME DASHBOARD — UI ONLY
+   Existing module routes and APIs remain unchanged.
+   ========================================================= */
+function renderDashboard(){
+  const content=document.getElementById("content");
+  if(!content) return;
+  const groups=[
+    {title:"Content Management",sub:"Manage website content and media",color:"blue",icon:"▦",items:[
+      ["programs","Programs","Create and manage programs","▦"],
+      ["events","Events","Publish upcoming events","▣"],
+      ["gallery","Gallery","Manage photos and albums","▧"],
+      ["documents","Documents","Upload and manage documents","▤"]
+    ]},
+    {title:"People & Supporters",sub:"Manage your foundation community",color:"green",icon:"♟",items:[
+      ["volunteers","Volunteers","Volunteer records and ID cards","♟"],
+      ["members","Members","Review member applications","♧"],
+      ["donors","Donors","Manage donor records","♡"],
+      ["contactMessages","Messages","View contact enquiries","✉"],
+      ["newsletter","Newsletter","Manage subscribers","✉"]
+    ]},
+    {title:"Student & Internship",sub:"Student services and coordination",color:"cyan",icon:"🎓",items:[
+      ["internships","Student Internships","Review internship applications","🎓"],
+      ["internshipDocuments","Internship Documents","Manage student documents","📎"],
+      ["studentPortal","Student Portal QR","Student portal QR records","▦"],
+      ["projectSubmissions","Student Projects","Review project submissions","▱"],
+      ["studentImpactSuite","Student Impact Suite","Review all 11 impact modules","✦"]
+    ]},
+    {title:"Community Impact",sub:"Track outreach, missions and stories",color:"orange",icon:"✦",items:[
+      ["communityRequests","Community Help Desk","Review help requests","🤝"],
+      ["impactLocations","Impact Map","Manage impact locations","🗺️"],
+      ["missions","Volunteer Missions","Create and manage missions","🎯"],
+      ["certificates","Certificate Records","View certificate records","🏅"],
+      ["impactStories","Impact Stories","Publish impact stories","✨"],
+      ["communityEvents","Community Calendar","Manage community events","📅"],
+      ["knowledgeLibrary","Knowledge Library","Manage learning resources","📚"]
+    ]}
+  ];
+  const totalModules=groups.reduce((n,g)=>n+g.items.length,0);
+  content.innerHTML=`
+    <section class="nsf-dashboard">
+      <div class="nsf-welcome">
+        <div>
+          <div class="nsf-eyebrow">NISHA SEVA FOUNDATION · ADMINISTRATION</div>
+          <h1>Dashboard Overview</h1>
+          <p>Welcome back. Manage your foundation website from one place.</p>
+        </div>
+        <div class="nsf-date-chip"><span>●</span> Admin Workspace</div>
+      </div>
+
+      <div class="nsf-stat-grid">
+        <button class="nsf-stat stat-blue" onclick="current='programs';render()"><span class="nsf-stat-icon">▦</span><b>Content Manager</b><strong>4</strong><small>Content modules</small></button>
+        <button class="nsf-stat stat-green" onclick="current='volunteers';render()"><span class="nsf-stat-icon">♟</span><b>People & Support</b><strong>5</strong><small>Community modules</small></button>
+        <button class="nsf-stat stat-gold" onclick="current='internships';render()"><span class="nsf-stat-icon">🎓</span><b>Student Services</b><strong>5</strong><small>Student modules</small></button>
+        <button class="nsf-stat stat-red" onclick="current='impactLocations';render()"><span class="nsf-stat-icon">✦</span><b>Community Impact</b><strong>7</strong><small>Impact modules</small></button>
+        <button class="nsf-stat stat-navy" onclick="current='studentImpactSuite';render()"><span class="nsf-stat-icon">✧</span><b>Impact Suite</b><strong>11</strong><small>Connected feature tables</small></button>
+      </div>
+
+      <div class="nsf-dashboard-heading">
+        <div><h2>Quick Access</h2><p>Choose a module to open its existing management tools.</p></div>
+        <span class="nsf-module-count">${totalModules} modules</span>
+      </div>
+
+      ${groups.map(g=>`
+        <section class="nsf-module-group">
+          <div class="nsf-group-heading"><span class="nsf-group-icon ${g.color}">${g.icon}</span><div><h3>${g.title}</h3><p>${g.sub}</p></div></div>
+          <div class="nsf-module-grid">
+            ${g.items.map(item=>`
+              <button class="nsf-module-card" onclick="current='${item[0]}';render()">
+                <span class="nsf-module-icon ${g.color}">${item[3]}</span>
+                <span class="nsf-module-copy"><b>${item[1]}</b><small>${item[2]}</small></span>
+                <span class="nsf-module-arrow">›</span>
+              </button>`).join("")}
+          </div>
+        </section>`).join("")}
+      <div class="nsf-dashboard-footer"><span>🌿 Nisha Seva Foundation</span><span>Secure Admin Workspace</span></div>
+    </section>`;
+}
+
 /* =========================================================
    MAIN RENDER
    ========================================================= */
@@ -770,7 +908,7 @@ async function render(){
 
           <button
             data-section="${tab[0]}"
-            data-icon="${({programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▱",members:"♟",contactMessages:"☏",newsletter:"✉",impactLocations:"🗺️",missions:"🎯",certificates:"🏅",impactStories:"✨",communityEvents:"📅",knowledgeLibrary:"📚"})[tab[0]] || "◆"}"
+            data-icon="${({dashboard:"▣",programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▱",members:"♟",contactMessages:"☏",newsletter:"✉",impactLocations:"🗺️",missions:"🎯",certificates:"🏅",impactStories:"✨",communityEvents:"📅",knowledgeLibrary:"📚"})[tab[0]] || "◆"}"
             class="${tab[0] === current ? "active" : ""}"
             onclick="current='${tab[0]}';render()"
           >
@@ -792,6 +930,11 @@ async function render(){
 
   `;
 
+
+  if(current === "dashboard"){
+    renderDashboard();
+    return;
+  }
 
   try{
 
