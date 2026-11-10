@@ -2375,4 +2375,83 @@ document.getElementById('donatePopup').addEventListener('click', function(e){
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',animateTitle,{once:true});else animateTitle();
 })();</script>
 
+
+<style id="nsf-requested-final-polish-v4">
+/* Hero heading: readable at rest; letters alternate up/down in a travelling wave on hover */
+#home .hero-copy h1{display:block!important;overflow:visible!important;opacity:1!important;visibility:visible!important;filter:none!important;transform:none!important;clip-path:none!important;cursor:default}
+#home .hero-copy h1:hover{opacity:1!important;filter:none!important;transform:none!important}
+#home .hero-copy h1 .nsf-hero-letter{display:inline-block;white-space:pre;position:relative;will-change:transform}
+#home .hero-copy h1:hover .nsf-hero-letter{animation:nsfLetterWave .72s cubic-bezier(.2,.8,.25,1) both;animation-delay:calc(var(--nsf-i, 0) * 38ms)}
+#home .hero-copy h1:hover .nsf-hero-letter:nth-child(odd){--nsf-dir:-1}
+#home .hero-copy h1:hover .nsf-hero-letter:nth-child(even){--nsf-dir:1}
+@keyframes nsfLetterWave{0%{transform:translateY(0) rotate(0)}28%{transform:translateY(calc(var(--nsf-dir)*-.42em)) rotate(calc(var(--nsf-dir)*-7deg))}58%{transform:translateY(calc(var(--nsf-dir)*.30em)) rotate(calc(var(--nsf-dir)*5deg))}82%{transform:translateY(calc(var(--nsf-dir)*-.12em)) rotate(0)}100%{transform:translateY(0) rotate(0)}}
+/* Stronger compact transition: the numbers sit immediately below the Human / Tree / Brain visual */
+#nsf-photo-highlights{padding-bottom:0!important;margin-bottom:-112px!important}
+#nsf-photo-highlights + section.stats,
+section.stats{margin-top:-112px!important;padding-top:0!important;padding-bottom:4px!important}
+#nsf-photo-highlights .wrap{padding-bottom:0!important}
+section.stats .wrap{padding-top:0!important}
+section.stats .stats-heading{margin-top:0!important;margin-bottom:8px!important}
+@media(max-width:700px){
+ #nsf-photo-highlights{margin-bottom:-58px!important}
+ #nsf-photo-highlights + section.stats,section.stats{margin-top:-58px!important}
+}
+/* White high-contrast text throughout the coloured Community Help and Public Service Hub cards */
+#community-help .nsf-help-note,
+#community-help .nsf-help-note *,
+#community-help .nsf-hub-card,
+#community-help .nsf-hub-card *,
+#community-help .nsf-help-card,
+#community-help .nsf-help-card *,
+#community-help .nsf-resource-card,
+#community-help .nsf-resource-card *,
+#nsfCommunityHub .nsf-hub-card,
+#nsfCommunityHub .nsf-hub-card *,
+#nsfCommunityHub .nsf-hub-section,
+#nsfCommunityHub .nsf-hub-section .nsf-hub-card *,
+#nsfCommunityHub .nsf-hub-grid .nsf-hub-card *,
+#public-service-hub .nsf-hub-card,
+#public-service-hub .nsf-hub-card *,
+#public-service-hub .nsf-service-card,
+#public-service-hub .nsf-service-card *{
+ color:#fff!important;
+}
+#community-help .nsf-help-card a,#community-help .nsf-resource-card a,
+#nsfCommunityHub .nsf-hub-card a,#public-service-hub .nsf-service-card a{
+ color:#fff!important;text-decoration:underline;text-underline-offset:3px
+}
+#community-help .nsf-help-card button,#community-help .nsf-resource-card button,
+#nsfCommunityHub .nsf-hub-card button,#public-service-hub .nsf-service-card button{
+ color:#10221a!important;background:#fff!important;border:0!important
+}
+@media(prefers-reduced-motion:reduce){
+ #home .hero-copy h1:hover .nsf-hero-letter{animation:none!important}
+}
+</style>
+<script id="nsf-hero-letter-wave-js-v4">
+(function(){
+ function splitHeroHeading(){
+  var h=document.querySelector('#home .hero-copy h1');
+  if(!h||h.dataset.nsfWaveReady==='1')return;
+  var walker=document.createTreeWalker(h,NodeFilter.SHOW_TEXT),nodes=[];
+  while(walker.nextNode())nodes.push(walker.currentNode);
+  var index=0;
+  nodes.forEach(function(node){
+   var frag=document.createDocumentFragment();
+   Array.from(node.nodeValue||'').forEach(function(ch){
+    var span=document.createElement('span');
+    span.className='nsf-hero-letter';
+    span.style.setProperty('--nsf-i',index++);
+    span.textContent=ch===' '?'\\u00a0':ch;
+    frag.appendChild(span);
+   });
+   node.parentNode.replaceChild(frag,node);
+  });
+  h.dataset.nsfWaveReady='1';
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',splitHeroHeading,{once:true});
+ else splitHeroHeading();
+})();
+</script>
+
 </body></html>
