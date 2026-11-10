@@ -2376,81 +2376,112 @@ document.getElementById('donatePopup').addEventListener('click', function(e){
 })();</script>
 
 
-<style id="nsf-requested-final-polish-v4">
-/* Hero heading: readable at rest; letters alternate up/down in a travelling wave on hover */
-#home .hero-copy h1{display:block!important;overflow:visible!important;opacity:1!important;visibility:visible!important;filter:none!important;transform:none!important;clip-path:none!important;cursor:default}
-#home .hero-copy h1:hover{opacity:1!important;filter:none!important;transform:none!important}
-#home .hero-copy h1 .nsf-hero-letter{display:inline-block;white-space:pre;position:relative;will-change:transform}
-#home .hero-copy h1:hover .nsf-hero-letter{animation:nsfLetterWave .72s cubic-bezier(.2,.8,.25,1) both;animation-delay:calc(var(--nsf-i, 0) * 38ms)}
-#home .hero-copy h1:hover .nsf-hero-letter:nth-child(odd){--nsf-dir:-1}
-#home .hero-copy h1:hover .nsf-hero-letter:nth-child(even){--nsf-dir:1}
-@keyframes nsfLetterWave{0%{transform:translateY(0) rotate(0)}28%{transform:translateY(calc(var(--nsf-dir)*-.42em)) rotate(calc(var(--nsf-dir)*-7deg))}58%{transform:translateY(calc(var(--nsf-dir)*.30em)) rotate(calc(var(--nsf-dir)*5deg))}82%{transform:translateY(calc(var(--nsf-dir)*-.12em)) rotate(0)}100%{transform:translateY(0) rotate(0)}}
-/* Stronger compact transition: the numbers sit immediately below the Human / Tree / Brain visual */
-#nsf-photo-highlights{padding-bottom:0!important;margin-bottom:-112px!important}
-#nsf-photo-highlights + section.stats,
-section.stats{margin-top:-112px!important;padding-top:0!important;padding-bottom:4px!important}
-#nsf-photo-highlights .wrap{padding-bottom:0!important}
-section.stats .wrap{padding-top:0!important}
-section.stats .stats-heading{margin-top:0!important;margin-bottom:8px!important}
-@media(max-width:700px){
- #nsf-photo-highlights{margin-bottom:-58px!important}
- #nsf-photo-highlights + section.stats,section.stats{margin-top:-58px!important}
+
+
+
+<style id="nsf-corrective-visual-fix-v5">
+/* HERO: keep every glyph inside its own visible line box */
+#home{overflow:visible!important}
+#home .hero-copy{overflow:visible!important;min-width:0!important}
+#home .hero-copy h1{
+ display:block!important;position:relative!important;overflow:visible!important;
+ clip-path:none!important;contain:none!important;line-height:1.22!important;
+ padding:.12em 0 .24em!important;margin:16px 0 22px!important;
+ opacity:1!important;visibility:visible!important;transform:none!important;
+ background:none!important;-webkit-background-clip:border-box!important;
+ color:var(--nsf-green-dark,#04543d)!important;
+ cursor:pointer!important;white-space:normal!important;
 }
-/* White high-contrast text throughout the coloured Community Help and Public Service Hub cards */
-#community-help .nsf-help-note,
-#community-help .nsf-help-note *,
-#community-help .nsf-hub-card,
-#community-help .nsf-hub-card *,
-#community-help .nsf-help-card,
-#community-help .nsf-help-card *,
-#community-help .nsf-resource-card,
-#community-help .nsf-resource-card *,
-#nsfCommunityHub .nsf-hub-card,
-#nsfCommunityHub .nsf-hub-card *,
-#nsfCommunityHub .nsf-hub-section,
-#nsfCommunityHub .nsf-hub-section .nsf-hub-card *,
-#nsfCommunityHub .nsf-hub-grid .nsf-hub-card *,
-#public-service-hub .nsf-hub-card,
-#public-service-hub .nsf-hub-card *,
-#public-service-hub .nsf-service-card,
-#public-service-hub .nsf-service-card *{
- color:#fff!important;
+#home .hero-copy h1 .nsf-hero-letter{
+ display:inline-block!important;position:relative!important;
+ padding:0 .005em .08em!important;margin:0!important;
+ line-height:1.22!important;vertical-align:baseline!important;
+ opacity:1!important;visibility:visible!important;
+ -webkit-text-fill-color:currentColor!important;
 }
-#community-help .nsf-help-card a,#community-help .nsf-resource-card a,
-#nsfCommunityHub .nsf-hub-card a,#public-service-hub .nsf-service-card a{
- color:#fff!important;text-decoration:underline;text-underline-offset:3px
+#home .hero-copy h1 .nsf-hero-letter:nth-child(3n+1){color:#087f5b!important}
+#home .hero-copy h1 .nsf-hero-letter:nth-child(3n+2){color:#e83e8c!important}
+#home .hero-copy h1 .nsf-hero-letter:nth-child(3n){color:#d9680c!important}
+#home .hero-copy h1:hover .nsf-hero-letter{
+ animation:nsfCorrectLetterHop .9s cubic-bezier(.2,.75,.25,1) both!important;
+ animation-delay:calc(var(--nsf-letter-index,0) * 42ms)!important;
 }
-#community-help .nsf-help-card button,#community-help .nsf-resource-card button,
-#nsfCommunityHub .nsf-hub-card button,#public-service-hub .nsf-service-card button{
- color:#10221a!important;background:#fff!important;border:0!important
+@keyframes nsfCorrectLetterHop{
+ 0%,100%{transform:translateY(0) rotate(0)}
+ 28%{transform:translateY(-.42em) rotate(-5deg)}
+ 55%{transform:translateY(.25em) rotate(4deg)}
+ 78%{transform:translateY(-.12em) rotate(-2deg)}
+}
+@media(max-width:900px){
+ #home .hero-copy h1{line-height:1.2!important;padding:.14em 0 .28em!important}
 }
 @media(prefers-reduced-motion:reduce){
  #home .hero-copy h1:hover .nsf-hero-letter{animation:none!important}
 }
+
+/* Photos -> Our Impact: remove all vertical gap between the image cards and stats heading */
+#nsf-photo-highlights{
+ padding-top:0!important;padding-bottom:0!important;
+ margin-top:0!important;margin-bottom:-150px!important;
+}
+#nsf-photo-highlights .wrap,
+#nsf-photo-highlights .nsf-photo-grid{margin-bottom:0!important;padding-bottom:0!important}
+#nsf-photo-highlights + section.stats{
+ margin-top:-150px!important;padding-top:0!important;
+}
+section.stats{
+ padding-top:0!important;padding-bottom:0!important;
+}
+section.stats .wrap{padding-top:0!important}
+section.stats .stats-heading{margin-top:0!important;padding-top:0!important;margin-bottom:8px!important}
+section.stats .stats-grid{margin-top:0!important}
+@media(max-width:700px){
+ #nsf-photo-highlights{margin-bottom:-82px!important}
+ #nsf-photo-highlights + section.stats{margin-top:-82px!important}
+}
+
+/* Community Help + Public Service Hub: white text inside all coloured resource cards */
+#community-help .nsf-hub-grid .nsf-hub-card,
+#community-help .nsf-hub-grid .nsf-hub-card *,
+#janseva .nsf-hub-grid .nsf-hub-card,
+#janseva .nsf-hub-grid .nsf-hub-card *,
+#community-help .nsf-help-note,
+#community-help .nsf-help-note *{
+ color:#fff!important;opacity:1!important;
+}
+#community-help .nsf-hub-grid .nsf-hub-card .nsf-hub-btn,
+#janseva .nsf-hub-grid .nsf-hub-card .nsf-hub-btn{
+ background:#fff!important;color:#123!important;
+}
+#community-help .nsf-hub-grid .nsf-hub-card .nsf-hub-btn.alt,
+#janseva .nsf-hub-grid .nsf-hub-card .nsf-hub-btn.alt{
+ background:rgba(255,255,255,.18)!important;color:#fff!important;
+}
+#community-help .nsf-help-note a{color:#fff!important}
+#community-help .nsf-help-note ul,
+#community-help .nsf-help-note li,
+#community-help .nsf-help-note p,
+#community-help .nsf-help-note h3{color:#fff!important;opacity:1!important}
 </style>
-<script id="nsf-hero-letter-wave-js-v4">
+<script id="nsf-corrective-hero-letters-js-v5">
 (function(){
- function splitHeroHeading(){
+ function build(){
   var h=document.querySelector('#home .hero-copy h1');
-  if(!h||h.dataset.nsfWaveReady==='1')return;
-  var walker=document.createTreeWalker(h,NodeFilter.SHOW_TEXT),nodes=[];
-  while(walker.nextNode())nodes.push(walker.currentNode);
-  var index=0;
-  nodes.forEach(function(node){
-   var frag=document.createDocumentFragment();
-   Array.from(node.nodeValue||'').forEach(function(ch){
-    var span=document.createElement('span');
-    span.className='nsf-hero-letter';
-    span.style.setProperty('--nsf-i',index++);
-    span.textContent=ch===' '?'\\u00a0':ch;
-    frag.appendChild(span);
-   });
-   node.parentNode.replaceChild(frag,node);
+  if(!h || h.dataset.nsfCorrectLetters==='1')return;
+  var phrase='Together for a Brighter Tomorrow';
+  /* Replace prior broken character wrappers with the exact heading text. */
+  h.textContent='';
+  Array.from(phrase).forEach(function(ch,i){
+   var span=document.createElement('span');
+   span.className='nsf-hero-letter';
+   span.style.setProperty('--nsf-letter-index',i);
+   span.textContent=ch===' '?'\u00a0':ch;
+   h.appendChild(span);
   });
-  h.dataset.nsfWaveReady='1';
+  h.dataset.nsfCorrectLetters='1';
  }
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',splitHeroHeading,{once:true});
- else splitHeroHeading();
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',build,{once:true});
+ else build();
 })();
 </script>
 
