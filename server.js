@@ -3879,7 +3879,7 @@ app.get('/api/public-impact-stats', async (req, res) => {
 });
 
 async function cashfreeRequest(url, options={}) {
-  if (!CASHFREE_APP_ID || !CASHFREE_SECRET_KEY) throw new Error('Cashfree API credentials are not configured in Render Environment.');
+  if (!CASHFREE_APP_ID || !CASHFREE_SECRET_KEY) throw new Error('Cashfree API credentials are not configured in Hostinger Environment.');
   const response = await fetch(url, { ...options, headers: { 'x-client-id': CASHFREE_APP_ID, 'x-client-secret': CASHFREE_SECRET_KEY, 'x-api-version': CASHFREE_API_VERSION, 'accept':'application/json', 'content-type':'application/json', ...(options.headers||{}) } });
   const data = await response.json().catch(()=>({}));
   if (!response.ok) { console.error('CASHFREE API ERROR', response.status, data); throw new Error(data.message || 'Cashfree API request failed'); }
@@ -3904,36 +3904,69 @@ async function finalizeDonation(orderId, paymentInfo={}){
   if(!found.rows.length) return null;
   const old=found.rows[0];
   if(old.payment_status==='PAID') return old; // idempotent: never send duplicate SMS
+
+  // Never mark a donation paid from a browser redirect or an unverified webhook alone.
+  // Confirm the order directly with Cashfree and compare its amount/currency with our DB.
+  const order=await cashfreeRequest(`${CASHFREE_BASE}/orders/${encodeURIComponent(orderId)}`,{method:'GET'});
+  const expectedAmount=Math.round(Number(old.amount)*100);
+  const cashfreeAmount=Math.round(Number(order.order_amount)*100);
+  if(order.order_status!=='PAID' || order.order_currency!=='INR' || !Number.isFinite(cashfreeAmount) || cashfreeAmount!==expectedAmount){
+    throw new Error('Cashfree order is not PAID or its amount/currency does not match the donation record.');
+  }
   const payment=paymentInfo.payment || paymentInfo;
+  if(payment.payment_status && payment.payment_status!=='SUCCESS') throw new Error('Cashfree payment is not successful.');
+  if(payment.payment_amount!==undefined && Math.round(Number(payment.payment_amount)*100)!==expectedAmount) {
+    throw new Error('Cashfree payment amount does not match the donation record.');
+  }
   const paymentId=payment.cf_payment_id || paymentInfo.cf_payment_id || null;
-  const result=await pool.query("UPDATE donations SET payment_status='PAID',cf_payment_id=COALESCE($2,cf_payment_id),payment_time=COALESCE($3::timestamptz,NOW()),updated_at=NOW() WHERE order_id=$1 RETURNING *",[orderId,paymentId,payment.payment_time||paymentInfo.payment_time||null]);
+
+  // Conditional update makes concurrent webhook + status checks idempotent.
+  const result=await pool.query(
+    "UPDATE donations SET payment_status='PAID',cf_payment_id=COALESCE($2,cf_payment_id),payment_time=COALESCE($3::timestamptz,NOW()),updated_at=NOW() WHERE order_id=$1 AND payment_status<>'PAID' RETURNING *",
+    [orderId,paymentId,payment.payment_time||paymentInfo.payment_time||null]
+  );
+  if(!result.rows.length) {
+    const latest=await pool.query('SELECT * FROM donations WHERE order_id=$1 LIMIT 1',[orderId]);
+    return latest.rows[0] || null;
+  }
   const row=result.rows[0];
   await sendDonationSms(row);
   const refreshed=await pool.query('SELECT * FROM donations WHERE order_id=$1',[orderId]);
   return refreshed.rows[0];
 }
 
-app.post('/api/donations/create-order', async(req,res)=>{
+app.post('/api/donations/create-order', publicFormLimiter, async(req,res)=>{
+ let createdOrderId=null;
  try{
   await donationsTableReady;
+  if(!CASHFREE_APP_ID || !CASHFREE_SECRET_KEY) return res.status(503).json({error:'Cashfree credentials are not configured on the server.'});
+  if(!['sandbox','production'].includes(CASHFREE_MODE)) return res.status(503).json({error:'CASHFREE_MODE must be sandbox or production.'});
   const name=String(req.body.name||'').trim().slice(0,120), phone=String(req.body.phone||'').replace(/\D/g,''), email=String(req.body.email||'').trim().slice(0,180), amount=Number(req.body.amount);
   if(name.length<2) return res.status(400).json({error:'Please enter donor name.'});
   if(!/^[6-9]\d{9}$/.test(phone)) return res.status(400).json({error:'Enter a valid 10-digit Indian mobile number.'});
   if(!Number.isFinite(amount)||amount<1||amount>1000000||Math.round(amount*100)!==amount*100) return res.status(400).json({error:'Enter a valid donation amount.'});
   if(email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({error:'Enter a valid email address or leave it blank.'});
   const orderId='NSFDON_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex');
+  createdOrderId=orderId;
   const receiptNo='NSF-'+new Date().getFullYear()+'-'+crypto.randomBytes(4).toString('hex').toUpperCase();
   const customerId='donor_'+crypto.randomBytes(8).toString('hex');
   await pool.query('INSERT INTO donations(order_id,receipt_no,donor_name,donor_phone,donor_email,amount) VALUES($1,$2,$3,$4,$5,$6)',[orderId,receiptNo,name,phone,email||null,amount]);
   const created=await cashfreeRequest(`${CASHFREE_BASE}/orders`,{method:'POST',body:JSON.stringify({order_id:orderId,order_amount:amount,order_currency:'INR',customer_details:{customer_id:customerId,customer_name:name,customer_email:email||undefined,customer_phone:phone},order_meta:{return_url:`${DONATION_SITE_URL}/?order_id={order_id}#donate`,notify_url:`${PUBLIC_BASE_URL}/api/donations/webhook`},order_note:'Donation to Nisha Seva Foundation'})});
   res.json({ok:true,orderId,paymentSessionId:created.payment_session_id,mode:CASHFREE_MODE});
- }catch(e){console.error('CREATE DONATION ORDER ERROR:',e);res.status(500).json({error:e.message||'Could not create Cashfree order.'});}
+ }catch(e){
+  console.error('CREATE DONATION ORDER ERROR:',e);
+  if(createdOrderId) {
+    try { await pool.query("UPDATE donations SET payment_status='FAILED',updated_at=NOW() WHERE order_id=$1 AND payment_status='PENDING'",[createdOrderId]); } catch(dbError) { console.error('DONATION ORDER CLEANUP ERROR:',dbError); }
+  }
+  res.status(502).json({error:'Could not create Cashfree order. Please try again.'});
+ }
 });
 
 app.get('/api/donations/status/:orderId',async(req,res)=>{
  try{
   await donationsTableReady;
   const orderId=String(req.params.orderId||'').slice(0,80);
+  if(!/^NSFDON_[A-Za-z0-9_]+$/.test(orderId)) return res.status(400).json({error:'Invalid donation order ID.'});
   const local=await pool.query('SELECT * FROM donations WHERE order_id=$1 LIMIT 1',[orderId]);
   if(!local.rows.length)return res.status(404).json({error:'Donation order not found.'});
   let row=local.rows[0];
@@ -3970,6 +4003,7 @@ app.get('/api/donations/receipt/:orderId',async(req,res)=>{
  try{
   await donationsTableReady;
   const orderId=String(req.params.orderId||'').slice(0,80);
+  if(!/^NSFDON_[A-Za-z0-9_]+$/.test(orderId)) return res.status(400).send('Invalid donation order ID.');
   const result=await pool.query('SELECT * FROM donations WHERE order_id=$1 AND payment_status=\'PAID\' LIMIT 1',[orderId]);
   if(!result.rows.length)return res.status(404).send('Verified donation receipt not available yet.');
   const d=result.rows[0];
