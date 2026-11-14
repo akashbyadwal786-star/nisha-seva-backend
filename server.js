@@ -57,6 +57,11 @@ const supabase = createClient(
 
 const app = express();
 
+// Hostinger routes requests through one reverse proxy. Trust exactly one hop so
+// express-rate-limit can read the forwarded client IP without trusting arbitrary
+// client-supplied proxy chains. Keep this before all rate-limit middleware.
+app.set('trust proxy', 1);
+
 // Low-overhead API timing: logs only slow request path + status + duration.
 // Query strings, request bodies, tokens and personal data are never logged.
 app.use((req, res, next) => {
@@ -3833,6 +3838,7 @@ const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || '';
 const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID || '';
 const MSG91_SENDER_ID = process.env.MSG91_SENDER_ID || '';
 const CASHFREE_BASE = CASHFREE_MODE === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+console.log(`[Cashfree] mode=${CASHFREE_MODE}; clientIdConfigured=${Boolean(CASHFREE_APP_ID)}; clientSecretConfigured=${Boolean(CASHFREE_SECRET_KEY)}`);
 
 const donationsTableReady = initializeTable(`CREATE TABLE IF NOT EXISTS donations (
  id BIGSERIAL PRIMARY KEY, order_id VARCHAR(80) UNIQUE NOT NULL, receipt_no VARCHAR(80) UNIQUE NOT NULL,
