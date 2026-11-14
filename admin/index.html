@@ -457,6 +457,51 @@ header button{background:#f0b633!important;color:#182333!important}
 @media(max-width:600px){.wrap{padding:0 10px!important}.nsf-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.nsf-stat{min-height:125px;padding:14px!important}.nsf-module-grid{grid-template-columns:1fr}.nsf-welcome{align-items:flex-start;flex-direction:column}.nsf-welcome h1{font-size:23px}.nsf-dashboard-footer{gap:8px;flex-direction:column}.tabs{grid-template-columns:1fr 1fr!important}#content{padding:15px!important}}
 </style>
 
+
+<style id="nsf-treasurer-premium">
+.role-login-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.role-login[data-role="treasurer"]{background:linear-gradient(145deg,#fff8e7,#fff);border:1px solid #e7c46a}
+.role-login[data-role="treasurer"].active{background:linear-gradient(135deg,#073b32,#13785a);border-color:#f3c54b;color:#fff}
+.finance-shell{display:flex;flex-direction:column;gap:18px}
+.finance-hero{position:relative;overflow:hidden;padding:25px;border-radius:20px;background:linear-gradient(120deg,#092b27,#0f7657 65%,#d29a28);color:#fff;box-shadow:0 14px 32px #0a4b3826}
+.finance-hero:after{content:"₹";position:absolute;right:28px;top:-26px;font-size:150px;font-weight:900;color:#ffffff12}
+.finance-hero h2{color:#fff!important;margin:0 0 7px!important;font-size:25px}
+.finance-hero p{color:#e0f3e9;margin:0;max-width:700px}
+.finance-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.finance-kpi{background:linear-gradient(150deg,#fff,#f4faf7);border:1px solid #dfece5;border-radius:16px;padding:16px;box-shadow:0 6px 18px #153d2d0b}
+.finance-kpi small{display:block;color:#6d7e75;font-weight:700;font-size:11px}
+.finance-kpi strong{display:block;font-size:24px;color:#123c30;margin-top:7px}
+.finance-kpi span{font-size:11px;color:#84928b}
+.finance-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.finance-action{display:flex;align-items:center;gap:12px;text-align:left!important;padding:14px!important;min-height:74px;border-radius:15px!important;color:#17382e!important;background:linear-gradient(135deg,#fff,#f5faf7)!important;border:1px solid #dcebe3!important;box-shadow:0 6px 16px #183e2e0a!important}
+.finance-action .fa-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:#dff4e9;color:#08764f;font-size:21px;flex:none}
+.finance-action b{display:block;font-size:13px}.finance-action small{display:block;color:#77877f;font-size:11px;margin-top:3px}
+.finance-action:hover{border-color:#8ac7a8!important;transform:translateY(-2px)!important}
+.finance-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.finance-toolbar h2{margin:0!important}
+.finance-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:17px;border:1px solid #e1ebe5;border-radius:16px;background:#f9fcfa;margin:14px 0}
+.finance-field{display:flex;flex-direction:column;gap:6px}.finance-field.full{grid-column:1/-1}
+.finance-field label{font-size:12px;font-weight:800;color:#42594e}
+.finance-field input,.finance-field select,.finance-field textarea{width:100%;border:1px solid #d5e2da;border-radius:10px;padding:11px;background:#fff}
+.finance-btn{border:0;border-radius:11px;padding:10px 15px;font-weight:800;cursor:pointer;box-shadow:0 6px 14px #123d2d14}
+.finance-btn.primary{background:linear-gradient(135deg,#0b5944,#16845e)!important;color:#fff!important}
+.finance-btn.gold{background:linear-gradient(135deg,#f8d36d,#e6a92d)!important;color:#35270a!important}
+.finance-btn.blue{background:linear-gradient(135deg,#3479d4,#2156a2)!important;color:#fff!important}
+.finance-btn.red{background:linear-gradient(135deg,#e45d69,#b83242)!important;color:#fff!important}
+.finance-btn.ghost{background:#edf5f0!important;color:#275441!important;border:1px solid #d8e8df}
+.finance-table-wrap{overflow:auto;border:1px solid #e3ebe6;border-radius:14px}
+.finance-table{width:100%;border-collapse:collapse;min-width:720px;background:#fff}
+.finance-table th{background:#eff7f2;color:#365448;text-align:left;font-size:11px;letter-spacing:.04em;padding:12px;white-space:nowrap}
+.finance-table td{padding:12px;border-top:1px solid #edf1ee;font-size:12px;color:#34483e;vertical-align:middle}
+.finance-pill{display:inline-flex;border-radius:99px;padding:5px 9px;font-size:10px;font-weight:900;background:#e8f4ed;color:#126544}
+.finance-pill.pending{background:#fff3cf;color:#8a5c00}.finance-pill.rejected{background:#fde7e8;color:#a22c38}.finance-pill.paid{background:#dff4e9;color:#08764f}.finance-pill.approved{background:#e5efff;color:#285ca8}.finance-note{padding:12px 14px;border-radius:12px;background:#f0f7f3;border:1px solid #dcece3;color:#3b5b4c;font-size:12px;line-height:1.55}
+.finance-empty{padding:25px;text-align:center;color:#829188;border:1px dashed #cbdad1;border-radius:14px}
+.finance-section-title{display:flex;align-items:center;gap:10px;margin:18px 0 10px}
+.finance-section-title .symbol{width:34px;height:34px;border-radius:11px;background:#e5f5ec;color:#08764f;display:grid;place-items:center;font-weight:900}
+@media(max-width:850px){.finance-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-actions{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.role-login-grid{grid-template-columns:1fr 1fr}.finance-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-actions{grid-template-columns:1fr}.finance-form{grid-template-columns:1fr}.finance-field.full{grid-column:auto}.finance-hero{padding:19px}.finance-hero h2{font-size:21px}}
+</style>
+
 </head>
 
 <body>
@@ -473,7 +518,7 @@ const API = (window.NISHA_API_URL || 'https://api.nishasevafoundation.org').repl
 
 let token = localStorage.getItem("nisha_token") || "";
 let currentRole = localStorage.getItem("nisha_role") || "admin";
-let current = currentRole === "coordinator" ? "internships" : "dashboard";
+let current = currentRole === "coordinator" ? "internships" : (currentRole === "treasurer" ? "financeDashboard" : "dashboard");
 let volunteerCache = {};
 
 
@@ -503,7 +548,17 @@ const tabs = [
   ["communityEvents","Community Calendar"],
   ["knowledgeLibrary","Knowledge Library"],
   ["newsletter","Newsletter"],
-  ["studentImpactSuite","Student Impact Suite"]
+  ["studentImpactSuite","Student Impact Suite"],
+  ["financeDashboard","Finance Dashboard"],
+  ["financeDonations","Donation Accounts"],
+  ["financeIncome","Income Register"],
+  ["financeExpenses","Expense Register"],
+  ["financeApprovals","Expense Approvals"],
+  ["financeLedger","Cash Book / Ledger"],
+  ["financeAccounts","Bank & Cash Accounts"],
+  ["financeReconcile","Bank Reconciliation"],
+  ["financeReports","Financial Reports"],
+  ["financeAudit","Finance Audit Trail"]
 ];
 const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳",communityRequests:"🤝"};
 
@@ -588,7 +643,8 @@ let selectedLoginRole="admin";
 function selectLoginRole(role){
   selectedLoginRole=role;
   document.querySelectorAll(".role-login").forEach(b=>b.classList.toggle("active",b.dataset.role===role));
-  const heading=document.getElementById("loginHeading"); if(heading)heading.textContent=({admin:"Admin Panel Login",manager:"Manager Login",coordinator:"Coordinator Login"})[role];
+  const heading=document.getElementById("loginHeading"); if(heading)heading.textContent=({admin:"Admin Panel Login",manager:"Manager Login",coordinator:"Coordinator Login",treasurer:"Treasurer Login"})[role];
+  const userInput=document.getElementById("user"); if(userInput && role==="treasurer") userInput.value="NISHASEVA";
   const msg=document.getElementById("msg"); if(msg)msg.innerHTML="";
 }
 function login(){
@@ -600,6 +656,7 @@ function login(){
           <button class="role-login active" data-role="admin" onclick="selectLoginRole('admin')"><span>🛡️</span><b>Admin Login</b></button>
           <button class="role-login" data-role="manager" onclick="selectLoginRole('manager')"><span>📋</span><b>Manager Login</b></button>
           <button class="role-login" data-role="coordinator" onclick="selectLoginRole('coordinator')"><span>🎓</span><b>Coordinator Login</b></button>
+          <button class="role-login" data-role="treasurer" onclick="selectLoginRole('treasurer')"><span>💼</span><b>Treasurer Login</b></button>
         </div>
         <h3 id="loginHeading">Admin Panel Login</h3>
         <label for="user"><b>Username</b></label><input id="user" autocomplete="username" placeholder="Enter username">
@@ -622,11 +679,11 @@ async function doLogin(){
     if(selectedLoginRole === "manager"){
       throw new Error("Manager login अभी configure नहीं है। कृपया Admin या Coordinator चुनें।");
     }
-    const endpoint = selectedLoginRole === "coordinator" ? "/api/coordinator/login" : "/api/admin/login";
+    const endpoint = selectedLoginRole === "coordinator" ? "/api/coordinator/login" : (selectedLoginRole === "treasurer" ? "/api/treasurer/login" : "/api/admin/login");
     const data = await api(endpoint, {method:"POST",body:JSON.stringify({username:document.getElementById("user").value,password:document.getElementById("pass").value})});
     token = data.token;
     currentRole = data.role || selectedLoginRole;
-    current = currentRole === "coordinator" ? "internships" : "dashboard";
+    current = currentRole === "coordinator" ? "internships" : (currentRole === "treasurer" ? "financeDashboard" : "dashboard");
     localStorage.setItem("nisha_token",token);
     localStorage.setItem("nisha_role",currentRole);
     render();
@@ -824,6 +881,18 @@ function renderDashboard(){
       ["impactStories","Impact Stories","Publish impact stories","✨"],
       ["communityEvents","Community Calendar","Manage community events","📅"],
       ["knowledgeLibrary","Knowledge Library","Manage learning resources","📚"]
+    ]},
+    {title:"Finance & Accounts",sub:"Donations, income, expenses, approvals and audit",color:"green",icon:"₹",items:[
+      ["financeDashboard","Treasurer Dashboard","Financial overview and pending actions","📊"],
+      ["financeDonations","Donation Accounts","Cashfree and offline donation records","💚"],
+      ["financeIncome","Income Register","Record non-Cashfree income and issue receipts","↗"],
+      ["financeExpenses","Expense Register","Submit expenses with bill attachments","↘"],
+      ["financeApprovals","Expense Approvals","Admin/President approval workflow","✓"],
+      ["financeLedger","Cash Book / Ledger","Verified income and paid expenses","📒"],
+      ["financeAccounts","Bank & Cash Accounts","Manage account labels and opening balances","🏦"],
+      ["financeReconcile","Bank Reconciliation","Import CSV and match bank entries","⇄"],
+      ["financeReports","Financial Reports","Date-wise income and expense reports","📈"],
+      ["financeAudit","Finance Audit Trail","Review financial activity history","🔎"]
     ]}
   ];
   const totalModules=groups.reduce((n,g)=>n+g.items.length,0);
@@ -878,8 +947,12 @@ async function render(){
     return;
   }
 
-  if(currentRole === "coordinator" && !["internships","internshipDocuments","studentPortal","projectSubmissions","studentImpactSuite"].includes(current)) current = "internships";
-  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => ["internships","internshipDocuments","studentPortal","projectSubmissions","studentImpactSuite"].includes(t[0])) : tabs;
+  const coordinatorTabs = ["internships","internshipDocuments","studentPortal","projectSubmissions","studentImpactSuite"];
+  const financeTabs = ["financeDashboard","financeDonations","financeIncome","financeExpenses","financeApprovals","financeLedger","financeAccounts","financeReconcile","financeReports","financeAudit"];
+  if(currentRole === "coordinator" && !coordinatorTabs.includes(current)) current = "internships";
+  if(currentRole === "treasurer" && !financeTabs.includes(current)) current = "financeDashboard";
+  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => coordinatorTabs.includes(t[0])) :
+    (currentRole === "treasurer" ? tabs.filter(t => financeTabs.includes(t[0]) && t[0] !== "financeApprovals") : tabs);
 
   app.innerHTML = `
 
@@ -888,7 +961,7 @@ async function render(){
       <div>
         <b>🌿 Nisha Seva Foundation</b>
         <br>
-        <small>${currentRole === "coordinator" ? "Internship Coordinator Panel" : "Admin Panel"}</small>
+        <small>${currentRole === "coordinator" ? "Internship Coordinator Panel" : (currentRole === "treasurer" ? "Treasurer · Finance & Accounts" : "Admin Panel")}</small>
       </div>
 
       <button
@@ -908,7 +981,7 @@ async function render(){
 
           <button
             data-section="${tab[0]}"
-            data-icon="${({dashboard:"▣",programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▱",members:"♟",contactMessages:"☏",newsletter:"✉",impactLocations:"🗺️",missions:"🎯",certificates:"🏅",impactStories:"✨",communityEvents:"📅",knowledgeLibrary:"📚"})[tab[0]] || "◆"}"
+            data-icon="${({dashboard:"▣",programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▱",members:"♟",contactMessages:"☏",newsletter:"✉",impactLocations:"🗺️",missions:"🎯",certificates:"🏅",impactStories:"✨",communityEvents:"📅",knowledgeLibrary:"📚",financeDashboard:"📊",financeDonations:"💚",financeIncome:"↗",financeExpenses:"↘",financeApprovals:"✓",financeLedger:"📒",financeAccounts:"🏦",financeReconcile:"⇄",financeReports:"📈",financeAudit:"🔎"})[tab[0]] || "◆"}"
             class="${tab[0] === current ? "active" : ""}"
             onclick="current='${tab[0]}';render()"
           >
@@ -933,6 +1006,10 @@ async function render(){
 
   if(current === "dashboard"){
     renderDashboard();
+    return;
+  }
+  if(current.startsWith("finance")){
+    await renderFinanceModule(current);
     return;
   }
 
@@ -3420,6 +3497,222 @@ function openVerification(code,url){
   window.open(target,"_blank","noopener,noreferrer");
 }
 
+
+
+/* =========================================================
+   TREASURER / FINANCE UI
+   ========================================================= */
+const financeLabels={
+  financeDashboard:"Finance Dashboard",financeDonations:"Donation Accounts",financeIncome:"Income Register",
+  financeExpenses:"Expense Register",financeApprovals:"Expense Approvals",financeLedger:"Cash Book / Ledger",
+  financeAccounts:"Bank & Cash Accounts",financeReconcile:"Bank Reconciliation",financeReports:"Financial Reports",financeAudit:"Finance Audit Trail"
+};
+function financeMoney(v){return '₹'+Number(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function financePill(status){const s=String(status||'').toLowerCase();return `<span class="finance-pill ${esc(s)}">${esc(status||'—')}</span>`;}
+function financeTable(headers,rows){return rows.length?`<div class="finance-table-wrap"><table class="finance-table"><thead><tr>${headers.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="finance-empty">अभी कोई रिकॉर्ड उपलब्ध नहीं है।</div>`;}
+function financeActions(items){return `<div class="finance-actions">${items.map(x=>`<button class="finance-action" onclick="current='${x[0]}';render()"><span class="fa-icon">${x[3]}</span><span><b>${x[1]}</b><small>${x[2]}</small></span></button>`).join('')}</div>`;}
+async function financeOpenBill(path){
+  try{const d=await api('/api/finance/attachments/'+encodeURIComponent(path));window.open(d.url,'_blank','noopener,noreferrer');}
+  catch(e){alert(e.message);}
+}
+async function financeOpenReceipt(id){
+  try{
+    const response=await fetch(API+'/api/finance/income/'+id+'/receipt',{headers:{Authorization:'Bearer '+token}});
+    if(!response.ok)throw new Error('Receipt could not be opened.');
+    const blob=await response.blob(),url=URL.createObjectURL(blob),w=window.open(url,'_blank','noopener');
+    if(!w)alert('Browser popup blocked. Please allow popups for this website.');
+  }catch(e){alert(e.message);}
+}
+function financeDownloadCsv(filename,rows){
+  const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url);
+}
+async function financeExportData(kind){
+  try{
+    let rows=[],filename='nsf-finance-export.csv';
+    if(kind==='donations'){const d=await api('/api/finance/donations');rows=[['Receipt','Order ID','Donor','Mobile','Amount','Status','Payment Time'],...(d.donations||[]).map(x=>[x.receipt_no,x.order_id,x.donor_name,x.donor_phone,x.amount,x.payment_status,x.payment_time])];filename='nsf-donations.csv';}
+    if(kind==='ledger'){const d=await api('/api/finance/ledger');rows=[['Date','Type','Reference','Party','Category','Direction','Amount','Status','Note'],...(d.entries||[]).map(x=>[x.entry_date,x.entry_type,x.reference_no,x.party,x.category,x.direction,x.amount,x.status,x.note])];filename='nsf-finance-ledger.csv';}
+    if(kind==='reports'){const rg=window.NSF_FINANCE_REPORT_RANGE||{};const d=await api('/api/finance/reports'+(rg.from&&rg.to?'?from='+encodeURIComponent(rg.from)+'&to='+encodeURIComponent(rg.to):''));rows=[['Category','Direction','Count','Total'],...(d.rows||[]).map(x=>[x.category,x.direction,x.count,x.total])];filename='nsf-financial-report.csv';}
+    financeDownloadCsv(filename,rows);
+  }catch(e){alert(e.message);}
+}
+async function renderFinanceModule(section){
+  const content=document.getElementById('content');if(!content)return;
+  content.innerHTML='<div class="finance-empty">Finance workspace सुरक्षित रूप से लोड हो रहा है…</div>';
+  try{
+    const nav=[['financeDashboard','Overview','📊'],['financeDonations','Donations','💚'],['financeIncome','Income','↗'],['financeExpenses','Expenses','↘'],['financeApprovals','Approvals','✓'],['financeLedger','Ledger','📒'],['financeAccounts','Accounts','🏦'],['financeReconcile','Reconciliation','⇄'],['financeReports','Reports','📈'],['financeAudit','Audit Trail','🔎']]
+      .filter(x=>currentRole==='admin'||x[0]!=='financeApprovals');
+    let body='';
+    if(section==='financeDashboard'){
+      const d=await api('/api/finance/summary');
+      body=`<div class="finance-hero"><div class="small" style="color:#c5e8d5;font-weight:800;letter-spacing:.13em">NISHA SEVA FOUNDATION · FINANCE OFFICE</div><h2>Finance & Accounts Command Centre</h2><p>Donations, income, expenses, approvals और reconciliation का सुरक्षित वित्तीय नियंत्रण।</p><div style="margin-top:18px"><span class="finance-pill" style="background:#ffffff20;color:#fff">SIGNED IN: ${esc(currentRole.toUpperCase())}</span></div></div>
+      <div class="finance-kpis">
+        <div class="finance-kpi"><small>Verified Donations</small><strong>${financeMoney(d.donations.total)}</strong><span>${d.donations.count} successful payments</span></div>
+        <div class="finance-kpi"><small>Other Income</small><strong>${financeMoney(d.otherIncome.total)}</strong><span>${d.otherIncome.count} entries</span></div>
+        <div class="finance-kpi"><small>Paid Expenses</small><strong>${financeMoney(d.paidExpenses.total)}</strong><span>${d.paidExpenses.count} paid records</span></div>
+        <div class="finance-kpi"><small>Book Balance</small><strong>${financeMoney(d.bookBalance)}</strong><span>Opening balance + income − paid expenses</span></div>
+      </div>
+      <div class="finance-note">Pending Expense Requests: <b>${d.pendingExpenses.count}</b> · Requested Amount: <b>${financeMoney(d.pendingExpenses.total)}</b>. Book Balance लेखा-आधारित अनुमान है; यह बैंक द्वारा प्रमाणित उपलब्ध बैलेंस नहीं है।</div>
+      <div class="finance-section-title"><span class="symbol">✦</span><b>Quick Access</b></div>
+      ${financeActions([['financeDonations','Donation Records','Cashfree + offline donation history','💚'],['financeIncome','Add Income','Record grants, membership and other receipts','↗'],['financeExpenses','Submit Expense','Upload bill and send for approval','↘'],...(currentRole==='admin'?[['financeApprovals','Review Requests','Approve or reject expense requests','✓']]:[]),['financeLedger','Open Ledger','View all verified income and paid expenses','📒'],['financeReports','Financial Reports','Export date-wise statements','📈']])}`;
+    } else if(section==='financeDonations'){
+      const d=await api('/api/finance/donations'),rows=(d.donations||[]).map(x=>`<tr><td><b>${esc(x.receipt_no||'—')}</b><br><small>${esc(x.order_id)}</small></td><td>${esc(x.donor_name)}<br><small>${esc(x.donor_phone)}</small></td><td>${financeMoney(x.amount)}</td><td>${financePill(x.payment_status)}</td><td>${esc(x.payment_time?new Date(x.payment_time).toLocaleString('en-IN'):'—')}</td><td>${esc(x.sms_status||'—')}</td></tr>`);
+      body=`<div class="finance-toolbar"><div><h2>💚 Donation Accounts</h2><p class="small">Cashfree से आए verified payment records. पुराने donations भी शामिल हैं।</p></div><button class="finance-btn blue" onclick="financeExportData('donations')">⇩ Export CSV</button></div>${financeTable(['Receipt / Order','Donor','Amount','Payment Status','Payment Time','SMS'],rows)}`;
+    } else if(section==='financeIncome'){
+      const [d,a]=await Promise.all([api('/api/finance/income'),api('/api/finance/accounts')]),accounts=a.accounts||[];
+      const rows=(d.income||[]).map(x=>`<tr><td><b>${esc(x.receipt_no)}</b></td><td>${esc(x.payer_name)}</td><td>${esc(x.category)}</td><td>${financeMoney(x.amount)}</td><td>${esc(x.income_date)}</td><td>${esc(x.payment_mode)}</td><td><button class="finance-btn ghost" onclick="financeOpenReceipt(${x.id})">↗ Receipt</button></td></tr>`);
+      body=`<div class="finance-toolbar"><div><h2>↗ Income Register</h2><p class="small">Cashfree donations के अतिरिक्त प्राप्त आय दर्ज करें।</p></div></div>
+      <form class="finance-form" id="financeIncomeForm">
+        <div class="finance-field"><label>Received From / Payer *</label><input name="payerName" required maxlength="140" placeholder="व्यक्ति / संस्था का नाम"></div>
+        <div class="finance-field"><label>Income Category *</label><select name="category" required><option value="">Select category</option><option>Offline Donation</option><option>Grant</option><option>Membership Fee</option><option>Event Contribution</option><option>Interest</option><option>Service Income</option><option>Other</option></select></div>
+        <div class="finance-field"><label>Amount (INR) *</label><input name="amount" type="number" min="1" step="0.01" required></div>
+        <div class="finance-field"><label>Income Date *</label><input name="incomeDate" type="date" required value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="finance-field"><label>Payment Mode *</label><select name="paymentMode" required><option value="">Select</option><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="UPI">UPI</option><option value="CHEQUE">Cheque</option><option value="OTHER">Other</option></select></div>
+        <div class="finance-field"><label>Deposit Account</label><select name="accountId"><option value="">Not specified</option>${accounts.filter(x=>x.active).map(x=>`<option value="${x.id}">${esc(x.account_name)}</option>`).join('')}</select></div>
+        <div class="finance-field"><label>Reference / Transaction ID</label><input name="referenceNo" maxlength="120"></div>
+        <div class="finance-field full"><label>Notes</label><textarea name="notes" rows="2" maxlength="2000"></textarea></div>
+        <div class="finance-field full"><button class="finance-btn primary" type="submit">✦ Save Income & Generate Receipt</button></div>
+      </form>
+      <div class="finance-section-title"><span class="symbol">₹</span><b>Saved Income Records</b></div>${financeTable(['Receipt No.','Received From','Category','Amount','Date','Mode','Receipt'],rows)}`;
+    } else if(section==='financeExpenses'||section==='financeApprovals'){
+      const [d,a]=await Promise.all([api('/api/finance/expenses'),api('/api/finance/accounts')]),accounts=a.accounts||[];
+      const list=(d.expenses||[]).filter(x=>section==='financeApprovals'?x.status==='PENDING':true);
+      const rows=list.map(x=>`<tr><td><b>${esc(x.expense_no)}</b><br><small>${esc(x.vendor_name)}</small></td><td>${esc(x.category)}<br><small>${esc(x.expense_date)}</small></td><td>${financeMoney(x.amount)}</td><td>${financePill(x.status)}</td><td>${esc(x.requested_by)}</td><td>${x.bill_path?`<button class="finance-btn ghost" onclick="financeOpenBill('${esc(x.bill_path)}')">▧ Bill</button>`:''} ${x.payment_proof_path?`<button class="finance-btn ghost" onclick="financeOpenBill('${esc(x.payment_proof_path)}')">✓ Proof</button>`:''} ${!x.bill_path&&!x.payment_proof_path?'—':''}</td><td>${section==='financeApprovals'&&currentRole==='admin'?`<button class="finance-btn primary" onclick="financeDecide(${x.id},'APPROVE')">✓ Approve</button> <button class="finance-btn red" onclick="financeDecide(${x.id},'REJECT')">× Reject</button>`:(x.status==='APPROVED'?`<button class="finance-btn gold" onclick="financeMarkPaid(${x.id})">₹ Mark Paid</button>`:'—')}</td></tr>`);
+      body=`<div class="finance-toolbar"><div><h2>${section==='financeApprovals'?'✓ Expense Approval Desk':'↘ Expense Register'}</h2><p class="small">${section==='financeApprovals'?'केवल Admin/President यहाँ Requests approve या reject कर सकता है।':'Expense request दर्ज करें; Admin की मंजूरी के बाद payment details दर्ज करें।'}</p></div></div>
+      ${section==='financeExpenses'?`<form class="finance-form" id="financeExpenseForm">
+        <div class="finance-field"><label>Vendor / Payee *</label><input name="vendorName" required maxlength="140"></div>
+        <div class="finance-field"><label>Expense Category *</label><select name="category" required><option value="">Select category</option><option>Program / Project</option><option>Education</option><option>Health</option><option>Travel</option><option>Office & Administration</option><option>Utilities</option><option>Equipment</option><option>Event</option><option>Other</option></select></div>
+        <div class="finance-field"><label>Amount (INR) *</label><input name="amount" type="number" min="1" step="0.01" required></div>
+        <div class="finance-field"><label>Expense Date *</label><input name="expenseDate" type="date" required value="${new Date().toISOString().slice(0,10)}"></div>
+        <div class="finance-field"><label>Payment Account (planned)</label><select name="accountId"><option value="">Not selected</option>${accounts.filter(x=>x.active).map(x=>`<option value="${x.id}">${esc(x.account_name)}</option>`).join('')}</select></div>
+        <div class="finance-field"><label>Bill / Invoice (PDF/JPG/PNG, max 8MB)</label><input name="bill" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"></div>
+        <div class="finance-field full"><label>Expense Purpose / Description *</label><textarea name="description" required minlength="4" maxlength="3000" rows="3"></textarea></div>
+        <div class="finance-field full"><button class="finance-btn primary" type="submit">➤ Submit Expense for Admin Approval</button></div>
+      </form>`:''}
+      ${financeTable(['Expense No. / Payee','Category / Date','Amount','Status','Requested By','Bill','Action'],rows)}`;
+    } else if(section==='financeLedger'){
+      const d=await api('/api/finance/ledger'),entries=d.entries||[];
+      const rows=entries.map(x=>`<tr><td>${esc(x.entry_date)}</td><td><b>${esc(x.reference_no)}</b><br><small>${esc(x.entry_type)} · ${esc(x.party)}</small></td><td>${esc(x.category)}</td><td>${x.direction==='INCOME'?`<b style="color:#08764f">+ ${financeMoney(x.amount)}</b>`:`<b style="color:#b83242">− ${financeMoney(x.amount)}</b>`}</td><td>${financePill(x.status)}</td><td>${esc(x.note||'')}</td></tr>`);
+      const exportRows=[['Date','Type','Reference','Party','Category','Direction','Amount','Status','Note'],...entries.map(x=>[x.entry_date,x.entry_type,x.reference_no,x.party,x.category,x.direction,x.amount,x.status,x.note])];
+      body=`<div class="finance-toolbar"><div><h2>📒 Cash Book / Ledger</h2><p class="small">केवल सफल donations, saved income और paid expenses ledger में शामिल हैं।</p></div><button class="finance-btn blue" onclick="financeExportData('ledger')">⇩ Export Ledger</button></div>${financeTable(['Date','Reference / Party','Category','Amount','Status','Details'],rows)}`;
+    } else if(section==='financeAccounts'){
+      const d=await api('/api/finance/accounts'),accounts=d.accounts||[];
+      const rows=accounts.map(x=>`<tr><td><b>${esc(x.account_name)}</b></td><td>${esc(x.account_type)}</td><td>${esc(x.bank_name||'—')}</td><td>${x.account_last4?'•••• '+esc(x.account_last4):'—'}</td><td>${financeMoney(x.opening_balance)}</td><td>${financePill(x.active?'ACTIVE':'INACTIVE')}</td><td>${currentRole==='admin'?`<button class="finance-btn ghost" onclick="financeToggleAccount(${x.id})">${x.active?'Pause':'Activate'}</button>`:'—'}</td></tr>`);
+      body=`<div class="finance-toolbar"><div><h2>🏦 Bank & Cash Accounts</h2><p class="small">केवल Admin/President नए account labels और opening balances बना सकता है।</p></div></div>
+      ${currentRole==='admin'?`<form class="finance-form" id="financeAccountForm">
+        <div class="finance-field"><label>Account Display Name *</label><input name="accountName" required maxlength="100" placeholder="जैसे SBI Current Account"></div>
+        <div class="finance-field"><label>Account Type *</label><select name="accountType"><option value="BANK">Bank</option><option value="CASH">Cash</option><option value="UPI">UPI</option><option value="ONLINE_CLEARING">Online Clearing</option><option value="OTHER">Other</option></select></div>
+        <div class="finance-field"><label>Bank Name</label><input name="bankName" maxlength="100"></div>
+        <div class="finance-field"><label>Account Last 4 Digits (optional)</label><input name="accountLast4" inputmode="numeric" maxlength="4"></div>
+        <div class="finance-field"><label>Opening Balance (INR)</label><input name="openingBalance" type="number" min="0" step="0.01" value="0"></div>
+        <div class="finance-field full"><button class="finance-btn primary" type="submit">＋ Add Finance Account</button></div>
+      </form>`:''}
+      ${financeTable(['Account','Type','Bank','Masked Number','Opening Balance','Status','Admin Action'],rows)}
+      <div class="finance-note">सुरक्षा: यहाँ पूरा Bank Account Number, Internet Banking Password, UPI PIN या Card Details कभी दर्ज न करें। केवल पहचान के लिए अंतिम 4 अंक वैकल्पिक हैं।</div>`;
+    } else if(section==='financeReports'){
+      const from=new Date(new Date().getFullYear(),new Date().getMonth(),1).toISOString().slice(0,10),to=new Date().toISOString().slice(0,10);window.NSF_FINANCE_REPORT_RANGE={from,to};
+      const d=await api('/api/finance/reports?from='+from+'&to='+to),rows=d.rows||[];
+      const income=rows.filter(x=>x.direction==='INCOME').reduce((n,x)=>n+Number(x.total),0),expense=rows.filter(x=>x.direction==='EXPENSE').reduce((n,x)=>n+Number(x.total),0);
+      body=`<div class="finance-toolbar"><div><h2>📈 Financial Reports</h2><p class="small">Date-wise verified income and paid expense report.</p></div><button class="finance-btn ghost" onclick="window.print()">⎙ Print / Save PDF</button><button class="finance-btn blue" onclick="financeExportData('reports')">⇩ Export Report</button></div>
+      <form class="finance-form" id="financeReportFilter"><div class="finance-field"><label>From Date</label><input name="from" type="date" value="${from}"></div><div class="finance-field"><label>To Date</label><input name="to" type="date" value="${to}"></div><div class="finance-field full"><button class="finance-btn primary" type="submit">⌕ Apply Date Filter</button></div></form>
+      <div class="finance-kpis"><div class="finance-kpi"><small>Period Income</small><strong>${financeMoney(income)}</strong></div><div class="finance-kpi"><small>Period Expenses</small><strong>${financeMoney(expense)}</strong></div><div class="finance-kpi"><small>Net Movement</small><strong>${financeMoney(income-expense)}</strong></div><div class="finance-kpi"><small>Report Period</small><strong style="font-size:15px">${from} – ${to}</strong></div></div>
+      ${financeTable(['Category','Direction','Entries','Total Amount'],rows.map(x=>`<tr><td>${esc(x.category)}</td><td>${financePill(x.direction)}</td><td>${x.count}</td><td><b>${financeMoney(x.total)}</b></td></tr>`))}`;
+    } else if(section==='financeReconcile'){
+      const [b,l]=await Promise.all([api('/api/finance/bank-lines'),api('/api/finance/ledger')]),lines=b.lines||[],entries=l.entries||[];
+      const rows=lines.map(x=>`<tr><td>${esc(x.statement_date)}</td><td>${esc(x.description)}<br><small>${esc(x.reference_no||'')}</small></td><td><b style="color:${Number(x.amount)<0?'#b83242':'#08764f'}">${financeMoney(Math.abs(Number(x.amount)))}</b> ${Number(x.amount)<0?'Debit':'Credit'}</td><td>${financePill(x.status)}</td><td>${x.status==='UNMATCHED'?`<select id="fmatch${x.id}" style="max-width:240px">${entries.map(e=>`<option value="${e.entry_type==='DONATION'?'DONATION':e.entry_type==='OTHER_INCOME'?'OTHER_INCOME':'EXPENSE'}:${e.entry_id}">${esc(e.entry_type)} · ${esc(e.reference_no)} · ${financeMoney(e.amount)}</option>`).join('')}</select><button class="finance-btn primary" onclick="financeMatchLine(${x.id})">⇄ Match</button>${currentRole==='admin'?`<button class="finance-btn ghost" onclick="financeIgnoreLine(${x.id})">Ignore</button>`:''}`:esc(x.matched_type||'—')}</td></tr>`);
+      body=`<div class="finance-toolbar"><div><h2>⇄ Bank Reconciliation</h2><p class="small">CSV statement import करें, फिर exact amount और debit/credit direction से ledger entry match करें।</p></div></div>
+      <div class="finance-note"><b>CSV Format:</b> date,description,amount,reference. Credit amount positive रखें और Debit amount negative रखें। पहले अपने बैंक स्टेटमेंट की copy export करें; कोई Banking Login या PIN यहाँ नहीं देना है।</div>
+      <form class="finance-form" id="financeBankImport"><div class="finance-field full"><label>Bank Statement CSV *</label><input name="csv" type="file" accept=".csv,text/csv" required></div><div class="finance-field full"><button class="finance-btn primary" type="submit">⇧ Import Statement Rows</button></div></form>
+      ${financeTable(['Date','Bank Description','Amount / Type','Match Status','Reconciliation Action'],rows)}`;
+    } else if(section==='financeAudit'){
+      const d=await api('/api/finance/audit'),rows=(d.logs||[]).map(x=>`<tr><td>${esc(new Date(x.created_at).toLocaleString('en-IN'))}</td><td>${financePill(x.actor_role)}</td><td><b>${esc(x.action)}</b></td><td>${esc(x.entity_type)} #${esc(x.entity_id||'—')}</td><td><small>${esc(JSON.stringify(x.details||{}))}</small></td></tr>`);
+      body=`<div class="finance-toolbar"><div><h2>🔎 Finance Audit Trail</h2><p class="small">Finance records में किसने क्या action किया, उसका append-only history view.</p></div></div>${financeTable(['Time','Actor','Action','Record','Details'],rows)}`;
+    }
+    content.innerHTML=`<div class="finance-shell"><div class="finance-toolbar"><div><h2>${esc(financeLabels[section]||'Finance')}</h2><p class="small">Nisha Seva Foundation · Secure Finance Workspace</p></div><button class="finance-btn ghost" onclick="current='financeDashboard';render()">⌂ Overview</button></div><div class="finance-tabs">${nav.map(x=>`<button class="finance-btn ${x[0]===section?'primary':'ghost'}" onclick="current='${x[0]}';render()">${x[2]} ${x[1]}</button>`).join('')}</div>${body}</div>`;
+    if(section==='financeIncome')document.getElementById('financeIncomeForm')?.addEventListener('submit',financeSaveIncome);
+    if(section==='financeExpenses')document.getElementById('financeExpenseForm')?.addEventListener('submit',financeSaveExpense);
+    if(section==='financeAccounts')document.getElementById('financeAccountForm')?.addEventListener('submit',financeSaveAccount);
+    if(section==='financeReconcile')document.getElementById('financeBankImport')?.addEventListener('submit',financeImportBankCsv);
+    if(section==='financeReports')document.getElementById('financeReportFilter')?.addEventListener('submit',financeApplyReportFilter);
+  }catch(e){content.innerHTML=`<div class="err">${esc(e.message)}</div><button class="finance-btn ghost" onclick="render()">↻ Retry</button>`;}
+}
+async function financeApplyReportFilter(ev){
+  ev.preventDefault();const b=Object.fromEntries(new FormData(ev.currentTarget).entries());
+  if(!b.from||!b.to||b.from>b.to){alert('Please select a valid date range.');return;}
+  try{
+    const d=await api('/api/finance/reports?from='+encodeURIComponent(b.from)+'&to='+encodeURIComponent(b.to)),rows=d.rows||[];
+    const income=rows.filter(x=>x.direction==='INCOME').reduce((n,x)=>n+Number(x.total),0),expense=rows.filter(x=>x.direction==='EXPENSE').reduce((n,x)=>n+Number(x.total),0);
+    const content=document.getElementById('content'),kpis=content.querySelector('.finance-kpis');
+    if(kpis)kpis.innerHTML=`<div class="finance-kpi"><small>Period Income</small><strong>${financeMoney(income)}</strong></div><div class="finance-kpi"><small>Period Expenses</small><strong>${financeMoney(expense)}</strong></div><div class="finance-kpi"><small>Net Movement</small><strong>${financeMoney(income-expense)}</strong></div><div class="finance-kpi"><small>Report Period</small><strong style="font-size:15px">${esc(b.from)} – ${esc(b.to)}</strong></div>`;
+    const wrap=content.querySelector('.finance-table-wrap');if(wrap)wrap.outerHTML=financeTable(['Category','Direction','Entries','Total Amount'],rows.map(x=>`<tr><td>${esc(x.category)}</td><td>${financePill(x.direction)}</td><td>${x.count}</td><td><b>${financeMoney(x.total)}</b></td></tr>`));
+    window.NSF_FINANCE_REPORT_RANGE={from:b.from,to:b.to};
+  }catch(e){alert(e.message);}
+}
+async function financeSaveIncome(ev){
+  ev.preventDefault();const f=ev.currentTarget,fd=new FormData(f),b=Object.fromEntries(fd.entries());
+  try{await api('/api/finance/income',{method:'POST',body:JSON.stringify(b)});alert('Income saved. Receipt generated.');renderFinanceModule('financeIncome');}
+  catch(e){alert(e.message);}
+}
+async function financeSaveExpense(ev){
+  ev.preventDefault();const f=ev.currentTarget,fd=new FormData(f),file=fd.get('bill');let billPath='';
+  try{
+    if(file&&file.size){const up=new FormData();up.append('file',file);const r=await api('/api/finance/attachments',{method:'POST',body:up});billPath=r.billPath;}
+    const b=Object.fromEntries(fd.entries());delete b.bill;b.billPath=billPath;
+    await api('/api/finance/expenses',{method:'POST',body:JSON.stringify(b)});alert('Expense request submitted to Admin/President for approval.');renderFinanceModule('financeExpenses');
+  }catch(e){alert(e.message);}
+}
+async function financeToggleAccount(id){
+  if(!confirm('इस Finance Account की active status बदलनी है?'))return;
+  try{await api('/api/finance/accounts/'+id+'/toggle',{method:'POST',body:'{}'});renderFinanceModule('financeAccounts');}
+  catch(e){alert(e.message);}
+}
+async function financeSaveAccount(ev){
+  ev.preventDefault();const b=Object.fromEntries(new FormData(ev.currentTarget).entries());
+  try{await api('/api/finance/accounts',{method:'POST',body:JSON.stringify(b)});alert('Finance account added.');renderFinanceModule('financeAccounts');}
+  catch(e){alert(e.message);}
+}
+async function financeDecide(id,decision){
+  const note=prompt(decision==='APPROVE'?'Approval note (optional):':'Reason for rejection (required):','');
+  if(note===null)return;if(decision==='REJECT'&&!note.trim()){alert('Rejection reason is required.');return;}
+  try{await api('/api/finance/expenses/'+id+'/decision',{method:'POST',body:JSON.stringify({decision,note})});alert(decision==='APPROVE'?'Expense approved.':'Expense rejected.');renderFinanceModule('financeApprovals');}
+  catch(e){alert(e.message);}
+}
+async function financeMarkPaid(id){
+  const paymentMode=(prompt('Payment Mode: CASH / BANK_TRANSFER / UPI / CHEQUE / OTHER','BANK_TRANSFER')||'').trim().toUpperCase();if(!paymentMode)return;
+  const paymentReference=(prompt('Transaction ID / payment reference (required):','')||'').trim();if(!paymentReference)return;
+  let paymentProofPath='';
+  const choose=confirm('क्या आप Payment Proof / Transaction Screenshot भी upload करना चाहते हैं?');
+  if(choose){
+    const input=document.createElement('input');input.type='file';input.accept='.pdf,.jpg,.jpeg,.png,.webp';
+    const file=await new Promise(resolve=>{input.onchange=()=>resolve(input.files&&input.files[0]||null);input.click();});
+    if(file){try{const fd=new FormData();fd.append('file',file);const up=await api('/api/finance/attachments',{method:'POST',body:fd});paymentProofPath=up.billPath;}catch(e){alert('Proof upload failed: '+e.message);return;}}
+  }
+  try{await api('/api/finance/expenses/'+id+'/mark-paid',{method:'POST',body:JSON.stringify({paymentMode,paymentReference,paymentProofPath})});alert('Payment recorded and expense posted to ledger.');renderFinanceModule('financeExpenses');}
+  catch(e){alert(e.message);}
+}
+async function financeImportBankCsv(ev){
+  ev.preventDefault();const file=new FormData(ev.currentTarget).get('csv');if(!file||!file.size)return;
+  try{
+    const text=await file.text(),lines=text.split(/\r?\n/).filter(x=>x.trim()),parse=line=>{const out=[];let cur='',q=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(c==='"')q=!q;else if(c===','&&!q){out.push(cur);cur='';}else cur+=c;}out.push(cur);return out;};
+    const headers=parse(lines.shift()).map(x=>x.trim().toLowerCase()),idx={date:headers.indexOf('date'),description:headers.indexOf('description'),amount:headers.indexOf('amount'),reference:headers.indexOf('reference')};
+    if(Object.values(idx).slice(0,3).some(x=>x<0))throw new Error('CSV headers must include date,description,amount. reference is optional.');
+    const rows=lines.map(line=>{const c=parse(line);return {date:c[idx.date],description:c[idx.description],amount:Number(String(c[idx.amount]||'').replace(/,/g,'')),reference:idx.reference>=0?c[idx.reference]:''};}).filter(x=>x.date&&x.description&&Number.isFinite(x.amount)&&x.amount!==0);
+    if(!rows.length)throw new Error('No valid statement rows found.');
+    const result=await api('/api/finance/bank-lines/import',{method:'POST',body:JSON.stringify({rows})});alert(`${result.imported} statement rows imported.`);renderFinanceModule('financeReconcile');
+  }catch(e){alert(e.message);}
+}
+async function financeMatchLine(id){
+  const value=document.getElementById('fmatch'+id)?.value||'',parts=value.split(':'),type=parts[0],entryId=parts[1];
+  if(!type||!entryId){alert('No ledger entry selected.');return;}
+  try{await api('/api/finance/bank-lines/'+id+'/match',{method:'POST',body:JSON.stringify({entryType:type,entryId})});alert('Bank line matched.');renderFinanceModule('financeReconcile');}
+  catch(e){alert(e.message);}
+}
+async function financeIgnoreLine(id){
+  if(!confirm('इस statement line को reconciliation से अलग रखना है?'))return;
+  try{await api('/api/finance/bank-lines/'+id+'/ignore',{method:'POST',body:'{}'});renderFinanceModule('financeReconcile');}
+  catch(e){alert(e.message);}
+}
 
 /* =========================================================
    START
