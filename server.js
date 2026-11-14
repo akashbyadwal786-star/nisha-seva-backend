@@ -106,6 +106,10 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const COORDINATOR_USERNAME = process.env.COORDINATOR_USERNAME || '';
 const COORDINATOR_PASSWORD = process.env.COORDINATOR_PASSWORD || '';
 
+// Treasurer username is intentionally fixed as requested; set only the password in Hostinger.
+const TREASURER_USERNAME = 'NISHASEVA';
+const TREASURER_PASSWORD = process.env.TREASURER_PASSWORD || '';
+
 const PUBLIC_BASE_URL =
   process.env.PUBLIC_BASE_URL ||
   'https://api.nishasevafoundation.org';
@@ -252,7 +256,7 @@ function requireAdmin(
     return res.status(403).json({ error: 'Forbidden: coordinator access is limited to internship management' });
   }
 
-  if (!['admin','coordinator'].includes(session.role)) {
+  if (!['admin','coordinator','treasurer'].includes(session.role) || (session.role === 'treasurer' && req.path !== '/api/admin/logout')) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -320,6 +324,24 @@ app.post('/api/coordinator/login', authLimiter, (req, res) => {
   const token = crypto.randomBytes(32).toString('hex');
   sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'coordinator' });
   return res.json({ token, role: 'coordinator' });
+});
+
+
+/* =========================================================
+   TREASURER LOGIN — finance-only access
+   Username is fixed to NISHASEVA; password is configured privately in Hostinger.
+   ========================================================= */
+app.post('/api/treasurer/login', authLimiter, (req, res) => {
+  const { username, password } = req.body || {};
+  if (!TREASURER_PASSWORD) {
+    return res.status(503).json({ error: 'Treasurer account is not configured. Set TREASURER_PASSWORD in Hostinger Environment.' });
+  }
+  if (String(username || '').trim() !== TREASURER_USERNAME || String(password || '') !== TREASURER_PASSWORD) {
+    return res.status(401).json({ error: 'Invalid Treasurer username or password.' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'treasurer' });
+  return res.json({ token, role: 'treasurer' });
 });
 
 
@@ -4077,11 +4099,433 @@ app.get('/api/community-requests', requireAdmin, async (req, res) => {
   }
 });
 
+
+/* =========================================================
+   NSF TREASURER / FINANCE MANAGEMENT MODULE
+   Additive schema only: existing app-state and donation data are preserved.
+   ========================================================= */
+function financeSession(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const session = token && sessions.get(token);
+  if (!session || session.expiresAt < Date.now()) {
+    if (token) sessions.delete(token);
+    return res.status(401).json({ error: 'Unauthorized. Please login again.' });
+  }
+  if (!['admin', 'treasurer'].includes(session.role)) {
+    return res.status(403).json({ error: 'Finance access denied.' });
+  }
+  req.userRole = session.role;
+  req.financeToken = token;
+  next();
+}
+function financeAdmin(req, res, next) {
+  if (req.userRole !== 'admin') return res.status(403).json({ error: 'Only Admin/President can approve or manage this action.' });
+  next();
+}
+function financeAudit(req, action, entityType, entityId, details={}) {
+  return pool.query(
+    `INSERT INTO nsf_finance_audit_logs(actor_role, action, entity_type, entity_id, details)
+     VALUES($1,$2,$3,$4,$5::jsonb)`,
+    [req.userRole || 'system', String(action).slice(0,80), String(entityType).slice(0,80),
+     entityId == null ? null : String(entityId).slice(0,100), JSON.stringify(details || {})]
+  );
+}
+function financeAmount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0 || n > 100000000 || Math.round(n * 100) !== n * 100) return null;
+  return n.toFixed(2);
+}
+function financeDate(value) {
+  const s = String(value || '').slice(0,10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s)) ? s : null;
+}
+
+const financeTablesReady = (async () => {
+  await initializeTable(`
+    CREATE TABLE IF NOT EXISTS nsf_finance_accounts (
+      id BIGSERIAL PRIMARY KEY,
+      account_name VARCHAR(100) NOT NULL,
+      account_type VARCHAR(24) NOT NULL CHECK (account_type IN ('CASH','BANK','UPI','ONLINE_CLEARING','OTHER')),
+      bank_name VARCHAR(100), account_last4 VARCHAR(4),
+      opening_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by VARCHAR(24) NOT NULL DEFAULT 'admin',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS nsf_finance_income (
+      id BIGSERIAL PRIMARY KEY,
+      receipt_no VARCHAR(50) UNIQUE NOT NULL,
+      source VARCHAR(40) NOT NULL,
+      payer_name VARCHAR(140) NOT NULL,
+      category VARCHAR(60) NOT NULL,
+      amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+      income_date DATE NOT NULL,
+      payment_mode VARCHAR(24) NOT NULL,
+      account_id BIGINT REFERENCES nsf_finance_accounts(id),
+      reference_no VARCHAR(120),
+      notes TEXT,
+      created_by VARCHAR(24) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS nsf_finance_expenses (
+      id BIGSERIAL PRIMARY KEY,
+      expense_no VARCHAR(50) UNIQUE NOT NULL,
+      vendor_name VARCHAR(140) NOT NULL,
+      category VARCHAR(60) NOT NULL,
+      amount NUMERIC(14,2) NOT NULL CHECK (amount > 0),
+      expense_date DATE NOT NULL,
+      description TEXT NOT NULL,
+      account_id BIGINT REFERENCES nsf_finance_accounts(id),
+      payment_mode VARCHAR(24),
+      payment_reference VARCHAR(120),
+      bill_path TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','APPROVED','REJECTED','PAID')),
+      requested_by VARCHAR(24) NOT NULL,
+      approved_by VARCHAR(24), approved_at TIMESTAMPTZ, admin_note TEXT,
+      paid_by VARCHAR(24), paid_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS nsf_finance_bank_lines (
+      id BIGSERIAL PRIMARY KEY,
+      statement_date DATE NOT NULL,
+      description TEXT NOT NULL,
+      amount NUMERIC(14,2) NOT NULL,
+      reference_no VARCHAR(140),
+      status VARCHAR(20) NOT NULL DEFAULT 'UNMATCHED' CHECK (status IN ('UNMATCHED','MATCHED','IGNORED')),
+      matched_type VARCHAR(20), matched_id BIGINT,
+      imported_by VARCHAR(24) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS nsf_finance_audit_logs (
+      id BIGSERIAL PRIMARY KEY,
+      actor_role VARCHAR(24) NOT NULL,
+      action VARCHAR(80) NOT NULL,
+      entity_type VARCHAR(80) NOT NULL,
+      entity_id VARCHAR(100),
+      details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS nsf_finance_income_date_idx ON nsf_finance_income(income_date DESC);
+    CREATE INDEX IF NOT EXISTS nsf_finance_expenses_status_idx ON nsf_finance_expenses(status, expense_date DESC);
+    CREATE INDEX IF NOT EXISTS nsf_finance_bank_lines_status_idx ON nsf_finance_bank_lines(status, statement_date DESC);
+    CREATE INDEX IF NOT EXISTS nsf_finance_audit_created_idx ON nsf_finance_audit_logs(created_at DESC);
+  `, 'NSF_FINANCE');
+  await pool.query(`ALTER TABLE nsf_finance_expenses ADD COLUMN IF NOT EXISTS payment_proof_path TEXT`);
+  await pool.query(`
+    INSERT INTO nsf_finance_accounts(account_name, account_type, created_by)
+    SELECT 'Cash in Hand','CASH','system'
+    WHERE NOT EXISTS (SELECT 1 FROM nsf_finance_accounts WHERE account_name='Cash in Hand');
+    INSERT INTO nsf_finance_accounts(account_name, account_type, created_by)
+    SELECT 'Online Donations Clearing','ONLINE_CLEARING','system'
+    WHERE NOT EXISTS (SELECT 1 FROM nsf_finance_accounts WHERE account_name='Online Donations Clearing');
+  `);
+})();
+
+const financeUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['application/pdf','image/jpeg','image/png','image/webp'];
+    cb(allowed.includes(file.mimetype) ? null : new Error('Only PDF, JPG, PNG and WEBP documents are allowed.'), allowed.includes(file.mimetype));
+  }
+});
+
+app.get('/api/finance/summary', financeSession, async (req,res) => {
+  try {
+    await Promise.all([financeTablesReady, donationsTableReady]);
+    const [donations, income, expenses, pending, accounts] = await Promise.all([
+      pool.query("SELECT COALESCE(SUM(amount),0)::numeric(14,2) AS total, COUNT(*)::int AS count FROM donations WHERE payment_status='PAID'"),
+      pool.query('SELECT COALESCE(SUM(amount),0)::numeric(14,2) AS total, COUNT(*)::int AS count FROM nsf_finance_income'),
+      pool.query("SELECT COALESCE(SUM(amount),0)::numeric(14,2) AS total, COUNT(*)::int AS count FROM nsf_finance_expenses WHERE status='PAID'"),
+      pool.query("SELECT COUNT(*)::int AS count, COALESCE(SUM(amount),0)::numeric(14,2) AS total FROM nsf_finance_expenses WHERE status='PENDING'"),
+      pool.query('SELECT COALESCE(SUM(opening_balance),0)::numeric(14,2) AS opening FROM nsf_finance_accounts')
+    ]);
+    const d=donations.rows[0], i=income.rows[0], e=expenses.rows[0], p=pending.rows[0];
+    const gross=Number(d.total)+Number(i.total);
+    return res.set('Cache-Control','no-store').json({
+      donations:{total:Number(d.total),count:d.count},
+      otherIncome:{total:Number(i.total),count:i.count},
+      paidExpenses:{total:Number(e.total),count:e.count},
+      pendingExpenses:{total:Number(p.total),count:p.count},
+      bookBalance:Number(accounts.rows[0].opening)+gross-Number(e.total),
+      totalIncome:gross, currency:'INR'
+    });
+  } catch(e) { console.error('FINANCE SUMMARY ERROR:',e); return res.status(500).json({error:'Finance summary could not be loaded.'}); }
+});
+
+app.get('/api/finance/donations', financeSession, async (req,res) => {
+  try {
+    await donationsTableReady;
+    const r=await pool.query(`SELECT order_id,receipt_no,donor_name,donor_phone,donor_email,amount,currency,payment_status,payment_time,sms_status,created_at
+      FROM donations ORDER BY created_at DESC LIMIT 1000`);
+    return res.set('Cache-Control','no-store').json({donations:r.rows});
+  } catch(e) { console.error('FINANCE DONATIONS ERROR:',e); return res.status(500).json({error:'Donation records could not be loaded.'}); }
+});
+
+app.get('/api/finance/income', financeSession, async (req,res) => {
+  try {
+    await financeTablesReady;
+    const r=await pool.query(`SELECT i.*,a.account_name FROM nsf_finance_income i LEFT JOIN nsf_finance_accounts a ON a.id=i.account_id ORDER BY i.income_date DESC,i.id DESC LIMIT 1000`);
+    return res.set('Cache-Control','no-store').json({income:r.rows});
+  } catch(e) { console.error('FINANCE INCOME LIST ERROR:',e); return res.status(500).json({error:'Income records could not be loaded.'}); }
+});
+
+app.post('/api/finance/income', financeSession, async (req,res) => {
+  try {
+    await financeTablesReady;
+    const b=req.body||{}, amount=financeAmount(b.amount), date=financeDate(b.incomeDate);
+    const payer=String(b.payerName||'').trim().slice(0,140), category=String(b.category||'').trim().slice(0,60);
+    const modes=['CASH','BANK_TRANSFER','UPI','CHEQUE','OTHER'];
+    if(!amount||!date||payer.length<2||!category||!modes.includes(b.paymentMode)) return res.status(400).json({error:'Valid payer, category, amount, date and payment mode are required.'});
+    if(b.accountId && !/^\d+$/.test(String(b.accountId))) return res.status(400).json({error:'Invalid account.'});
+    if(b.accountId) {
+      const account=(await pool.query('SELECT id FROM nsf_finance_accounts WHERE id=$1 AND active=true',[b.accountId])).rows[0];
+      if(!account) return res.status(400).json({error:'Selected finance account is inactive or unavailable.'});
+    }
+    const receiptNo='NSF-INC-'+new Date().getFullYear()+'-'+crypto.randomBytes(4).toString('hex').toUpperCase();
+    const r=await pool.query(`INSERT INTO nsf_finance_income(receipt_no,source,payer_name,category,amount,income_date,payment_mode,account_id,reference_no,notes,created_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [receiptNo,String(b.source||'OFFLINE').slice(0,40),payer,category,amount,date,b.paymentMode,b.accountId||null,String(b.referenceNo||'').slice(0,120)||null,String(b.notes||'').slice(0,2000)||null,req.userRole]);
+    await financeAudit(req,'INCOME_CREATED','income',r.rows[0].id,{amount,receiptNo});
+    return res.status(201).json({income:r.rows[0]});
+  } catch(e) { console.error('FINANCE INCOME CREATE ERROR:',e); return res.status(500).json({error:'Income record could not be saved.'}); }
+});
+
+app.get('/api/finance/income/:id/receipt', financeSession, async (req,res) => {
+  try {
+    await financeTablesReady;
+    const r=await pool.query('SELECT i.*,a.account_name FROM nsf_finance_income i LEFT JOIN nsf_finance_accounts a ON a.id=i.account_id WHERE i.id=$1',[req.params.id]);
+    if(!r.rows.length) return res.status(404).send('Receipt not found.');
+    const x=r.rows[0], fmt=Number(x.amount).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeText(x.receipt_no)}</title><style>body{font-family:Arial;background:#eef5f1;padding:20px;color:#17372c}.paper{max-width:720px;margin:20px auto;background:white;border:2px solid #16845e;border-radius:18px;padding:34px}.brand{text-align:center;color:#08764f}.line{display:flex;justify-content:space-between;border-bottom:1px solid #e5eee9;padding:12px 0;gap:20px}.print{text-align:center;margin:20px}.print button{background:#08764f;color:white;padding:12px 20px;border:0;border-radius:10px}@media print{body{background:white}.paper{margin:0 auto;box-shadow:none}.print{display:none}}</style></head><body><main class="paper"><header class="brand"><h1>NISHA SEVA FOUNDATION</h1><h2>INCOME RECEIPT</h2></header><div class="line"><span>Receipt No.</span><b>${safeText(x.receipt_no)}</b></div><div class="line"><span>Received From</span><b>${safeText(x.payer_name)}</b></div><div class="line"><span>Category</span><b>${safeText(x.category)}</b></div><div class="line"><span>Amount</span><b>₹${fmt}</b></div><div class="line"><span>Date</span><b>${safeText(x.income_date)}</b></div><div class="line"><span>Payment Mode</span><b>${safeText(x.payment_mode)}</b></div><div class="line"><span>Reference</span><b>${safeText(x.reference_no||'-')}</b></div><p style="text-align:center;margin-top:28px">Thank you for supporting Nisha Seva Foundation.</p><div class="print"><button onclick="window.print()">Print / Save PDF</button></div></main></body></html>`;
+    return res.set('Cache-Control','no-store').type('html').send(html);
+  } catch(e) { console.error('FINANCE RECEIPT ERROR:',e); return res.status(500).send('Receipt could not be generated.'); }
+});
+
+app.get('/api/finance/expenses', financeSession, async (req,res) => {
+  try {
+    await financeTablesReady;
+    const r=await pool.query(`SELECT e.*,a.account_name FROM nsf_finance_expenses e LEFT JOIN nsf_finance_accounts a ON a.id=e.account_id ORDER BY e.expense_date DESC,e.id DESC LIMIT 1000`);
+    return res.set('Cache-Control','no-store').json({expenses:r.rows});
+  } catch(e) { console.error('FINANCE EXPENSE LIST ERROR:',e); return res.status(500).json({error:'Expense records could not be loaded.'}); }
+});
+
+app.post('/api/finance/attachments', financeSession, financeUpload.single('file'), async (req,res) => {
+  try {
+    if(!req.file) return res.status(400).json({error:'Please choose a PDF or image bill.'});
+    const bucket='finance-private';
+    const created=await supabase.storage.createBucket(bucket,{public:false,fileSizeLimit:8*1024*1024,allowedMimeTypes:['application/pdf','image/jpeg','image/png','image/webp']});
+    if(created.error && !/already exists|duplicate/i.test(created.error.message||'')) {
+      const check=await supabase.storage.getBucket(bucket);
+      if(check.error) throw created.error;
+    }
+    const ext=path.extname(req.file.originalname||'').toLowerCase().replace(/[^.a-z0-9]/g,'').slice(0,10) || (req.file.mimetype==='application/pdf'?'.pdf':'.img');
+    const objectPath=`expense-bills/${Date.now()}-${crypto.randomUUID()}${ext}`;
+    const uploaded=await supabase.storage.from(bucket).upload(objectPath,req.file.buffer,{contentType:req.file.mimetype,upsert:false});
+    if(uploaded.error) throw uploaded.error;
+    await financeAudit(req,'BILL_UPLOADED','attachment',objectPath,{mimeType:req.file.mimetype,size:req.file.size});
+    return res.status(201).json({ok:true,billPath:objectPath});
+  } catch(e) { console.error('FINANCE BILL UPLOAD ERROR:',e); return res.status(500).json({error:'Bill upload failed. Check private Supabase Storage bucket permissions.'}); }
+});
+
+app.get('/api/finance/attachments/:id', financeSession, async (req,res) => {
+  try {
+    const objectPath=String(req.params.id||'').replace(/^\/+/,'');
+    if(!objectPath.startsWith('expense-bills/')) return res.status(400).json({error:'Invalid attachment path.'});
+    const signed=await supabase.storage.from('finance-private').createSignedUrl(objectPath,60);
+    if(signed.error) throw signed.error;
+    return res.json({url:signed.data.signedUrl,expiresIn:60});
+  } catch(e) { console.error('FINANCE BILL SIGN ERROR:',e); return res.status(404).json({error:'Bill document could not be opened.'}); }
+});
+
+app.post('/api/finance/expenses', financeSession, async (req,res) => {
+  try {
+    await financeTablesReady;
+    const b=req.body||{}, amount=financeAmount(b.amount), date=financeDate(b.expenseDate);
+    const vendor=String(b.vendorName||'').trim().slice(0,140), category=String(b.category||'').trim().slice(0,60), desc=String(b.description||'').trim().slice(0,3000);
+    if(!amount||!date||vendor.length<2||!category||desc.length<4) return res.status(400).json({error:'Vendor, category, description, valid amount and date are required.'});
+    if(b.billPath && !String(b.billPath).startsWith('expense-bills/')) return res.status(400).json({error:'Invalid bill attachment.'});
+    if(b.accountId && !/^\d+$/.test(String(b.accountId))) return res.status(400).json({error:'Invalid finance account.'});
+    if(b.accountId) {
+      const account=(await pool.query('SELECT id FROM nsf_finance_accounts WHERE id=$1 AND active=true',[b.accountId])).rows[0];
+      if(!account) return res.status(400).json({error:'Selected finance account is inactive or unavailable.'});
+    }
+    const expenseNo='NSF-EXP-'+new Date().getFullYear()+'-'+crypto.randomBytes(4).toString('hex').toUpperCase();
+    const r=await pool.query(`INSERT INTO nsf_finance_expenses(expense_no,vendor_name,category,amount,expense_date,description,account_id,bill_path,requested_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [expenseNo,vendor,category,amount,date,desc,b.accountId||null,b.billPath||null,req.userRole]);
+    await financeAudit(req,'EXPENSE_SUBMITTED','expense',r.rows[0].id,{amount,expenseNo});
+    return res.status(201).json({expense:r.rows[0]});
+  } catch(e) { console.error('FINANCE EXPENSE CREATE ERROR:',e); return res.status(500).json({error:'Expense request could not be saved.'}); }
+});
+
+app.post('/api/finance/expenses/:id/decision', financeSession, financeAdmin, async (req,res) => {
+  const client=await pool.connect();
+  try {
+    await financeTablesReady;
+    const decision=String(req.body?.decision||'').toUpperCase(), note=String(req.body?.note||'').trim().slice(0,1000);
+    if(!['APPROVE','REJECT'].includes(decision)) return res.status(400).json({error:'Decision must be APPROVE or REJECT.'});
+    if(decision==='REJECT' && !note) return res.status(400).json({error:'A rejection reason is required.'});
+    await client.query('BEGIN');
+    const r=await client.query('UPDATE nsf_finance_expenses SET status=$2,approved_by=$3,approved_at=NOW(),admin_note=$4,updated_at=NOW() WHERE id=$1 AND status=$5 RETURNING *',
+      [req.params.id,decision==='APPROVE'?'APPROVED':'REJECTED','admin',note||null,'PENDING']);
+    if(!r.rows.length){await client.query('ROLLBACK');return res.status(409).json({error:'Expense is no longer pending or was not found.'});}
+    await client.query('INSERT INTO nsf_finance_audit_logs(actor_role,action,entity_type,entity_id,details) VALUES($1,$2,$3,$4,$5::jsonb)',
+      ['admin',`EXPENSE_${decision} `,'expense',String(req.params.id),JSON.stringify({note,amount:r.rows[0].amount})]);
+    await client.query('COMMIT');
+    return res.json({expense:r.rows[0]});
+  } catch(e) { try{await client.query('ROLLBACK');}catch{} console.error('FINANCE EXPENSE DECISION ERROR:',e); return res.status(500).json({error:'Expense decision could not be saved.'}); }
+  finally {client.release();}
+});
+
+app.post('/api/finance/expenses/:id/mark-paid', financeSession, async (req,res) => {
+  try {
+    await financeTablesReady;
+    const b=req.body||{}, mode=String(b.paymentMode||'').toUpperCase();
+    if(!['CASH','BANK_TRANSFER','UPI','CHEQUE','OTHER'].includes(mode)) return res.status(400).json({error:'Select a valid payment mode.'});
+    const ref=String(b.paymentReference||'').trim().slice(0,120);
+    const proof=String(b.paymentProofPath||'');
+    if(!ref) return res.status(400).json({error:'Payment reference / transaction ID is required.'});
+    if(proof && !proof.startsWith('expense-bills/')) return res.status(400).json({error:'Invalid payment proof attachment.'});
+    const r=await pool.query(`UPDATE nsf_finance_expenses SET status='PAID',payment_mode=$2,payment_reference=$3,payment_proof_path=$4,paid_by=$5,paid_at=NOW(),updated_at=NOW()
+      WHERE id=$1 AND status='APPROVED' RETURNING *`,[req.params.id,mode,ref,proof||null,req.userRole]);
+    if(!r.rows.length) return res.status(409).json({error:'Only an approved expense can be marked paid.'});
+    await financeAudit(req,'EXPENSE_MARKED_PAID','expense',r.rows[0].id,{amount:r.rows[0].amount,reference:ref});
+    return res.json({expense:r.rows[0]});
+  } catch(e) { console.error('FINANCE EXPENSE PAID ERROR:',e); return res.status(500).json({error:'Payment status could not be updated.'}); }
+});
+
+app.get('/api/finance/accounts', financeSession, async (req,res) => {
+  try { await financeTablesReady; const r=await pool.query('SELECT id,account_name,account_type,bank_name,account_last4,opening_balance,active,created_at FROM nsf_finance_accounts ORDER BY id'); return res.json({accounts:r.rows}); }
+  catch(e){console.error('FINANCE ACCOUNTS ERROR:',e);return res.status(500).json({error:'Accounts could not be loaded.'});}
+});
+app.post('/api/finance/accounts', financeSession, financeAdmin, async (req,res) => {
+  try {
+    await financeTablesReady;
+    const b=req.body||{}, name=String(b.accountName||'').trim().slice(0,100), type=String(b.accountType||'').toUpperCase();
+    const allowed=['CASH','BANK','UPI','ONLINE_CLEARING','OTHER'];
+    const opening=Number(b.openingBalance||0);
+    if(name.length<2||!allowed.includes(type)||!Number.isFinite(opening)||opening<0||opening>100000000) return res.status(400).json({error:'Valid account name, type and opening balance are required.'});
+    const last4=String(b.accountLast4||'').replace(/\D/g,'').slice(-4);
+    const r=await pool.query('INSERT INTO nsf_finance_accounts(account_name,account_type,bank_name,account_last4,opening_balance,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING id,account_name,account_type,bank_name,account_last4,opening_balance,active',
+      [name,type,String(b.bankName||'').slice(0,100)||null,last4||null,opening,req.userRole]);
+    await financeAudit(req,'ACCOUNT_CREATED','account',r.rows[0].id,{accountName:name,type});
+    return res.status(201).json({account:r.rows[0]});
+  } catch(e){console.error('FINANCE ACCOUNT CREATE ERROR:',e);return res.status(500).json({error:'Account could not be created.'});}
+});
+
+app.post('/api/finance/accounts/:id/toggle', financeSession, financeAdmin, async (req,res) => {
+  try {
+    await financeTablesReady;
+    const r=await pool.query('UPDATE nsf_finance_accounts SET active=NOT active,updated_at=NOW() WHERE id=$1 RETURNING id,account_name,active',[req.params.id]);
+    if(!r.rows.length)return res.status(404).json({error:'Account not found.'});
+    await financeAudit(req,'ACCOUNT_STATUS_CHANGED','account',req.params.id,{active:r.rows[0].active});
+    return res.json({account:r.rows[0]});
+  } catch(e){console.error('FINANCE ACCOUNT STATUS ERROR:',e);return res.status(500).json({error:'Account status could not be changed.'});}
+});
+
+app.get('/api/finance/ledger', financeSession, async (req,res) => {
+  try {
+    await Promise.all([financeTablesReady,donationsTableReady]);
+    const r=await pool.query(`
+      SELECT * FROM (
+        SELECT 'DONATION'::text AS entry_type, d.id::text AS entry_id, d.receipt_no AS reference_no,
+          d.donor_name AS party, 'Donation'::text AS category, d.amount::numeric(14,2) AS amount,
+          'INCOME'::text AS direction, COALESCE(d.payment_time,d.created_at)::date AS entry_date,
+          d.payment_status AS status, d.order_id AS note
+        FROM donations d WHERE d.payment_status='PAID'
+        UNION ALL
+        SELECT 'OTHER_INCOME', i.id::text, i.receipt_no, i.payer_name, i.category, i.amount,
+          'INCOME', i.income_date, 'RECEIVED', COALESCE(i.reference_no,i.notes,'')
+        FROM nsf_finance_income i
+        UNION ALL
+        SELECT 'EXPENSE', e.id::text, e.expense_no, e.vendor_name, e.category, e.amount,
+          'EXPENSE', e.expense_date, e.status, COALESCE(e.payment_reference,e.description)
+        FROM nsf_finance_expenses e WHERE e.status='PAID'
+      ) ledger ORDER BY entry_date DESC LIMIT 2000`);
+    return res.set('Cache-Control','no-store').json({entries:r.rows});
+  } catch(e){console.error('FINANCE LEDGER ERROR:',e);return res.status(500).json({error:'Ledger could not be loaded.'});}
+});
+
+app.get('/api/finance/reports', financeSession, async (req,res) => {
+  try {
+    await Promise.all([financeTablesReady,donationsTableReady]);
+    const from=financeDate(req.query.from)||'2000-01-01', to=financeDate(req.query.to)||'2099-12-31';
+    const r=await pool.query(`
+      SELECT category, direction, COUNT(*)::int AS count, COALESCE(SUM(amount),0)::numeric(14,2) AS total
+      FROM (
+        SELECT 'Donation'::text AS category,'INCOME'::text AS direction,amount,COALESCE(payment_time,created_at)::date AS d FROM donations WHERE payment_status='PAID'
+        UNION ALL SELECT category,'INCOME',amount,income_date FROM nsf_finance_income
+        UNION ALL SELECT category,'EXPENSE',amount,expense_date FROM nsf_finance_expenses WHERE status='PAID'
+      ) x WHERE d BETWEEN $1::date AND $2::date GROUP BY category,direction ORDER BY direction,category`,[from,to]);
+    return res.json({from,to,rows:r.rows});
+  } catch(e){console.error('FINANCE REPORT ERROR:',e);return res.status(500).json({error:'Financial report could not be generated.'});}
+});
+
+app.get('/api/finance/bank-lines', financeSession, async (req,res) => {
+  try {await financeTablesReady;const r=await pool.query('SELECT * FROM nsf_finance_bank_lines ORDER BY statement_date DESC,id DESC LIMIT 2000');return res.json({lines:r.rows});}
+  catch(e){console.error('FINANCE BANK LINES ERROR:',e);return res.status(500).json({error:'Bank statement records could not be loaded.'});}
+});
+app.post('/api/finance/bank-lines/import', financeSession, async (req,res) => {
+  const client=await pool.connect();
+  try {
+    await financeTablesReady;
+    const rows=Array.isArray(req.body?.rows)?req.body.rows:[];
+    if(!rows.length||rows.length>2000) return res.status(400).json({error:'Upload between 1 and 2,000 statement rows.'});
+    await client.query('BEGIN');
+    let count=0;
+    for(const row of rows){
+      const date=financeDate(row.date), amount=Number(row.amount), description=String(row.description||'').trim().slice(0,1000);
+      if(!date||!Number.isFinite(amount)||amount===0||Math.abs(amount)>100000000||!description) continue;
+      await client.query('INSERT INTO nsf_finance_bank_lines(statement_date,description,amount,reference_no,imported_by) VALUES($1,$2,$3,$4,$5)',
+        [date,description,amount,String(row.reference||'').slice(0,140)||null,req.userRole]);
+      count++;
+    }
+    await client.query('COMMIT');
+    await financeAudit(req,'BANK_STATEMENT_IMPORTED','bank_statement',null,{rows:count});
+    return res.status(201).json({ok:true,imported:count});
+  } catch(e){try{await client.query('ROLLBACK');}catch{}console.error('FINANCE BANK IMPORT ERROR:',e);return res.status(500).json({error:'Bank statement could not be imported.'});}
+  finally{client.release();}
+});
+app.post('/api/finance/bank-lines/:id/match', financeSession, async (req,res) => {
+  try {
+    await financeTablesReady;
+    const b=req.body||{}, type=String(b.entryType||'').toUpperCase(), id=Number(b.entryId);
+    if(!['DONATION','OTHER_INCOME','EXPENSE'].includes(type)||!Number.isSafeInteger(id)||id<1) return res.status(400).json({error:'Select a valid ledger entry.'});
+    const line=(await pool.query('SELECT * FROM nsf_finance_bank_lines WHERE id=$1 AND status=\'UNMATCHED\'',[req.params.id])).rows[0];
+    if(!line) return res.status(404).json({error:'Unmatched bank line not found.'});
+    let actual;
+    if(type==='DONATION') actual=(await pool.query("SELECT amount FROM donations WHERE id=$1 AND payment_status='PAID'",[id])).rows[0]?.amount;
+    if(type==='OTHER_INCOME') actual=(await pool.query('SELECT amount FROM nsf_finance_income WHERE id=$1',[id])).rows[0]?.amount;
+    if(type==='EXPENSE') actual=(await pool.query("SELECT amount FROM nsf_finance_expenses WHERE id=$1 AND status='PAID'",[id])).rows[0]?.amount;
+    if(actual===undefined||Math.round(Number(actual)*100)!==Math.round(Math.abs(Number(line.amount))*100)) return res.status(409).json({error:'Bank line amount does not match the selected paid ledger entry.'});
+    const expectedDirection=type==='EXPENSE'?'debit':'credit';
+    const description=String(line.description||'').toLowerCase();
+    if((Number(line.amount)<0)!==(expectedDirection==='debit')) return res.status(409).json({error:'Bank line direction does not match the selected ledger entry.'});
+    const r=await pool.query("UPDATE nsf_finance_bank_lines SET status='MATCHED',matched_type=$2,matched_id=$3 WHERE id=$1 AND status='UNMATCHED' RETURNING *",[req.params.id,type,id]);
+    if(!r.rows.length)return res.status(409).json({error:'Bank line was matched by another request.'});
+    await financeAudit(req,'BANK_LINE_MATCHED','bank_line',req.params.id,{entryType:type,entryId:id});
+    return res.json({line:r.rows[0]});
+  } catch(e){console.error('FINANCE BANK MATCH ERROR:',e);return res.status(500).json({error:'Bank line could not be matched.'});}
+});
+app.post('/api/finance/bank-lines/:id/ignore', financeSession, financeAdmin, async (req,res) => {
+  try {const r=await pool.query("UPDATE nsf_finance_bank_lines SET status='IGNORED' WHERE id=$1 AND status='UNMATCHED' RETURNING *",[req.params.id]);if(!r.rows.length)return res.status(404).json({error:'Unmatched bank line not found.'});await financeAudit(req,'BANK_LINE_IGNORED','bank_line',req.params.id,{});return res.json({line:r.rows[0]});}
+  catch(e){console.error('FINANCE BANK IGNORE ERROR:',e);return res.status(500).json({error:'Bank line could not be ignored.'});}
+});
+
+app.get('/api/finance/audit', financeSession, async (req,res) => {
+  try {await financeTablesReady;const r=await pool.query('SELECT id,actor_role,action,entity_type,entity_id,details,created_at FROM nsf_finance_audit_logs ORDER BY created_at DESC LIMIT 500');return res.json({logs:r.rows});}
+  catch(e){console.error('FINANCE AUDIT ERROR:',e);return res.status(500).json({error:'Audit history could not be loaded.'});}
+});
+
 /* =========================================================
    START SERVER
    ========================================================= */
 
-Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, passwordResetTableReady, donationsTableReady, communityRequestsTableReady])
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, passwordResetTableReady, donationsTableReady, communityRequestsTableReady, financeTablesReady])
   .then(() => {
 
     app.listen(
