@@ -518,7 +518,7 @@ const API = (window.NISHA_API_URL || 'https://api.nishasevafoundation.org').repl
 
 let token = localStorage.getItem("nisha_token") || "";
 let currentRole = localStorage.getItem("nisha_role") || "admin";
-let current = currentRole === "coordinator" ? "internships" : (currentRole === "treasurer" ? "financeDashboard" : "dashboard");
+let current = currentRole === "secretary" ? "secretaryPanel" : (currentRole === "coordinator" ? "internships" : (currentRole === "treasurer" ? "financeDashboard" : "dashboard"));
 let volunteerCache = {};
 
 
@@ -527,6 +527,8 @@ let volunteerCache = {};
    ========================================================= */
 
 const tabs = [
+  ["secretaryPanel","महासचिव पैनल"],
+  ["secretariatInbox","महासचिव रिपोर्ट / Inbox"],
   ["dashboard","Dashboard"],
   ["programs","Programs"],
   ["events","Events"],
@@ -643,7 +645,7 @@ let selectedLoginRole="admin";
 function selectLoginRole(role){
   selectedLoginRole=role;
   document.querySelectorAll(".role-login").forEach(b=>b.classList.toggle("active",b.dataset.role===role));
-  const heading=document.getElementById("loginHeading"); if(heading)heading.textContent=({admin:"Admin Panel Login",manager:"Manager Login",coordinator:"Coordinator Login",treasurer:"Treasurer Login"})[role];
+  const heading=document.getElementById("loginHeading"); if(heading)heading.textContent=({admin:"Admin Panel Login",secretary:"महासचिव Login",coordinator:"Coordinator Login",treasurer:"Treasurer Login"})[role];
   const userInput=document.getElementById("user"); if(userInput && role==="treasurer") userInput.value="NISHASEVA";
   const msg=document.getElementById("msg"); if(msg)msg.innerHTML="";
 }
@@ -654,7 +656,7 @@ function login(){
         <div style="text-align:center;margin-bottom:16px"><div style="font-size:42px">🌿</div><h2 style="margin:6px 0;color:#0b2035">Nisha Seva Foundation</h2><p class="small">Service · Education · Environment · Empowerment</p></div>
         <div class="role-login-grid">
           <button class="role-login active" data-role="admin" onclick="selectLoginRole('admin')"><span>🛡️</span><b>Admin Login</b></button>
-          <button class="role-login" data-role="manager" onclick="selectLoginRole('manager')"><span>📋</span><b>Manager Login</b></button>
+          <button class="role-login" data-role="secretary" onclick="selectLoginRole('secretary')"><span>📋</span><b>महासचिव Login</b></button>
           <button class="role-login" data-role="coordinator" onclick="selectLoginRole('coordinator')"><span>🎓</span><b>Coordinator Login</b></button>
           <button class="role-login" data-role="treasurer" onclick="selectLoginRole('treasurer')"><span>💼</span><b>Treasurer Login</b></button>
         </div>
@@ -676,14 +678,13 @@ function login(){
 async function doLogin(){
   const msgBox=document.getElementById("msg");
   try{
-    if(selectedLoginRole === "manager"){
-      throw new Error("Manager login अभी configure नहीं है। कृपया Admin या Coordinator चुनें।");
-    }
-    const endpoint = selectedLoginRole === "coordinator" ? "/api/coordinator/login" : (selectedLoginRole === "treasurer" ? "/api/treasurer/login" : "/api/admin/login");
+    const endpoint = selectedLoginRole === "secretary" ? "/api/secretary/login" :
+      (selectedLoginRole === "coordinator" ? "/api/coordinator/login" :
+      (selectedLoginRole === "treasurer" ? "/api/treasurer/login" : "/api/admin/login"));
     const data = await api(endpoint, {method:"POST",body:JSON.stringify({username:document.getElementById("user").value,password:document.getElementById("pass").value})});
     token = data.token;
     currentRole = data.role || selectedLoginRole;
-    current = currentRole === "coordinator" ? "internships" : (currentRole === "treasurer" ? "financeDashboard" : "dashboard");
+    current = currentRole === "secretary" ? "secretaryPanel" : (currentRole === "coordinator" ? "internships" : (currentRole === "treasurer" ? "financeDashboard" : "dashboard"));
     localStorage.setItem("nisha_token",token);
     localStorage.setItem("nisha_role",currentRole);
     render();
@@ -692,6 +693,122 @@ async function doLogin(){
   }
 }
 
+
+
+/* =========================================================
+   MAHASACHIV PANEL — 15 functions from the supplied reference image
+   ========================================================= */
+const secretaryFeatures = [
+  ["member_add_request","नए सदस्य जोड़ना","अनुमति सहित सदस्य जोड़ने का अनुरोध","＋"],
+  ["member_applications","सदस्यता आवेदन देखना","प्राप्त सदस्यता आवेदनों की सूची","♧"],
+  ["meeting","मीटिंग आयोजित करना","बैठक की तारीख, समय और स्थान दर्ज करें","📅"],
+  ["meeting_notice","मीटिंग नोटिस जारी करना","सदस्यों के लिए बैठक सूचना तैयार करें","📣"],
+  ["meeting_minutes","मीटिंग की कार्यवाही लिखना","बैठक में लिए गए निर्णय और कार्यवाही","📝"],
+  ["attendance","सदस्यों की उपस्थिति","बैठकवार उपस्थिति रिकॉर्ड करें","✓"],
+  ["proposal","प्रस्ताव तैयार करना","समिति/संस्था के लिए प्रस्ताव तैयार करें","📄"],
+  ["official_letter","आधिकारिक पत्र तैयार करना","पत्र का विषय, प्राप्तकर्ता और सामग्री","✉"],
+  ["program_report","कार्यक्रमों की रिपोर्ट","कार्यक्रम की गतिविधि और परिणाम रिपोर्ट","📊"],
+  ["volunteers","वॉलंटियर रिकॉर्ड","स्वयंसेवक आवेदन और रिकॉर्ड देखें","🤝"],
+  ["office_bearers","पदाधिकारियों की सूची","सूची देखें या संशोधन का अनुरोध करें","👥"],
+  ["annual_report","वार्षिक रिपोर्ट","वार्षिक गतिविधियों की रिपोर्ट तैयार करें","📚"],
+  ["documents","दस्तावेज अपलोड करना","संस्था के दस्तावेज सुरक्षित रूप से अपलोड करें","📎"],
+  ["pending_task","लंबित कार्यों की निगरानी","जिम्मेदार व्यक्ति और समय-सीमा ट्रैक करें","⏳"],
+  ["president_report","अध्यक्ष को रिपोर्ट भेजना","अध्यक्ष के लिए रिपोर्ट/अपडेट दर्ज करें","📨"]
+];
+let secretaryActiveFeature = "";
+async function renderSecretaryPanel(){
+  const content=document.getElementById("content");
+  if(!content)return;
+  content.innerHTML=`
+    <div class="row"><div><div class="small" style="font-weight:800;letter-spacing:.12em;color:#0f7657">NISHA SEVA FOUNDATION · SECRETARIAT</div><h2>महासचिव पैनल</h2><p class="small">संस्था के प्रशासनिक कार्य, बैठकें, सदस्य, रिपोर्ट और दस्तावेज</p></div><span class="status active">महासचिव Workspace</span></div>
+    <div class="easy-help">महासचिव के सभी 15 कार्य यहाँ उपलब्ध हैं। नए सदस्य जोड़ने का अनुरोध अध्यक्ष की अनुमति के लिए भेजा जाएगा; इससे कोई सदस्य अपने-आप सक्रिय नहीं होगा।</div>
+    <div class="easy-action-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+      ${secretaryFeatures.map(f=>`<button class="easy-action" onclick="secretaryOpenFeature('${f[0]}')"><span class="ea-icon">${f[3]}</span><span><b>${f[1]}</b><small>${f[2]}</small></span></button>`).join("")}
+    </div>
+    <div class="small" style="margin-top:16px">सुरक्षा: महासचिव को केवल सचिवालय के कार्यों तक सीमित Access दिया गया है। Finance, Admin Settings और अन्य संवेदनशील Modules उपलब्ध नहीं हैं।</div>`;
+}
+async function secretaryOpenFeature(key){
+  secretaryActiveFeature=key;
+  const content=document.getElementById("content");
+  const feature=secretaryFeatures.find(f=>f[0]===key);
+  if(!content||!feature)return;
+  content.innerHTML=`<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2><p class="small">${feature[2]}</p></div><button class="muted" onclick="renderSecretaryPanel()">← सभी कार्य</button></div><div class="small">लोड हो रहा है…</div>`;
+  try{
+    if(key==="member_applications" || key==="volunteers"){
+      const rows=await api(key==="member_applications"?"/api/members":"/api/volunteers");
+      const fields=key==="member_applications"?["name","fullName","applicantName","email","phone","mobile","status","submittedAt"]:["name","fullName","email","phone","status","submittedAt","volunteerId"];
+      content.innerHTML=secretaryFeatureHeader(feature)+
+        `<div class="easy-help">${key==="member_applications"?"सदस्यता आवेदन केवल देखने के लिए उपलब्ध हैं। अंतिम स्वीकृति अध्यक्ष/Admin के पास रहेगी।":"वॉलंटियर रिकॉर्ड देखने के लिए उपलब्ध हैं। Approve/Reject और ID जारी करने का अधिकार Admin के पास रहेगा।"}</div>`+
+        (rows.length?rows.map(x=>secretaryRecordCard(x,fields)).join(""):'<div class="ok">अभी कोई रिकॉर्ड उपलब्ध नहीं है।</div>');
+      return;
+    }
+    if(key==="documents"){
+      const rows=await api("/api/secretary/records?category=document");
+      content.innerHTML=secretaryFeatureHeader(feature)+`
+        <div class="item"><h3>दस्तावेज अपलोड करें</h3><form id="secretaryDocForm"><label>दस्तावेज का नाम</label><input name="title" required maxlength="180" placeholder="जैसे: मीटिंग कार्यवाही 2026"><br><br><label>फाइल (PDF, JPG, PNG, DOC, DOCX · अधिकतम 10 MB)</label><input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"><br><br><button class="primary">सुरक्षित अपलोड करें</button></form><div id="secretaryDocMsg"></div></div>
+        <h3>अपलोड किए गए दस्तावेज</h3>`+
+        (rows.length?rows.map(x=>`<div class="item"><b>${esc(x.title||"दस्तावेज")}</b><p class="small">${esc(x.fileName||"")} · ${esc(x.createdAt||"")}</p><button class="muted" onclick="secretaryDownloadDoc(${Number(x.id)})">Download</button></div>`).join(""):'<div class="ok">अभी कोई दस्तावेज अपलोड नहीं है।</div>');
+      document.getElementById("secretaryDocForm").addEventListener("submit",secretaryUploadDocument);
+      return;
+    }
+    if(key==="member_add_request"){
+      content.innerHTML=secretaryFeatureHeader(feature)+`
+        <div class="easy-help">यह अनुरोध अध्यक्ष/Admin की अनुमति के लिए जाएगा। अनुमति मिलने से पहले व्यक्ति सदस्य सूची में सक्रिय नहीं होगा।</div>
+        <form class="item" id="secretaryMemberForm"><label>सदस्य का पूरा नाम</label><input name="name" required maxlength="140"><br><br><label>मोबाइल नंबर</label><input name="phone" required maxlength="20"><br><br><label>Email (वैकल्पिक)</label><input name="email" type="email" maxlength="180"><br><br><label>पता / क्षेत्र</label><input name="address" maxlength="300"><br><br><label>सदस्य बनाने का कारण / टिप्पणी</label><textarea name="reason" rows="3" maxlength="3000"></textarea><br><br><button class="primary">अध्यक्ष की अनुमति हेतु भेजें</button><div id="secretaryMemberMsg"></div></form>`;
+      document.getElementById("secretaryMemberForm").addEventListener("submit",secretarySubmitMemberRequest);
+      return;
+    }
+    const category=key==="office_bearers"?"office_bearer_request":key;
+    const rows=await api("/api/secretary/records?category="+encodeURIComponent(category));
+    const extra=key==="office_bearers"?`<div class="easy-help">पदाधिकारियों की उपलब्ध सूची देखें या नए/संशोधित विवरण का अनुरोध भेजें। अंतिम बदलाव अध्यक्ष/Admin की स्वीकृति से होगा।</div><button class="muted" onclick="secretaryOpenOfficeBearerList()">पदाधिकारियों की सूची देखें</button>`:"";
+    content.innerHTML=secretaryFeatureHeader(feature)+extra+`
+      <form class="item" id="secretaryRecordForm"><h3>नया रिकॉर्ड तैयार करें</h3>
+        <label>शीर्षक</label><input name="title" required maxlength="180" placeholder="शीर्षक लिखें">
+        <br><br><label>तारीख</label><input name="date" type="date">
+        <br><br><label>स्थान / संबंधित व्यक्ति (यदि लागू हो)</label><input name="location" maxlength="220">
+        <br><br><label>विवरण / कार्यवाही / रिपोर्ट</label><textarea name="content" rows="6" required maxlength="12000" placeholder="पूरा विवरण लिखें"></textarea>
+        <br><br><label>स्थिति</label><select name="status"><option value="draft">Draft</option><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select>
+        <br><br><button class="primary">रिकॉर्ड सुरक्षित करें</button><div id="secretaryRecordMsg"></div>
+      </form>
+      <h3>पहले से सुरक्षित रिकॉर्ड (${rows.length})</h3>`+
+      (rows.length?rows.map(x=>secretaryRecordCard(x,["title","date","location","status","content","createdAt"])).join(""):'<div class="ok">अभी कोई रिकॉर्ड नहीं है।</div>');
+    document.getElementById("secretaryRecordForm").addEventListener("submit",secretarySaveRecord);
+  }catch(e){content.innerHTML=secretaryFeatureHeader(feature)+`<div class="err">${esc(e.message||"डेटा लोड नहीं हो पाया।")}</div>`;}
+}
+function secretaryFeatureHeader(feature){
+  return `<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2><span class="small">${feature[2]}</span></div><button class="muted" onclick="renderSecretaryPanel()">← सभी कार्य</button></div>`;
+}
+function secretaryRecordCard(x,fields){
+  const labels={name:"नाम",fullName:"पूरा नाम",applicantName:"आवेदक",email:"Email",phone:"मोबाइल",mobile:"मोबाइल",status:"स्थिति",submittedAt:"जमा तारीख",volunteerId:"Volunteer ID",title:"शीर्षक",date:"तारीख",location:"स्थान",content:"विवरण",createdAt:"बनाया गया"};
+  return `<div class="item"><div class="row"><b>${esc(x.title||x.name||x.fullName||x.applicantName||("Record #"+(x.id||"")))}</b><span class="status ${["completed","active","approved"].includes(String(x.status||"").toLowerCase())?"active":"pending"}">${esc(x.status||"रिकॉर्ड")}</span></div><div class="volunteer-info">${fields.filter(k=>x[k]!==undefined&&x[k]!==null&&x[k]!=="").map(k=>`<div class="info-box"><strong>${labels[k]||k}</strong>${esc(typeof x[k]==="object"?JSON.stringify(x[k]):x[k])}</div>`).join("")}</div></div>`;
+}
+async function secretarySubmitMemberRequest(ev){
+  ev.preventDefault();const form=ev.currentTarget;const data=Object.fromEntries(new FormData(form).entries());const msg=document.getElementById("secretaryMemberMsg");
+  try{await api("/api/secretary/member-requests",{method:"POST",body:JSON.stringify(data)});msg.innerHTML='<div class="ok">अनुरोध अध्यक्ष/Admin की अनुमति के लिए सुरक्षित कर दिया गया है।</div>';form.reset();}
+  catch(e){msg.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
+}
+async function secretarySaveRecord(ev){
+  ev.preventDefault();const form=ev.currentTarget;const data=Object.fromEntries(new FormData(form).entries());const msg=document.getElementById("secretaryRecordMsg");
+  try{await api("/api/secretary/records",{method:"POST",body:JSON.stringify({...data,category:secretaryActiveFeature==="office_bearers"?"office_bearer_request":secretaryActiveFeature})});msg.innerHTML='<div class="ok">रिकॉर्ड सुरक्षित हो गया।</div>';form.reset();secretaryOpenFeature(secretaryActiveFeature);}
+  catch(e){msg.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
+}
+async function secretaryUploadDocument(ev){
+  ev.preventDefault();const form=ev.currentTarget;const msg=document.getElementById("secretaryDocMsg");
+  try{await api("/api/secretary/documents",{method:"POST",body:new FormData(form)});msg.innerHTML='<div class="ok">दस्तावेज सुरक्षित रूप से अपलोड हो गया।</div>';secretaryOpenFeature("documents");}
+  catch(e){msg.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
+}
+async function secretaryDownloadDoc(id){
+  try{const response=await fetch(API+"/api/secretary/documents/"+encodeURIComponent(id)+"/download",{headers:{Authorization:"Bearer "+token}});
+    if(!response.ok)throw new Error("Download नहीं हो पाया।");
+    const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="NSF-document";a.click();URL.revokeObjectURL(url);
+  }catch(e){alert(e.message);}
+}
+async function secretaryOpenOfficeBearerList(){
+  try{const rows=await api("/api/secretary/records?category=office_bearer");const content=document.getElementById("content");
+    content.innerHTML=secretaryFeatureHeader(secretaryFeatures.find(f=>f[0]==="office_bearers"))+
+      (rows.length?rows.map(x=>secretaryRecordCard(x,["title","content","status","createdAt"])).join(""):'<div class="ok">पदाधिकारियों की सूची अभी दर्ज नहीं है। आप संशोधन अनुरोध भेज सकते हैं।</div>');
+  }catch(e){alert(e.message);}
+}
 
 /* =========================================================
    LOGOUT
@@ -845,6 +962,17 @@ async function renderStudentImpactSuite(){
 }
 
 
+
+async function renderSecretariatInbox(){
+  const content=document.getElementById("content");
+  content.innerHTML='<h2>महासचिव रिपोर्ट / Inbox</h2><p class="small">महासचिव द्वारा तैयार बैठक, प्रस्ताव, रिपोर्ट, कार्य और अनुरोध</p><p>लोड हो रहा है…</p>';
+  try{
+    const rows=await api("/api/secretary/records");
+    content.innerHTML=`<div class="row"><div><h2>महासचिव रिपोर्ट / Inbox</h2><span class="small">${rows.length} रिकॉर्ड</span></div><button class="primary" onclick="renderSecretariatInbox()">↻ Refresh</button></div>`+
+      (rows.length?rows.map(x=>`<div class="item"><div class="row"><div><b>${esc(x.title||x.name||("Record #"+x.id))}</b><div class="small">${esc(x.category||"")} · ${esc(x.createdAt||"")}</div></div><span class="status ${["approved","completed","uploaded"].includes(String(x.status||"").toLowerCase())?"active":"pending"}">${esc(x.status||"pending")}</span></div><p style="white-space:pre-wrap;margin-top:10px">${esc(x.content||x.reason||"")}</p>${x.category==="member_add_request"&&x.status!=="approved"?`<button class="success" onclick="approveSecretaryMemberRequest(${Number(x.id)})">सदस्य अनुरोध स्वीकृत करें</button>`:""}</div>`).join(""):'<div class="ok">अभी कोई सचिवालय रिकॉर्ड नहीं है।</div>');
+  }catch(e){content.innerHTML=`<div class="err">${esc(e.message||"Secretariat inbox लोड नहीं हो पाया।")}</div>`;}
+}
+
 /* =========================================================
    ADMIN HOME DASHBOARD — UI ONLY
    Existing module routes and APIs remain unchanged.
@@ -948,11 +1076,14 @@ async function render(){
   }
 
   const coordinatorTabs = ["internships","internshipDocuments","studentPortal","projectSubmissions","studentImpactSuite"];
+  const secretaryTabs = ["secretaryPanel"];
   const financeTabs = ["financeDashboard","financeDonations","financeIncome","financeExpenses","financeApprovals","financeLedger","financeAccounts","financeReconcile","financeReports","financeAudit"];
+  if(currentRole === "secretary" && !secretaryTabs.includes(current)) current = "secretaryPanel";
   if(currentRole === "coordinator" && !coordinatorTabs.includes(current)) current = "internships";
   if(currentRole === "treasurer" && !financeTabs.includes(current)) current = "financeDashboard";
-  const visibleTabs = currentRole === "coordinator" ? tabs.filter(t => coordinatorTabs.includes(t[0])) :
-    (currentRole === "treasurer" ? tabs.filter(t => financeTabs.includes(t[0]) && t[0] !== "financeApprovals") : tabs);
+  const visibleTabs = currentRole === "secretary" ? tabs.filter(t => secretaryTabs.includes(t[0])) :
+    (currentRole === "coordinator" ? tabs.filter(t => coordinatorTabs.includes(t[0])) :
+    (currentRole === "treasurer" ? tabs.filter(t => financeTabs.includes(t[0]) && t[0] !== "financeApprovals") : tabs.filter(t => t[0] !== "secretaryPanel")));
 
   app.innerHTML = `
 
@@ -961,7 +1092,7 @@ async function render(){
       <div>
         <b>🌿 Nisha Seva Foundation</b>
         <br>
-        <small>${currentRole === "coordinator" ? "Internship Coordinator Panel" : (currentRole === "treasurer" ? "Treasurer · Finance & Accounts" : "Admin Panel")}</small>
+        <small>${currentRole === "secretary" ? "महासचिव · Secretariat Panel" : (currentRole === "coordinator" ? "Internship Coordinator Panel" : (currentRole === "treasurer" ? "Treasurer · Finance & Accounts" : "Admin Panel"))}</small>
       </div>
 
       <button
@@ -1003,6 +1134,15 @@ async function render(){
 
   `;
 
+
+  if(currentRole === "secretary"){
+    await renderSecretaryPanel();
+    return;
+  }
+  if(current === "secretariatInbox" && currentRole === "admin"){
+    await renderSecretariatInbox();
+    return;
+  }
 
   if(current === "dashboard"){
     renderDashboard();
@@ -1147,6 +1287,14 @@ async function render(){
     }
 
 
+    if(current === "members" && currentRole === "admin"){
+      try{
+        const requests = await api("/api/secretary/member-requests");
+        html += `<div class="item"><div class="row"><div><h3>महासचिव द्वारा भेजे गए सदस्य अनुरोध</h3><span class="small">${requests.length} अनुरोध</span></div></div>`+
+          (requests.length ? requests.map(r=>`<div class="item"><div class="row"><b>${esc(r.name||"नया सदस्य")}</b><span class="status ${r.status==="approved"?"active":"pending"}">${esc(r.status||"pending_approval")}</span></div><p class="small">मोबाइल: ${esc(r.phone||"—")} · Email: ${esc(r.email||"—")}</p><p>${esc(r.reason||"")}</p>${r.status!=="approved"?`<button class="success" onclick="approveSecretaryMemberRequest(${Number(r.id)})">अध्यक्ष/Admin स्वीकृति दें</button>`:"<span class='small'>सदस्य रिकॉर्ड में जोड़ा गया</span>"}</div>`).join("") : '<p class="small">अभी कोई नया सदस्य अनुरोध नहीं है।</p>')+`</div>`;
+      }catch(requestError){ html += `<div class="err">महासचिव सदस्य अनुरोध लोड नहीं हुए: ${esc(requestError.message)}</div>`; }
+    }
+
     content.innerHTML = html;
 
   }
@@ -1159,6 +1307,15 @@ async function render(){
 
 }
 
+
+async function approveSecretaryMemberRequest(id){
+  if(!window.confirm("इस सदस्य को स्वीकृति देकर Members सूची में Active करना है?")) return;
+  try{
+    await api("/api/secretary/member-requests/"+encodeURIComponent(id)+"/approve",{method:"POST",body:JSON.stringify({})});
+    alert("सदस्य अनुरोध स्वीकृत हो गया।");
+    render();
+  }catch(error){alert(error.message||"स्वीकृति नहीं हो पाई।");}
+}
 
 /* Search bar for all record lists; filters visible cards only. */
 function addRecordSearch(title, count){
