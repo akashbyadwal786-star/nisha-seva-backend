@@ -508,6 +508,16 @@ header button{background:#f0b633!important;color:#182333!important}
 
 <div id="app"></div>
 
+<style id="nsf-four-panel-top-switcher">
+header{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.nsf-header-brand{display:flex;flex-direction:column;gap:3px;min-width:190px}
+.nsf-header-brand small{color:#dce6ef;font-size:11px;letter-spacing:.04em}
+.nsf-panel-switcher{display:flex;align-items:center;justify-content:center;gap:7px;flex:1;flex-wrap:wrap}
+.nsf-panel-switcher button{min-height:36px;padding:8px 11px;border:1px solid #ffffff38;border-radius:10px;background:#ffffff12;color:#fff;font-size:12px;font-weight:750;white-space:nowrap}
+.nsf-panel-switcher button:hover,.nsf-panel-switcher button.active{background:#f5c044;color:#142536;border-color:#f5c044}
+@media(max-width:760px){.nsf-panel-switcher{order:3;flex-basis:100%;justify-content:flex-start}.nsf-panel-switcher button{flex:1 1 calc(50% - 7px)}.nsf-header-brand{flex:1}}
+</style>
+
 <script>
 
 /* =========================================================
@@ -527,8 +537,8 @@ let volunteerCache = {};
    ========================================================= */
 
 const tabs = [
-  ["secretaryPanel","महासचिव पैनल"],
-  ["secretariatInbox","महासचिव रिपोर्ट / Inbox"],
+  ["secretaryPanel","General Secretary Panel"],
+  ["secretariatInbox","General Secretary Reports / Inbox"],
   ["dashboard","Dashboard"],
   ["programs","Programs"],
   ["events","Events"],
@@ -645,18 +655,18 @@ let selectedLoginRole="admin";
 function selectLoginRole(role){
   selectedLoginRole=role;
   document.querySelectorAll(".role-login").forEach(b=>b.classList.toggle("active",b.dataset.role===role));
-  const heading=document.getElementById("loginHeading"); if(heading)heading.textContent=({admin:"Admin Panel Login",secretary:"महासचिव Login",coordinator:"Coordinator Login",treasurer:"Treasurer Login"})[role];
+  const heading=document.getElementById("loginHeading"); if(heading)heading.textContent=({admin:"Admin Panel Login",secretary:"General Secretary Login",coordinator:"Coordinator Login",treasurer:"Treasurer Login"})[role];
   const userInput=document.getElementById("user"); if(userInput && role==="treasurer") userInput.value="NISHASEVA";
   const msg=document.getElementById("msg"); if(msg)msg.innerHTML="";
 }
-function login(){
+function login(initialRole="admin"){
   app.innerHTML = `
     <div class="wrap" style="display:block;max-width:560px">
       <div class="card" style="max-width:520px;margin:55px auto;padding:28px">
         <div style="text-align:center;margin-bottom:16px"><div style="font-size:42px">🌿</div><h2 style="margin:6px 0;color:#0b2035">Nisha Seva Foundation</h2><p class="small">Service · Education · Environment · Empowerment</p></div>
         <div class="role-login-grid">
           <button class="role-login active" data-role="admin" onclick="selectLoginRole('admin')"><span>🛡️</span><b>Admin Login</b></button>
-          <button class="role-login" data-role="secretary" onclick="selectLoginRole('secretary')"><span>📋</span><b>महासचिव Login</b></button>
+          <button class="role-login" data-role="secretary" onclick="selectLoginRole('secretary')"><span>📋</span><b>General Secretary Login</b></button>
           <button class="role-login" data-role="coordinator" onclick="selectLoginRole('coordinator')"><span>🎓</span><b>Coordinator Login</b></button>
           <button class="role-login" data-role="treasurer" onclick="selectLoginRole('treasurer')"><span>💼</span><b>Treasurer Login</b></button>
         </div>
@@ -665,10 +675,32 @@ function login(){
         <br><br><label for="pass"><b>Password</b></label><input id="pass" type="password" autocomplete="current-password" placeholder="Enter password">
         <br><br><button class="primary" style="width:100%;padding:13px" onclick="doLogin()">🔐 Login Securely</button>
         <div id="msg"></div>
-        <div class="role-note">Coordinator login के लिए Render backend में COORDINATOR_USERNAME और COORDINATOR_PASSWORD environment variables सेट होने चाहिए। Coordinator को Internship Applications, Documents, Student Portal Accounts/QR और Student Projects के कार्य मिलेंगे।</div>
+        <div class="role-note">Coordinator login requires COORDINATOR_USERNAME and COORDINATOR_PASSWORD to be configured in Hostinger Environment. The Coordinator can access Internship Applications, Documents, Student Portal Accounts/QR and Student Projects.</div>
       </div>
     </div>`;
-  selectLoginRole("admin");
+  selectLoginRole(initialRole);
+}
+
+/* =========================================================
+   TOP BAR PANEL SWITCHER — re-authenticate when changing roles
+   ========================================================= */
+async function openPanelLogin(role){
+  const validRoles=["admin","secretary","coordinator","treasurer"];
+  if(!validRoles.includes(role)) return;
+  if(token && currentRole===role){
+    current=role==="secretary"?"secretaryPanel":(role==="coordinator"?"internships":(role==="treasurer"?"financeDashboard":"dashboard"));
+    await render();
+    return;
+  }
+  if(token){
+    try{await api("/api/admin/logout",{method:"POST"});}catch(_){}
+  }
+  localStorage.removeItem("nisha_token");
+  localStorage.removeItem("nisha_role");
+  token="";
+  currentRole="admin";
+  current="dashboard";
+  login(role);
 }
 
 /* =========================================================
@@ -699,114 +731,114 @@ async function doLogin(){
    MAHASACHIV PANEL — 15 functions from the supplied reference image
    ========================================================= */
 const secretaryFeatures = [
-  ["member_add_request","नए सदस्य जोड़ना","अनुमति सहित सदस्य जोड़ने का अनुरोध","＋"],
-  ["member_applications","सदस्यता आवेदन देखना","प्राप्त सदस्यता आवेदनों की सूची","♧"],
-  ["meeting","मीटिंग आयोजित करना","बैठक की तारीख, समय और स्थान दर्ज करें","📅"],
-  ["meeting_notice","मीटिंग नोटिस जारी करना","सदस्यों के लिए बैठक सूचना तैयार करें","📣"],
-  ["meeting_minutes","मीटिंग की कार्यवाही लिखना","बैठक में लिए गए निर्णय और कार्यवाही","📝"],
-  ["attendance","सदस्यों की उपस्थिति","बैठकवार उपस्थिति रिकॉर्ड करें","✓"],
-  ["proposal","प्रस्ताव तैयार करना","समिति/संस्था के लिए प्रस्ताव तैयार करें","📄"],
-  ["official_letter","आधिकारिक पत्र तैयार करना","पत्र का विषय, प्राप्तकर्ता और सामग्री","✉"],
-  ["program_report","कार्यक्रमों की रिपोर्ट","कार्यक्रम की गतिविधि और परिणाम रिपोर्ट","📊"],
-  ["volunteers","वॉलंटियर रिकॉर्ड","स्वयंसेवक आवेदन और रिकॉर्ड देखें","🤝"],
-  ["office_bearers","पदाधिकारियों की सूची","सूची देखें या संशोधन का अनुरोध करें","👥"],
-  ["annual_report","वार्षिक रिपोर्ट","वार्षिक गतिविधियों की रिपोर्ट तैयार करें","📚"],
-  ["documents","दस्तावेज अपलोड करना","संस्था के दस्तावेज सुरक्षित रूप से अपलोड करें","📎"],
-  ["pending_task","लंबित कार्यों की निगरानी","जिम्मेदार व्यक्ति और समय-सीमा ट्रैक करें","⏳"],
-  ["president_report","अध्यक्ष को रिपोर्ट भेजना","अध्यक्ष के लिए रिपोर्ट/अपडेट दर्ज करें","📨"]
+  ["member_add_request","Add New Member","Submit a new membership request for approval","＋"],
+  ["member_applications","View Membership Applications","Review submitted membership applications","♧"],
+  ["meeting","Schedule a Meeting","Record the meeting date, time and venue","📅"],
+  ["meeting_notice","Issue Meeting Notice","Prepare meeting notices for members","📣"],
+  ["meeting_minutes","Record Meeting Minutes","Document meeting decisions and proceedings","📝"],
+  ["attendance","Member Attendance","Maintain meeting-wise attendance records","✓"],
+  ["proposal","Prepare a Proposal","Draft proposals for the committee or foundation","📄"],
+  ["official_letter","Prepare an Official Letter","Create letters with recipient, subject and content","✉"],
+  ["program_report","Program Reports","Record program activities and outcomes","📊"],
+  ["volunteers","Volunteer Records","View volunteer applications and records","🤝"],
+  ["office_bearers","Office Bearers List","View the list or request an update","👥"],
+  ["annual_report","Annual Report","Prepare the foundation's annual activity report","📚"],
+  ["documents","Upload Documents","Securely upload foundation documents","📎"],
+  ["pending_task","Pending Task Tracking","Track task owners and due dates","⏳"],
+  ["president_report","Send Report to President","Prepare and submit reports or updates for the President","📨"]
 ];
 let secretaryActiveFeature = "";
 async function renderSecretaryPanel(){
   const content=document.getElementById("content");
   if(!content)return;
   content.innerHTML=`
-    <div class="row"><div><div class="small" style="font-weight:800;letter-spacing:.12em;color:#0f7657">NISHA SEVA FOUNDATION · SECRETARIAT</div><h2>महासचिव पैनल</h2><p class="small">संस्था के प्रशासनिक कार्य, बैठकें, सदस्य, रिपोर्ट और दस्तावेज</p></div><span class="status active">महासचिव Workspace</span></div>
-    <div class="easy-help">महासचिव के सभी 15 कार्य यहाँ उपलब्ध हैं। नए सदस्य जोड़ने का अनुरोध अध्यक्ष की अनुमति के लिए भेजा जाएगा; इससे कोई सदस्य अपने-आप सक्रिय नहीं होगा।</div>
+    <div class="row"><div><div class="small" style="font-weight:800;letter-spacing:.12em;color:#0f7657">NISHA SEVA FOUNDATION · SECRETARIAT</div><h2>General Secretary Panel</h2><p class="small">Manage foundation administration, meetings, members, reports and documents.</p></div><span class="status active">General Secretary Workspace</span></div>
+    <div class="easy-help">All 15 General Secretary functions are available here. New member requests are sent to the President/Admin for approval; submitting a request does not activate a member.</div>
     <div class="easy-action-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
       ${secretaryFeatures.map(f=>`<button class="easy-action" onclick="secretaryOpenFeature('${f[0]}')"><span class="ea-icon">${f[3]}</span><span><b>${f[1]}</b><small>${f[2]}</small></span></button>`).join("")}
     </div>
-    <div class="small" style="margin-top:16px">सुरक्षा: महासचिव को केवल सचिवालय के कार्यों तक सीमित Access दिया गया है। Finance, Admin Settings और अन्य संवेदनशील Modules उपलब्ध नहीं हैं।</div>`;
+    <div class="small" style="margin-top:16px">Security: General Secretary access is limited to Secretariat functions. Finance, Admin Settings and other sensitive modules are not available.</div>`;
 }
 async function secretaryOpenFeature(key){
   secretaryActiveFeature=key;
   const content=document.getElementById("content");
   const feature=secretaryFeatures.find(f=>f[0]===key);
   if(!content||!feature)return;
-  content.innerHTML=`<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2><p class="small">${feature[2]}</p></div><button class="muted" onclick="renderSecretaryPanel()">← सभी कार्य</button></div><div class="small">लोड हो रहा है…</div>`;
+  content.innerHTML=`<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2><p class="small">${feature[2]}</p></div><button class="muted" onclick="renderSecretaryPanel()">← All Functions</button></div><div class="small">Loading…</div>`;
   try{
     if(key==="member_applications" || key==="volunteers"){
       const rows=await api(key==="member_applications"?"/api/members":"/api/volunteers");
       const fields=key==="member_applications"?["name","fullName","applicantName","email","phone","mobile","status","submittedAt"]:["name","fullName","email","phone","status","submittedAt","volunteerId"];
       content.innerHTML=secretaryFeatureHeader(feature)+
-        `<div class="easy-help">${key==="member_applications"?"सदस्यता आवेदन केवल देखने के लिए उपलब्ध हैं। अंतिम स्वीकृति अध्यक्ष/Admin के पास रहेगी।":"वॉलंटियर रिकॉर्ड देखने के लिए उपलब्ध हैं। Approve/Reject और ID जारी करने का अधिकार Admin के पास रहेगा।"}</div>`+
-        (rows.length?rows.map(x=>secretaryRecordCard(x,fields)).join(""):'<div class="ok">अभी कोई रिकॉर्ड उपलब्ध नहीं है।</div>');
+        `<div class="easy-help">${key==="member_applications"?"Membership applications are view-only. Final approval remains with the President/Admin.":"Volunteer records are view-only. Only Admin can approve/reject applications and issue IDs."}</div>`+
+        (rows.length?rows.map(x=>secretaryRecordCard(x,fields)).join(""):'<div class="ok">No records are available yet.</div>');
       return;
     }
     if(key==="documents"){
       const rows=await api("/api/secretary/records?category=document");
       content.innerHTML=secretaryFeatureHeader(feature)+`
-        <div class="item"><h3>दस्तावेज अपलोड करें</h3><form id="secretaryDocForm"><label>दस्तावेज का नाम</label><input name="title" required maxlength="180" placeholder="जैसे: मीटिंग कार्यवाही 2026"><br><br><label>फाइल (PDF, JPG, PNG, DOC, DOCX · अधिकतम 10 MB)</label><input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"><br><br><button class="primary">सुरक्षित अपलोड करें</button></form><div id="secretaryDocMsg"></div></div>
-        <h3>अपलोड किए गए दस्तावेज</h3>`+
-        (rows.length?rows.map(x=>`<div class="item"><b>${esc(x.title||"दस्तावेज")}</b><p class="small">${esc(x.fileName||"")} · ${esc(x.createdAt||"")}</p><button class="muted" onclick="secretaryDownloadDoc(${Number(x.id)})">Download</button></div>`).join(""):'<div class="ok">अभी कोई दस्तावेज अपलोड नहीं है।</div>');
+        <div class="item"><h3>Upload Document</h3><form id="secretaryDocForm"><label>Document Title</label><input name="title" required maxlength="180" placeholder="e.g. Meeting Minutes 2026"><br><br><label>File (PDF, JPG, PNG, DOC, DOCX · Maximum 10 MB)</label><input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"><br><br><button class="primary">Upload Securely</button></form><div id="secretaryDocMsg"></div></div>
+        <h3>Uploaded Documents</h3>`+
+        (rows.length?rows.map(x=>`<div class="item"><b>${esc(x.title||"Document")}</b><p class="small">${esc(x.fileName||"")} · ${esc(x.createdAt||"")}</p><button class="muted" onclick="secretaryDownloadDoc(${Number(x.id)})">Download</button></div>`).join(""):'<div class="ok">No documents have been uploaded yet.</div>');
       document.getElementById("secretaryDocForm").addEventListener("submit",secretaryUploadDocument);
       return;
     }
     if(key==="member_add_request"){
       content.innerHTML=secretaryFeatureHeader(feature)+`
-        <div class="easy-help">यह अनुरोध अध्यक्ष/Admin की अनुमति के लिए जाएगा। अनुमति मिलने से पहले व्यक्ति सदस्य सूची में सक्रिय नहीं होगा।</div>
-        <form class="item" id="secretaryMemberForm"><label>सदस्य का पूरा नाम</label><input name="name" required maxlength="140"><br><br><label>मोबाइल नंबर</label><input name="phone" required maxlength="20"><br><br><label>Email (वैकल्पिक)</label><input name="email" type="email" maxlength="180"><br><br><label>पता / क्षेत्र</label><input name="address" maxlength="300"><br><br><label>सदस्य बनाने का कारण / टिप्पणी</label><textarea name="reason" rows="3" maxlength="3000"></textarea><br><br><button class="primary">अध्यक्ष की अनुमति हेतु भेजें</button><div id="secretaryMemberMsg"></div></form>`;
+        <div class="easy-help">This request will be sent to the President/Admin for approval. The person will not become an active member until approval is granted.</div>
+        <form class="item" id="secretaryMemberForm"><label>Full Name</label><input name="name" required maxlength="140"><br><br><label>Mobile Number</label><input name="phone" required maxlength="20"><br><br><label>Email (Optional)</label><input name="email" type="email" maxlength="180"><br><br><label>Address / Area</label><input name="address" maxlength="300"><br><br><label>Reason for Membership / Notes</label><textarea name="reason" rows="3" maxlength="3000"></textarea><br><br><button class="primary">Submit for President Approval</button><div id="secretaryMemberMsg"></div></form>`;
       document.getElementById("secretaryMemberForm").addEventListener("submit",secretarySubmitMemberRequest);
       return;
     }
     const category=key==="office_bearers"?"office_bearer_request":key;
     const rows=await api("/api/secretary/records?category="+encodeURIComponent(category));
-    const extra=key==="office_bearers"?`<div class="easy-help">पदाधिकारियों की उपलब्ध सूची देखें या नए/संशोधित विवरण का अनुरोध भेजें। अंतिम बदलाव अध्यक्ष/Admin की स्वीकृति से होगा।</div><button class="muted" onclick="secretaryOpenOfficeBearerList()">पदाधिकारियों की सूची देखें</button>`:"";
+    const extra=key==="office_bearers"?`<div class="easy-help">View the current office bearers list or request a new/updated entry. Final changes require President/Admin approval.</div><button class="muted" onclick="secretaryOpenOfficeBearerList()">View Office Bearers List</button>`:"";
     content.innerHTML=secretaryFeatureHeader(feature)+extra+`
-      <form class="item" id="secretaryRecordForm"><h3>नया रिकॉर्ड तैयार करें</h3>
-        <label>शीर्षक</label><input name="title" required maxlength="180" placeholder="शीर्षक लिखें">
-        <br><br><label>तारीख</label><input name="date" type="date">
-        <br><br><label>स्थान / संबंधित व्यक्ति (यदि लागू हो)</label><input name="location" maxlength="220">
-        <br><br><label>विवरण / कार्यवाही / रिपोर्ट</label><textarea name="content" rows="6" required maxlength="12000" placeholder="पूरा विवरण लिखें"></textarea>
-        <br><br><label>स्थिति</label><select name="status"><option value="draft">Draft</option><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select>
-        <br><br><button class="primary">रिकॉर्ड सुरक्षित करें</button><div id="secretaryRecordMsg"></div>
+      <form class="item" id="secretaryRecordForm"><h3>Create New Record</h3>
+        <label>Title</label><input name="title" required maxlength="180" placeholder="Enter a title">
+        <br><br><label>Date</label><input name="date" type="date">
+        <br><br><label>Location / Related Person (if applicable)</label><input name="location" maxlength="220">
+        <br><br><label>Details / Proceedings / Report</label><textarea name="content" rows="6" required maxlength="12000" placeholder="Enter the full details"></textarea>
+        <br><br><label>Status</label><select name="status"><option value="draft">Draft</option><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select>
+        <br><br><button class="primary">Save Record</button><div id="secretaryRecordMsg"></div>
       </form>
-      <h3>पहले से सुरक्षित रिकॉर्ड (${rows.length})</h3>`+
-      (rows.length?rows.map(x=>secretaryRecordCard(x,["title","date","location","status","content","createdAt"])).join(""):'<div class="ok">अभी कोई रिकॉर्ड नहीं है।</div>');
+      <h3>Previously Saved Records (${rows.length})</h3>`+
+      (rows.length?rows.map(x=>secretaryRecordCard(x,["title","date","location","status","content","createdAt"])).join(""):'<div class="ok">No records have been created yet.</div>');
     document.getElementById("secretaryRecordForm").addEventListener("submit",secretarySaveRecord);
-  }catch(e){content.innerHTML=secretaryFeatureHeader(feature)+`<div class="err">${esc(e.message||"डेटा लोड नहीं हो पाया।")}</div>`;}
+  }catch(e){content.innerHTML=secretaryFeatureHeader(feature)+`<div class="err">${esc(e.message||"Unable to load data.")}</div>`;}
 }
 function secretaryFeatureHeader(feature){
-  return `<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2><span class="small">${feature[2]}</span></div><button class="muted" onclick="renderSecretaryPanel()">← सभी कार्य</button></div>`;
+  return `<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2><span class="small">${feature[2]}</span></div><button class="muted" onclick="renderSecretaryPanel()">← All Functions</button></div>`;
 }
 function secretaryRecordCard(x,fields){
-  const labels={name:"नाम",fullName:"पूरा नाम",applicantName:"आवेदक",email:"Email",phone:"मोबाइल",mobile:"मोबाइल",status:"स्थिति",submittedAt:"जमा तारीख",volunteerId:"Volunteer ID",title:"शीर्षक",date:"तारीख",location:"स्थान",content:"विवरण",createdAt:"बनाया गया"};
-  return `<div class="item"><div class="row"><b>${esc(x.title||x.name||x.fullName||x.applicantName||("Record #"+(x.id||"")))}</b><span class="status ${["completed","active","approved"].includes(String(x.status||"").toLowerCase())?"active":"pending"}">${esc(x.status||"रिकॉर्ड")}</span></div><div class="volunteer-info">${fields.filter(k=>x[k]!==undefined&&x[k]!==null&&x[k]!=="").map(k=>`<div class="info-box"><strong>${labels[k]||k}</strong>${esc(typeof x[k]==="object"?JSON.stringify(x[k]):x[k])}</div>`).join("")}</div></div>`;
+  const labels={name:"Name",fullName:"Full Name",applicantName:"Applicant",email:"Email",phone:"Mobile",mobile:"Mobile",status:"Status",submittedAt:"Submitted On",volunteerId:"Volunteer ID",title:"Title",date:"Date",location:"Location",content:"Details",createdAt:"Created At"};
+  return `<div class="item"><div class="row"><b>${esc(x.title||x.name||x.fullName||x.applicantName||("Record #"+(x.id||"")))}</b><span class="status ${["completed","active","approved"].includes(String(x.status||"").toLowerCase())?"active":"pending"}">${esc(x.status||"Record")}</span></div><div class="volunteer-info">${fields.filter(k=>x[k]!==undefined&&x[k]!==null&&x[k]!=="").map(k=>`<div class="info-box"><strong>${labels[k]||k}</strong>${esc(typeof x[k]==="object"?JSON.stringify(x[k]):x[k])}</div>`).join("")}</div></div>`;
 }
 async function secretarySubmitMemberRequest(ev){
   ev.preventDefault();const form=ev.currentTarget;const data=Object.fromEntries(new FormData(form).entries());const msg=document.getElementById("secretaryMemberMsg");
-  try{await api("/api/secretary/member-requests",{method:"POST",body:JSON.stringify(data)});msg.innerHTML='<div class="ok">अनुरोध अध्यक्ष/Admin की अनुमति के लिए सुरक्षित कर दिया गया है।</div>';form.reset();}
+  try{await api("/api/secretary/member-requests",{method:"POST",body:JSON.stringify(data)});msg.innerHTML='<div class="ok">The request has been saved for President/Admin approval.</div>';form.reset();}
   catch(e){msg.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
 }
 async function secretarySaveRecord(ev){
   ev.preventDefault();const form=ev.currentTarget;const data=Object.fromEntries(new FormData(form).entries());const msg=document.getElementById("secretaryRecordMsg");
-  try{await api("/api/secretary/records",{method:"POST",body:JSON.stringify({...data,category:secretaryActiveFeature==="office_bearers"?"office_bearer_request":secretaryActiveFeature})});msg.innerHTML='<div class="ok">रिकॉर्ड सुरक्षित हो गया।</div>';form.reset();secretaryOpenFeature(secretaryActiveFeature);}
+  try{await api("/api/secretary/records",{method:"POST",body:JSON.stringify({...data,category:secretaryActiveFeature==="office_bearers"?"office_bearer_request":secretaryActiveFeature})});msg.innerHTML='<div class="ok">Record saved successfully.</div>';form.reset();secretaryOpenFeature(secretaryActiveFeature);}
   catch(e){msg.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
 }
 async function secretaryUploadDocument(ev){
   ev.preventDefault();const form=ev.currentTarget;const msg=document.getElementById("secretaryDocMsg");
-  try{await api("/api/secretary/documents",{method:"POST",body:new FormData(form)});msg.innerHTML='<div class="ok">दस्तावेज सुरक्षित रूप से अपलोड हो गया।</div>';secretaryOpenFeature("documents");}
+  try{await api("/api/secretary/documents",{method:"POST",body:new FormData(form)});msg.innerHTML='<div class="ok">Document uploaded securely.</div>';secretaryOpenFeature("documents");}
   catch(e){msg.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
 }
 async function secretaryDownloadDoc(id){
   try{const response=await fetch(API+"/api/secretary/documents/"+encodeURIComponent(id)+"/download",{headers:{Authorization:"Bearer "+token}});
-    if(!response.ok)throw new Error("Download नहीं हो पाया।");
+    if(!response.ok)throw new Error("Unable to download the file.");
     const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="NSF-document";a.click();URL.revokeObjectURL(url);
   }catch(e){alert(e.message);}
 }
 async function secretaryOpenOfficeBearerList(){
   try{const rows=await api("/api/secretary/records?category=office_bearer");const content=document.getElementById("content");
     content.innerHTML=secretaryFeatureHeader(secretaryFeatures.find(f=>f[0]==="office_bearers"))+
-      (rows.length?rows.map(x=>secretaryRecordCard(x,["title","content","status","createdAt"])).join(""):'<div class="ok">पदाधिकारियों की सूची अभी दर्ज नहीं है। आप संशोधन अनुरोध भेज सकते हैं।</div>');
+      (rows.length?rows.map(x=>secretaryRecordCard(x,["title","content","status","createdAt"])).join(""):'<div class="ok">The office bearers list has not been added yet. You can submit an update request.</div>');
   }catch(e){alert(e.message);}
 }
 
@@ -965,12 +997,12 @@ async function renderStudentImpactSuite(){
 
 async function renderSecretariatInbox(){
   const content=document.getElementById("content");
-  content.innerHTML='<h2>महासचिव रिपोर्ट / Inbox</h2><p class="small">महासचिव द्वारा तैयार बैठक, प्रस्ताव, रिपोर्ट, कार्य और अनुरोध</p><p>लोड हो रहा है…</p>';
+  content.innerHTML='<h2>General Secretary Reports / Inbox</h2><p class="small">Meetings, proposals, reports, tasks and requests submitted by the General Secretary</p><p>Loading…</p>';
   try{
     const rows=await api("/api/secretary/records");
-    content.innerHTML=`<div class="row"><div><h2>महासचिव रिपोर्ट / Inbox</h2><span class="small">${rows.length} रिकॉर्ड</span></div><button class="primary" onclick="renderSecretariatInbox()">↻ Refresh</button></div>`+
-      (rows.length?rows.map(x=>`<div class="item"><div class="row"><div><b>${esc(x.title||x.name||("Record #"+x.id))}</b><div class="small">${esc(x.category||"")} · ${esc(x.createdAt||"")}</div></div><span class="status ${["approved","completed","uploaded"].includes(String(x.status||"").toLowerCase())?"active":"pending"}">${esc(x.status||"pending")}</span></div><p style="white-space:pre-wrap;margin-top:10px">${esc(x.content||x.reason||"")}</p>${x.category==="member_add_request"&&x.status!=="approved"?`<button class="success" onclick="approveSecretaryMemberRequest(${Number(x.id)})">सदस्य अनुरोध स्वीकृत करें</button>`:""}</div>`).join(""):'<div class="ok">अभी कोई सचिवालय रिकॉर्ड नहीं है।</div>');
-  }catch(e){content.innerHTML=`<div class="err">${esc(e.message||"Secretariat inbox लोड नहीं हो पाया।")}</div>`;}
+    content.innerHTML=`<div class="row"><div><h2>General Secretary Reports / Inbox</h2><span class="small">${rows.length} Record</span></div><button class="primary" onclick="renderSecretariatInbox()">↻ Refresh</button></div>`+
+      (rows.length?rows.map(x=>`<div class="item"><div class="row"><div><b>${esc(x.title||x.name||("Record #"+x.id))}</b><div class="small">${esc(x.category||"")} · ${esc(x.createdAt||"")}</div></div><span class="status ${["approved","completed","uploaded"].includes(String(x.status||"").toLowerCase())?"active":"pending"}">${esc(x.status||"pending")}</span></div><p style="white-space:pre-wrap;margin-top:10px">${esc(x.content||x.reason||"")}</p>${x.category==="member_add_request"&&x.status!=="approved"?`<button class="success" onclick="approveSecretaryMemberRequest(${Number(x.id)})">Approve Member Request</button>`:""}</div>`).join(""):'<div class="ok">There are no Secretariat records yet.</div>');
+  }catch(e){content.innerHTML=`<div class="err">${esc(e.message||"Unable to load the Secretariat inbox.")}</div>`;}
 }
 
 /* =========================================================
@@ -1089,18 +1121,17 @@ async function render(){
 
     <header>
 
-      <div>
+      <div class="nsf-header-brand">
         <b>🌿 Nisha Seva Foundation</b>
-        <br>
-        <small>${currentRole === "secretary" ? "महासचिव · Secretariat Panel" : (currentRole === "coordinator" ? "Internship Coordinator Panel" : (currentRole === "treasurer" ? "Treasurer · Finance & Accounts" : "Admin Panel"))}</small>
+        <small>${currentRole === "secretary" ? "General Secretary · Secretariat Panel" : (currentRole === "coordinator" ? "Internship Coordinator Panel" : (currentRole === "treasurer" ? "Treasurer · Finance & Accounts" : "Admin Panel"))}</small>
       </div>
-
-      <button
-        class="muted"
-        onclick="logout()"
-      >
-        Logout
-      </button>
+      <nav class="nsf-panel-switcher" aria-label="Open a panel">
+        <button type="button" class="${currentRole==="admin"?"active":""}" onclick="openPanelLogin('admin')">🛡️ Admin</button>
+        <button type="button" class="${currentRole==="secretary"?"active":""}" onclick="openPanelLogin('secretary')">📋 General Secretary</button>
+        <button type="button" class="${currentRole==="coordinator"?"active":""}" onclick="openPanelLogin('coordinator')">🎓 Coordinator</button>
+        <button type="button" class="${currentRole==="treasurer"?"active":""}" onclick="openPanelLogin('treasurer')">💼 Treasurer</button>
+      </nav>
+      <button class="muted" onclick="logout()">Logout</button>
 
     </header>
 
@@ -1216,17 +1247,17 @@ async function render(){
 
       <div class="easy-action-grid">
         ${["programs","events","gallery","documents","donors","impactLocations","missions","certificates","impactStories","communityEvents","knowledgeLibrary"].includes(current) ? `
-          <button class="easy-action ea-title" onclick="quickContentEditor('title')"><span class="ea-icon">T</span><span><b>Title</b><small>शीर्षक जोड़ें या बदलें</small></span></button>
-          <button class="easy-action ea-description" onclick="quickContentEditor('description')"><span class="ea-icon">☷</span><span><b>Description</b><small>विवरण लिखें या संपादित करें</small></span></button>
+          <button class="easy-action ea-title" onclick="quickContentEditor('title')"><span class="ea-icon">T</span><span><b>Title</b><small>Title जोड़ें या बदलें</small></span></button>
+          <button class="easy-action ea-description" onclick="quickContentEditor('description')"><span class="ea-icon">☷</span><span><b>Description</b><small>Details लिखें या संपादित करें</small></span></button>
           <button class="easy-action ea-picture" onclick="current==='gallery'?galleryEditor():quickContentEditor('picture')"><span class="ea-icon">▧</span><span><b>Picture Upload</b><small>फोटो चुनें और अपलोड करें</small></span></button>
           <button class="easy-action ea-add" onclick="current==='gallery'?galleryEditor():quickContentEditor('all')"><span class="ea-icon">＋</span><span><b>${({programs:'Add Program',events:'Add Event',gallery:'Add Gallery Item',documents:'Add Document',donors:'Add Donor',impactLocations:'Add Impact Location',missions:'Create Mission',certificates:'Add Certificate Record',impactStories:'Publish Impact Story',communityEvents:'Add Community Event',knowledgeLibrary:'Add Resource'})[current]}</b><small>पूरा कंटेंट भरकर सेव करें</small></span></button>
         ` : ""}
-        ${current === "volunteers" ? `<div class="easy-action"><span class="ea-icon">♟</span><span><b>Volunteer Management</b><small>रिकॉर्ड खोलें और उपलब्ध action buttons इस्तेमाल करें</small></span></div>` : ""}
+        ${current === "volunteers" ? `<div class="easy-action"><span class="ea-icon">♟</span><span><b>Volunteer Management</b><small>Record खोलें और उपलब्ध action buttons इस्तेमाल करें</small></span></div>` : ""}
         ${current === "internships" ? `<div class="easy-action"><span class="ea-icon">🎓</span><span><b>Student Internship</b><small>आवेदन खोलें, review करें और approval actions इस्तेमाल करें</small></span></div>` : ""}
         ${current === "projectSubmissions" ? `<div class="easy-action"><span class="ea-icon">▤</span><span><b>Student Projects</b><small>प्रोजेक्ट खोलें और submission review करें</small></span></div>` : ""}
         ${current === "members" ? `<div class="easy-action"><span class="ea-icon">♟</span><span><b>Members</b><small>Member applications देखें</small></span></div>` : ""}
-        ${current === "contactMessages" ? `<div class="easy-action"><span class="ea-icon">☏</span><span><b>Contact Messages</b><small>संदेश पढ़ें और रिकॉर्ड जाँचें</small></span></div>` : ""}
-        ${current === "newsletter" ? `<div class="easy-action"><span class="ea-icon">✉</span><span><b>Newsletter Subscribers</b><small>Subscriber रिकॉर्ड देखें</small></span></div>` : ""}
+        ${current === "contactMessages" ? `<div class="easy-action"><span class="ea-icon">☏</span><span><b>Contact Messages</b><small>संदेश पढ़ें और Record जाँचें</small></span></div>` : ""}
+        ${current === "newsletter" ? `<div class="easy-action"><span class="ea-icon">✉</span><span><b>Newsletter Subscribers</b><small>Subscriber Record देखें</small></span></div>` : ""}
       </div>
 
       <div class="row">
@@ -1290,9 +1321,9 @@ async function render(){
     if(current === "members" && currentRole === "admin"){
       try{
         const requests = await api("/api/secretary/member-requests");
-        html += `<div class="item"><div class="row"><div><h3>महासचिव द्वारा भेजे गए सदस्य अनुरोध</h3><span class="small">${requests.length} अनुरोध</span></div></div>`+
-          (requests.length ? requests.map(r=>`<div class="item"><div class="row"><b>${esc(r.name||"नया सदस्य")}</b><span class="status ${r.status==="approved"?"active":"pending"}">${esc(r.status||"pending_approval")}</span></div><p class="small">मोबाइल: ${esc(r.phone||"—")} · Email: ${esc(r.email||"—")}</p><p>${esc(r.reason||"")}</p>${r.status!=="approved"?`<button class="success" onclick="approveSecretaryMemberRequest(${Number(r.id)})">अध्यक्ष/Admin स्वीकृति दें</button>`:"<span class='small'>सदस्य रिकॉर्ड में जोड़ा गया</span>"}</div>`).join("") : '<p class="small">अभी कोई नया सदस्य अनुरोध नहीं है।</p>')+`</div>`;
-      }catch(requestError){ html += `<div class="err">महासचिव सदस्य अनुरोध लोड नहीं हुए: ${esc(requestError.message)}</div>`; }
+        html += `<div class="item"><div class="row"><div><h3>Membership Requests Submitted by General Secretary</h3><span class="small">${requests.length} request(s)</span></div></div>`+
+          (requests.length ? requests.map(r=>`<div class="item"><div class="row"><b>${esc(r.name||"New Member")}</b><span class="status ${r.status==="approved"?"active":"pending"}">${esc(r.status||"pending_approval")}</span></div><p class="small">Mobile: ${esc(r.phone||"—")} · Email: ${esc(r.email||"—")}</p><p>${esc(r.reason||"")}</p>${r.status!=="approved"?`<button class="success" onclick="approveSecretaryMemberRequest(${Number(r.id)})">Approve as President/Admin</button>`:"<span class='small'>Added to Members</span>"}</div>`).join("") : '<p class="small">There are no new membership requests.</p>')+`</div>`;
+      }catch(requestError){ html += `<div class="err">Unable to load General Secretary membership requests: ${esc(requestError.message)}</div>`; }
     }
 
     content.innerHTML = html;
@@ -1312,7 +1343,7 @@ async function approveSecretaryMemberRequest(id){
   if(!window.confirm("इस सदस्य को स्वीकृति देकर Members सूची में Active करना है?")) return;
   try{
     await api("/api/secretary/member-requests/"+encodeURIComponent(id)+"/approve",{method:"POST",body:JSON.stringify({})});
-    alert("सदस्य अनुरोध स्वीकृत हो गया।");
+    alert("Membership request approved successfully.");
     render();
   }catch(error){alert(error.message||"स्वीकृति नहीं हो पाई।");}
 }
@@ -1321,8 +1352,8 @@ async function approveSecretaryMemberRequest(id){
 function addRecordSearch(title, count){
   return `<div class="record-search" style="margin:12px 0 18px">
     <label for="recordSearch"><b>🔎 Search ${esc(title||'records')}</b></label>
-    <input id="recordSearch" type="search" placeholder="नाम, ID, मोबाइल, ईमेल या कोई विवरण लिखें…" oninput="filterVisibleRecords(this.value)">
-    <div id="searchCount" class="small" style="margin-top:6px">${Number(count)||0} रिकॉर्ड</div>
+    <input id="recordSearch" type="search" placeholder="Name, ID, Mobile, ईमेल या कोई Details लिखें…" oninput="filterVisibleRecords(this.value)">
+    <div id="searchCount" class="small" style="margin-top:6px">${Number(count)||0} Record</div>
   </div>`;
 }
 function filterVisibleRecords(query){
@@ -1331,7 +1362,7 @@ function filterVisibleRecords(query){
   let shown=0;
   cards.forEach(el=>{const match=!q||el.innerText.toLocaleLowerCase('en-IN').includes(q);el.style.display=match?'':'none';if(match)shown++;});
   const label=document.getElementById('searchCount');
-  if(label)label.textContent=`${shown} / ${cards.length} रिकॉर्ड दिख रहे हैं`;
+  if(label)label.textContent=`${shown} / ${cards.length} Record दिख रहे हैं`;
 }
 function docValue(x, keys){
   for(const k of keys){
@@ -1445,8 +1476,8 @@ function galleryEditor(x){
       <h2>📷 Gallery Content Studio</h2><div class="small" style="margin-bottom:16px">तीनों बटन से Picture, Title और Description सेक्शन पर जाएँ। फिर जानकारी भरकर Save करें।</div>
       <div class="upload-tools">
         <button type="button" class="upload-tool picture-tool" onclick="document.getElementById('galleryPhoto').click()"><span class="tool-icon">▧</span><span><b>Picture Upload</b><small>फोटो चुनें</small></span></button>
-        <button type="button" class="upload-tool title-tool" onclick="document.getElementById('galleryTitle').focus();document.getElementById('galleryTitle').scrollIntoView({behavior:'smooth',block:'center'})"><span class="tool-icon">T</span><span><b>Title</b><small>शीर्षक जोड़ें</small></span></button>
-        <button type="button" class="upload-tool description-tool" onclick="document.getElementById('galleryDescription').focus();document.getElementById('galleryDescription').scrollIntoView({behavior:'smooth',block:'center'})"><span class="tool-icon">≡</span><span><b>Description</b><small>विवरण लिखें</small></span></button>
+        <button type="button" class="upload-tool title-tool" onclick="document.getElementById('galleryTitle').focus();document.getElementById('galleryTitle').scrollIntoView({behavior:'smooth',block:'center'})"><span class="tool-icon">T</span><span><b>Title</b><small>Title जोड़ें</small></span></button>
+        <button type="button" class="upload-tool description-tool" onclick="document.getElementById('galleryDescription').focus();document.getElementById('galleryDescription').scrollIntoView({behavior:'smooth',block:'center'})"><span class="tool-icon">≡</span><span><b>Description</b><small>Details लिखें</small></span></button>
       </div>
       <div class="upload-field picture-field"><label><b>🖼️ Picture</b></label>
       <input type="file" id="galleryPhoto" accept="image/jpeg,image/png,image/webp" style="margin:8px 0 14px" onchange="previewGalleryPhoto(this)"></div>
@@ -1581,7 +1612,7 @@ function quickContentEditor(focusField){
   const initial={title:'',description:'',image:'',name:'',amount:''};
   document.body.insertAdjacentHTML('beforeend',`<div class="modal" id="quickContentModal"><div class="modalbox" style="max-width:760px">
     <div class="row"><h2>✨ ${esc(sectionLabel)} Content</h2><button class="muted" onclick="quickContentModal.remove()">✕ Close</button></div>
-    <p class="small">Title, Description और Picture भरें। फोटो पहले server पर upload होगी, फिर उसका URL रिकॉर्ड में सेव होगा।</p>
+    <p class="small">Title, Description और Picture भरें। फोटो पहले server पर upload होगी, फिर उसका URL Record में सेव होगा।</p>
     <label><b>Title / Name</b></label><input id="qcTitle" placeholder="${esc(sectionLabel)} title or name" ${focusField==='title'?'autofocus':''}>
     <br><br><label><b>Description</b></label><textarea id="qcDescription" rows="4" placeholder="Content description" ${focusField==='description'?'autofocus':''}></textarea>
     ${current==='donors'?'<br><br><label><b>Contribution / Amount (optional)</b></label><input id="qcAmount" placeholder="Contribution details">':''}
@@ -1848,7 +1879,7 @@ async function deleteProjectSubmission(id){
    STUDENT PORTAL QR MANAGEMENT
    ========================================================= */
 async function renderCommunityRequests(){
-  content.innerHTML='<h2>🤝 Community Help Desk</h2><p>लोगों की सहायता, volunteer, skill offer और सुझाव एक जगह देखें।</p><p>लोड हो रहा है…</p>';
+  content.innerHTML='<h2>🤝 Community Help Desk</h2><p>लोगों की सहायता, volunteer, skill offer और सुझाव एक जगह देखें।</p><p>Loading…</p>';
   try{
     const result=await api('/api/community-requests');
     const rows=Array.isArray(result.requests)?result.requests:[];
@@ -1856,15 +1887,15 @@ async function renderCommunityRequests(){
     rows.forEach(r=>{const k=String(r.status||'pending').toLowerCase();if(Object.prototype.hasOwnProperty.call(counts,k))counts[k]++;});
     const labels={help:'मुझे सहायता चाहिए',volunteer:'स्वयंसेवक',skill:'स्किल साझा करना',opportunity:'अवसर / कार्यक्रम',suggestion:'सुझाव'};
     let html=`<div class="row"><div><h2>🤝 Community Help Desk</h2><span class="small">कुल ${rows.length} अनुरोध · Pending ${counts.pending} · जारी ${counts.in_progress} · हल ${counts.resolved}</span></div><button class="primary" onclick="renderCommunityRequests()">↻ Refresh</button></div>
-    <div class="easy-help">🔐 मोबाइल नंबर और अनुरोध का विवरण केवल अधिकृत Admin के लिए है। स्थिति बदलने पर वह database में सेव होगी।</div>
-    <div class="community-admin-filters"><input id="communityRequestSearch" placeholder="नाम, Reference ID, शहर या अनुरोध खोजें…" oninput="filterCommunityRequests()"><select id="communityStatusFilter" onchange="filterCommunityRequests()"><option value="all">सभी स्थिति</option><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option><option value="rejected">Rejected</option></select></div>
+    <div class="easy-help">🔐 Mobile Number और अनुरोध का Details केवल अधिकृत Admin के लिए है। Status बदलने पर वह database में सेव होगी।</div>
+    <div class="community-admin-filters"><input id="communityRequestSearch" placeholder="Name, Reference ID, शहर या अनुरोध खोजें…" oninput="filterCommunityRequests()"><select id="communityStatusFilter" onchange="filterCommunityRequests()"><option value="all">सभी Status</option><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option><option value="rejected">Rejected</option></select></div>
     <div id="communityRequestRows">`;
     if(!rows.length) html+='<div class="ok">अभी कोई Community Help अनुरोध प्राप्त नहीं हुआ है।</div>';
     html+=rows.map(r=>{
       const status=String(r.status||'pending').toLowerCase();
       const created=r.created_at?new Date(r.created_at).toLocaleString('en-IN'):'-';
       const searchable=[r.reference_id,r.name,r.phone,r.request_type,r.area,r.details,status].join(' ').toLowerCase();
-      return `<article class="item community-request-item" data-status="${esc(status)}" data-search="${esc(searchable)}"><div class="row"><div><h3>${esc(r.name||'नाम नहीं दिया')}</h3><div class="small">Reference: <b>${esc(r.reference_id||'-')}</b> · ${esc(created)}</div></div><span class="status ${status==='resolved'?'active':status==='rejected'?'rejected':'pending'}">${esc(status.replace('_',' ').toUpperCase())}</span></div><div class="community-request-grid"><div><strong>अनुरोध का प्रकार</strong><span>${esc(labels[r.request_type]||r.request_type||'-')}</span></div><div><strong>मोबाइल</strong><span>${esc(r.phone||'-')}</span></div><div><strong>क्षेत्र / शहर</strong><span>${esc(r.area||'-')}</span></div></div><div class="community-request-details"><strong>विवरण</strong><p>${esc(r.details||'-')}</p></div><div class="row community-request-actions"><label>स्थिति<select id="communityStatus_${Number(r.id)}"><option value="pending" ${status==='pending'?'selected':''}>Pending</option><option value="in_progress" ${status==='in_progress'?'selected':''}>In Progress</option><option value="resolved" ${status==='resolved'?'selected':''}>Resolved</option><option value="rejected" ${status==='rejected'?'selected':''}>Rejected</option></select></label><button class="primary" onclick="updateCommunityRequest(${Number(r.id)})">स्थिति सेव करें</button><button class="muted" onclick="copyCommunityReference('${esc(r.reference_id||'')}')">Reference कॉपी करें</button></div></article>`;
+      return `<article class="item community-request-item" data-status="${esc(status)}" data-search="${esc(searchable)}"><div class="row"><div><h3>${esc(r.name||'Name नहीं दिया')}</h3><div class="small">Reference: <b>${esc(r.reference_id||'-')}</b> · ${esc(created)}</div></div><span class="status ${status==='resolved'?'active':status==='rejected'?'rejected':'pending'}">${esc(status.replace('_',' ').toUpperCase())}</span></div><div class="community-request-grid"><div><strong>अनुरोध का प्रकार</strong><span>${esc(labels[r.request_type]||r.request_type||'-')}</span></div><div><strong>Mobile</strong><span>${esc(r.phone||'-')}</span></div><div><strong>क्षेत्र / शहर</strong><span>${esc(r.area||'-')}</span></div></div><div class="community-request-details"><strong>Details</strong><p>${esc(r.details||'-')}</p></div><div class="row community-request-actions"><label>Status<select id="communityStatus_${Number(r.id)}"><option value="pending" ${status==='pending'?'selected':''}>Pending</option><option value="in_progress" ${status==='in_progress'?'selected':''}>In Progress</option><option value="resolved" ${status==='resolved'?'selected':''}>Resolved</option><option value="rejected" ${status==='rejected'?'selected':''}>Rejected</option></select></label><button class="primary" onclick="updateCommunityRequest(${Number(r.id)})">Status सेव करें</button><button class="muted" onclick="copyCommunityReference('${esc(r.reference_id||'')}')">Reference कॉपी करें</button></div></article>`;
     }).join('');
     html+='</div>';
     content.innerHTML=html;
@@ -1879,7 +1910,7 @@ function filterCommunityRequests(){
 async function updateCommunityRequest(id){
   const select=document.getElementById('communityStatus_'+id);if(!select)return;
   try{await api('/api/community-requests/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({status:select.value})});await renderCommunityRequests();}
-  catch(error){alert('स्थिति सेव नहीं हुई: '+error.message);}
+  catch(error){alert('Status सेव नहीं हुई: '+error.message);}
 }
 function copyCommunityReference(value){
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(value).then(()=>alert('Reference ID कॉपी हो गई।')).catch(()=>prompt('Reference ID कॉपी करें:',value));
@@ -2465,7 +2496,7 @@ async function renderInternshipDocuments(){
 }
 async function deleteAdminRecord(section,id,label){
  if(!confirm(`क्या आप यह ${label||'record'} स्थायी रूप से delete करना चाहते हैं? Delete करने के बाद यह admin list में नहीं दिखेगा।`))return;
- try{await api('/api/'+section+'/'+id,{method:'DELETE'});alert('रिकॉर्ड delete हो गया।');if(section==='internships'&&current==='internshipDocuments')await renderInternshipDocuments();else if(section==='internships')await renderInternships();else if(section==='volunteers')await renderVolunteers();else if(section==='projectSubmissions')await renderProjectSubmissions();else await render();}
+ try{await api('/api/'+section+'/'+id,{method:'DELETE'});alert('Record delete हो गया।');if(section==='internships'&&current==='internshipDocuments')await renderInternshipDocuments();else if(section==='internships')await renderInternships();else if(section==='volunteers')await renderVolunteers();else if(section==='projectSubmissions')await renderProjectSubmissions();else await render();}
  catch(e){alert('Delete नहीं हो सका: '+e.message);}
 }
 
@@ -3666,7 +3697,7 @@ const financeLabels={
 };
 function financeMoney(v){return '₹'+Number(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function financePill(status){const s=String(status||'').toLowerCase();return `<span class="finance-pill ${esc(s)}">${esc(status||'—')}</span>`;}
-function financeTable(headers,rows){return rows.length?`<div class="finance-table-wrap"><table class="finance-table"><thead><tr>${headers.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="finance-empty">अभी कोई रिकॉर्ड उपलब्ध नहीं है।</div>`;}
+function financeTable(headers,rows){return rows.length?`<div class="finance-table-wrap"><table class="finance-table"><thead><tr>${headers.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`:`<div class="finance-empty">No records are available yet.</div>`;}
 function financeActions(items){return `<div class="finance-actions">${items.map(x=>`<button class="finance-action" onclick="current='${x[0]}';render()"><span class="fa-icon">${x[3]}</span><span><b>${x[1]}</b><small>${x[2]}</small></span></button>`).join('')}</div>`;}
 async function financeOpenBill(path){
   try{const d=await api('/api/finance/attachments/'+encodeURIComponent(path));window.open(d.url,'_blank','noopener,noreferrer');}
@@ -3696,7 +3727,7 @@ async function financeExportData(kind){
 }
 async function renderFinanceModule(section){
   const content=document.getElementById('content');if(!content)return;
-  content.innerHTML='<div class="finance-empty">Finance workspace सुरक्षित रूप से लोड हो रहा है…</div>';
+  content.innerHTML='<div class="finance-empty">Finance workspace सुरक्षित रूप से Loading…</div>';
   try{
     const nav=[['financeDashboard','Overview','📊'],['financeDonations','Donations','💚'],['financeIncome','Income','↗'],['financeExpenses','Expenses','↘'],['financeApprovals','Approvals','✓'],['financeLedger','Ledger','📒'],['financeAccounts','Accounts','🏦'],['financeReconcile','Reconciliation','⇄'],['financeReports','Reports','📈'],['financeAudit','Audit Trail','🔎']]
       .filter(x=>currentRole==='admin'||x[0]!=='financeApprovals');
@@ -3721,7 +3752,7 @@ async function renderFinanceModule(section){
       const rows=(d.income||[]).map(x=>`<tr><td><b>${esc(x.receipt_no)}</b></td><td>${esc(x.payer_name)}</td><td>${esc(x.category)}</td><td>${financeMoney(x.amount)}</td><td>${esc(x.income_date)}</td><td>${esc(x.payment_mode)}</td><td><button class="finance-btn ghost" onclick="financeOpenReceipt(${x.id})">↗ Receipt</button></td></tr>`);
       body=`<div class="finance-toolbar"><div><h2>↗ Income Register</h2><p class="small">Cashfree donations के अतिरिक्त प्राप्त आय दर्ज करें।</p></div></div>
       <form class="finance-form" id="financeIncomeForm">
-        <div class="finance-field"><label>Received From / Payer *</label><input name="payerName" required maxlength="140" placeholder="व्यक्ति / संस्था का नाम"></div>
+        <div class="finance-field"><label>Received From / Payer *</label><input name="payerName" required maxlength="140" placeholder="व्यक्ति / संस्था का Name"></div>
         <div class="finance-field"><label>Income Category *</label><select name="category" required><option value="">Select category</option><option>Offline Donation</option><option>Grant</option><option>Membership Fee</option><option>Event Contribution</option><option>Interest</option><option>Service Income</option><option>Other</option></select></div>
         <div class="finance-field"><label>Amount (INR) *</label><input name="amount" type="number" min="1" step="0.01" required></div>
         <div class="finance-field"><label>Income Date *</label><input name="incomeDate" type="date" required value="${new Date().toISOString().slice(0,10)}"></div>
