@@ -105,6 +105,8 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 // Set both values in Hostinger Environment for a separate coordinator account.
 const COORDINATOR_USERNAME = process.env.COORDINATOR_USERNAME || '';
 const COORDINATOR_PASSWORD = process.env.COORDINATOR_PASSWORD || '';
+const SECRETARY_USERNAME = process.env.SECRETARY_USERNAME || '';
+const SECRETARY_PASSWORD = process.env.SECRETARY_PASSWORD || '';
 
 // Treasurer username is intentionally fixed as requested; set only the password in Hostinger.
 const TREASURER_USERNAME = 'NISHASEVA';
@@ -256,7 +258,16 @@ function requireAdmin(
     return res.status(403).json({ error: 'Forbidden: coordinator access is limited to internship management' });
   }
 
-  if (!['admin','coordinator','treasurer'].includes(session.role) || (session.role === 'treasurer' && req.path !== '/api/admin/logout')) {
+  if (session.role === 'secretary') {
+    const allowedPath = new Set(['/api/admin/logout','/api/members','/api/volunteers','/api/secretary/records','/api/secretary/member-requests','/api/secretary/documents']).has(req.path) ||
+      /^\/api\/secretary\/documents\/\d+\/download$/.test(req.path);
+    if (!allowedPath) return res.status(403).json({ error: 'Forbidden: महासचिव access is limited to Secretariat functions.' });
+    if ((req.path === '/api/members' || req.path === '/api/volunteers') && req.method !== 'GET') return res.status(403).json({ error: 'महासचिव केवल आवेदन/रिकॉर्ड देख सकते हैं।' });
+    if (req.path === '/api/secretary/records' && !['GET','POST'].includes(req.method)) return res.status(403).json({ error: 'This Secretariat action is not permitted.' });
+    if (req.path === '/api/secretary/member-requests' && req.method !== 'POST') return res.status(403).json({ error: 'This Secretariat action is not permitted.' });
+  }
+
+  if (!['admin','coordinator','treasurer','secretary'].includes(session.role) || (session.role === 'treasurer' && req.path !== '/api/admin/logout')) {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
@@ -324,6 +335,23 @@ app.post('/api/coordinator/login', authLimiter, (req, res) => {
   const token = crypto.randomBytes(32).toString('hex');
   sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'coordinator' });
   return res.json({ token, role: 'coordinator' });
+});
+
+
+/* =========================================================
+   SECRETARY LOGIN — least-privilege Secretariat workspace
+   ========================================================= */
+app.post('/api/secretary/login', authLimiter, (req, res) => {
+  const { username, password } = req.body || {};
+  if (!SECRETARY_USERNAME || !SECRETARY_PASSWORD) {
+    return res.status(503).json({ error: 'महासचिव खाता configure नहीं है। Hostinger Environment में SECRETARY_USERNAME और SECRETARY_PASSWORD सेट करें।' });
+  }
+  if (String(username || '').trim() !== SECRETARY_USERNAME || String(password || '') !== SECRETARY_PASSWORD) {
+    return res.status(401).json({ error: 'महासचिव का Username या Password गलत है।' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, role: 'secretary' });
+  return res.json({ token, role: 'secretary' });
 });
 
 
@@ -1740,6 +1768,122 @@ function initializeTable(sql, label) {
  * already exist. The rest of this server stores submission
  * payloads in JSONB, so this follows the same pattern.
  */
+
+/* =========================================================
+   GENERAL SECRETARY WORKSPACE
+   ========================================================= */
+const secretaryTableReady = initializeTable(`
+  CREATE TABLE IF NOT EXISTS nsf_secretary_records (
+    id BIGSERIAL PRIMARY KEY,
+    category VARCHAR(60) NOT NULL,
+    data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(40) NOT NULL DEFAULT 'draft',
+    created_by VARCHAR(80) NOT NULL DEFAULT 'secretary',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS nsf_secretary_records_category_idx ON nsf_secretary_records(category, created_at DESC);
+`, 'SECRETARY');
+
+const secretaryPrivateDir = path.join(__dirname, 'secretary-private-documents');
+if (!fs.existsSync(secretaryPrivateDir)) fs.mkdirSync(secretaryPrivateDir, { recursive: true });
+
+const secretaryDocumentUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, secretaryPrivateDir),
+    filename: (req, file, cb) => cb(null, `nsf-secretary-${Date.now()}-${crypto.randomUUID()}${path.extname(file.originalname || '').toLowerCase()}`)
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = new Set(['application/pdf','image/jpeg','image/png','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
+    cb(allowed.has(file.mimetype) ? null : new Error('केवल PDF, JPG, PNG, DOC और DOCX फाइलें स्वीकार हैं।'), allowed.has(file.mimetype));
+  }
+});
+const secretaryAllowedCategories = new Set(['meeting','meeting_notice','meeting_minutes','attendance','proposal','official_letter','program_report','annual_report','office_bearer','office_bearer_request','pending_task','president_report']);
+
+app.get('/api/secretary/records', requireAdmin, async (req,res) => {
+  try {
+    await secretaryTableReady;
+    const category=String(req.query.category||'').trim();
+    const result=category
+      ? await pool.query('SELECT id,category,data,status,created_by,created_at,updated_at FROM nsf_secretary_records WHERE category=$1 ORDER BY created_at DESC LIMIT 500',[category])
+      : await pool.query('SELECT id,category,data,status,created_by,created_at,updated_at FROM nsf_secretary_records ORDER BY created_at DESC LIMIT 500');
+    res.set('Cache-Control','no-store');
+    return res.json(result.rows.map(r=>({id:r.id,category:r.category,...(r.data||{}),status:r.status,createdBy:r.created_by,createdAt:r.created_at,updatedAt:r.updated_at})));
+  } catch(error) { console.error('SECRETARY RECORD LIST ERROR:',error); return res.status(500).json({error:'Secretariat records could not be loaded.'}); }
+});
+
+app.post('/api/secretary/records', requireAdmin, async (req,res) => {
+  try {
+    await secretaryTableReady;
+    const body=req.body||{}, category=String(body.category||'').trim(), title=String(body.title||'').trim().slice(0,180), content=String(body.content||'').trim().slice(0,12000);
+    const status=['draft','pending','in_progress','completed'].includes(String(body.status||''))?String(body.status):'draft';
+    if(!secretaryAllowedCategories.has(category)||!title||!content) return res.status(400).json({error:'सही Category, Title और विवरण आवश्यक हैं।'});
+    const data={title,content,date:String(body.date||'').slice(0,10),location:String(body.location||'').trim().slice(0,220)};
+    const result=await pool.query(`INSERT INTO nsf_secretary_records(category,data,status,created_by) VALUES($1,$2::jsonb,$3,$4) RETURNING id,category,data,status,created_at`,[category,JSON.stringify(data),status,req.userRole||'secretary']);
+    const r=result.rows[0]; return res.status(201).json({id:r.id,category:r.category,...(r.data||{}),status:r.status,createdAt:r.created_at});
+  } catch(error) { console.error('SECRETARY RECORD SAVE ERROR:',error); return res.status(500).json({error:'Secretariat record could not be saved.'}); }
+});
+
+app.post('/api/secretary/member-requests', requireAdmin, async (req,res) => {
+  try {
+    await secretaryTableReady;
+    const body=req.body||{}, name=String(body.name||'').trim().slice(0,140), phone=String(body.phone||'').replace(/\D/g,'').slice(-10), email=String(body.email||'').trim().toLowerCase().slice(0,180);
+    if(!name||!/^\d{10}$/.test(phone)) return res.status(400).json({error:'सदस्य का नाम और 10 अंकों का मोबाइल नंबर आवश्यक है।'});
+    if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({error:'Email सही नहीं है।'});
+    const data={name,phone,email,address:String(body.address||'').trim().slice(0,300),reason:String(body.reason||'').trim().slice(0,3000)};
+    const result=await pool.query(`INSERT INTO nsf_secretary_records(category,data,status,created_by) VALUES('member_add_request',$1::jsonb,'pending_approval','secretary') RETURNING id,created_at`,[JSON.stringify(data)]);
+    return res.status(201).json({ok:true,id:result.rows[0].id,status:'pending_approval',createdAt:result.rows[0].created_at});
+  } catch(error) { console.error('SECRETARY MEMBER REQUEST ERROR:',error); return res.status(500).json({error:'सदस्यता अनुरोध सुरक्षित नहीं हो पाया।'}); }
+});
+
+// Only Admin/President can view and approve pending secretary member requests.
+app.get('/api/secretary/member-requests', requireAdmin, async (req,res) => {
+  try {
+    if(req.userRole!=='admin') return res.status(403).json({error:'यह सूची केवल Admin/अध्यक्ष देख सकते हैं।'});
+    await secretaryTableReady;
+    const result=await pool.query(`SELECT id,data,status,created_at FROM nsf_secretary_records WHERE category='member_add_request' ORDER BY created_at DESC LIMIT 300`);
+    return res.json(result.rows.map(r=>({id:r.id,...(r.data||{}),status:r.status,createdAt:r.created_at})));
+  } catch(error) { console.error('SECRETARY MEMBER REQUEST LIST ERROR:',error); return res.status(500).json({error:'Member requests could not be loaded.'}); }
+});
+
+// Final member activation is restricted to Admin/President.
+app.post('/api/secretary/member-requests/:id/approve', requireAdmin, async (req,res) => {
+  try {
+    if(req.userRole!=='admin') return res.status(403).json({error:'अंतिम स्वीकृति केवल Admin/अध्यक्ष दे सकते हैं।'});
+    await secretaryTableReady;
+    const id=Number(req.params.id), found=await pool.query(`SELECT data,status FROM nsf_secretary_records WHERE id=$1 AND category='member_add_request'`,[id]);
+    if(!found.rows.length) return res.status(404).json({error:'सदस्य अनुरोध नहीं मिला।'});
+    if(found.rows[0].status==='approved') return res.status(409).json({error:'यह अनुरोध पहले ही स्वीकृत है।'});
+    const d=found.rows[0].data||{}, memberData={...d,status:'active',approvedBy:'admin',approvedAt:new Date().toISOString(),source:'secretary_request'};
+    const member=await pool.query('INSERT INTO members(data) VALUES($1::jsonb) RETURNING id',[JSON.stringify(memberData)]);
+    await pool.query(`UPDATE nsf_secretary_records SET status='approved',updated_at=NOW() WHERE id=$1`,[id]);
+    return res.json({ok:true,memberId:member.rows[0].id});
+  } catch(error) { console.error('SECRETARY MEMBER APPROVAL ERROR:',error); return res.status(500).json({error:'सदस्य अनुरोध स्वीकृत नहीं हो पाया।'}); }
+});
+
+app.post('/api/secretary/documents', requireAdmin, secretaryDocumentUpload.single('file'), async (req,res) => {
+  try {
+    await secretaryTableReady;
+    if(!req.file) return res.status(400).json({error:'कृपया दस्तावेज चुनें।'});
+    const title=String(req.body.title||req.file.originalname||'दस्तावेज').trim().slice(0,180);
+    const data={title,fileName:path.basename(req.file.originalname||'document'),storedName:path.basename(req.file.filename),size:req.file.size,mimeType:req.file.mimetype};
+    const saved=await pool.query(`INSERT INTO nsf_secretary_records(category,data,status,created_by) VALUES('document',$1::jsonb,'uploaded',$2) RETURNING id`,[JSON.stringify(data),req.userRole||'secretary']);
+    return res.status(201).json({ok:true,id:saved.rows[0].id,title,fileName:data.fileName});
+  } catch(error) { if(req.file?.path){try{fs.unlinkSync(req.file.path)}catch(_){}} console.error('SECRETARY DOCUMENT UPLOAD ERROR:',error); return res.status(500).json({error:'दस्तावेज अपलोड नहीं हो पाया।'}); }
+});
+
+app.get('/api/secretary/documents/:id/download', requireAdmin, async (req,res) => {
+  try {
+    await secretaryTableReady;
+    const id=Number(req.params.id), found=await pool.query(`SELECT data FROM nsf_secretary_records WHERE id=$1 AND category='document'`,[id]);
+    if(!found.rows.length) return res.status(404).json({error:'दस्तावेज नहीं मिला।'});
+    const data=found.rows[0].data||{}, stored=path.basename(String(data.storedName||'')), fullPath=path.join(secretaryPrivateDir,stored);
+    if(!stored||!fs.existsSync(fullPath)) return res.status(404).json({error:'फाइल सर्वर पर उपलब्ध नहीं है।'});
+    return res.download(fullPath,path.basename(String(data.fileName||'NSF-document')));
+  } catch(error) { console.error('SECRETARY DOCUMENT DOWNLOAD ERROR:',error); return res.status(500).json({error:'दस्तावेज डाउनलोड नहीं हो पाया।'}); }
+});
+
 const internshipTableReady = initializeTable(`
     CREATE TABLE IF NOT EXISTS internships (
       id SERIAL PRIMARY KEY,
