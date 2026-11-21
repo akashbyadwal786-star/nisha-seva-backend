@@ -2532,54 +2532,147 @@ html,body{background:#f8faf7!important;color:#17211b!important}
 <script id="nsf-requested-refresh-script">
 (function(){
   function setupForms(){
-    if(document.getElementById('nsfFormsPage')) return;
+    if(document.getElementById('nsfFormsPage'))return;
     const specs=[
-      {id:'volunteer',title:'Volunteer Form',icon:'🤝'},
-      {id:'apply',title:'Membership Form',icon:'👥'},
-      {id:'internship',title:'Internship Form',icon:'🎓'},
-      {id:'contactform',title:'Contact Form',icon:'✉️'}
+      {id:'volunteer',title:'Volunteer Form',icon:'🤝',sub:'Volunteer Registration'},
+      {id:'apply',title:'Membership Form',icon:'👥',sub:'Become a Member'},
+      {id:'internship',title:'Internship Form',icon:'🎓',sub:'Student Internship'},
+      {id:'contactform',title:'Contact Form',icon:'✉️',sub:'Send an Enquiry'}
     ];
-    const page=document.createElement('section');
-    page.id='nsfFormsPage'; page.className='nsf-request-forms';
-    page.innerHTML='<div class="wrap"><div class="nsf-forms-heading"><h2>Application Forms</h2></div><nav class="nsf-form-menu" aria-label="Application form menu"></nav><div class="nsf-form-cards"></div></div>';
-    const menu=page.querySelector('.nsf-form-menu'), cards=page.querySelector('.nsf-form-cards');
-    specs.forEach((spec,index)=>{
-      const oldSection=document.getElementById(spec.id);
-      if(!oldSection) return;
-      const content=oldSection.querySelector('.wrap') || oldSection;
-      const card=document.createElement('article');
-      card.className='nsf-form-card'; card.id='nsf-card-'+spec.id;
-      const head=document.createElement('div'); head.className='nsf-form-card-head';
-      head.innerHTML='<span class="nsf-form-card-icon" aria-hidden="true">'+spec.icon+'</span><h3>'+spec.title+'</h3>';
-      card.appendChild(head);
-      // Preserve the original form nodes and their already-registered submit handlers.
+    const page=document.createElement('section');page.id='nsfFormsPage';page.className='nsf-request-forms';
+    page.innerHTML='<div class="wrap"><div class="nsf-forms-heading"><h2>Application Forms</h2></div><div class="nsf-form-menu" role="list"></div></div>';
+    const menu=page.querySelector('.nsf-form-menu');
+    const overlay=document.createElement('div');overlay.className='nsf-form-overlay';overlay.id='nsfFormOverlay';overlay.setAttribute('aria-hidden','true');
+    overlay.innerHTML='<div class="nsf-form-dialog" role="dialog" aria-modal="true" aria-labelledby="nsfFormDialogTitle"><div class="nsf-form-dialog-head"><h3 id="nsfFormDialogTitle">Application Form</h3><button type="button" class="nsf-form-close" aria-label="Close form">×</button></div><div class="nsf-form-dialog-body"></div></div>';
+    document.body.appendChild(overlay);
+    const dialogBody=overlay.querySelector('.nsf-form-dialog-body'),closeBtn=overlay.querySelector('.nsf-form-close');
+    function closeForm(){
+      overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');document.body.classList.remove('nsf-form-open');
+      menu.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+      dialogBody.querySelectorAll('.nsf-form-panel').forEach(p=>p.classList.remove('active'));
+    }
+    function openForm(spec,button){
+      const panel=dialogBody.querySelector('[data-form-panel="'+spec.id+'"]');if(!panel)return;
+      dialogBody.querySelectorAll('.nsf-form-panel').forEach(p=>p.classList.remove('active'));
+      panel.classList.add('active');overlay.querySelector('#nsfFormDialogTitle').textContent=spec.title;
+      overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');document.body.classList.add('nsf-form-open');
+      menu.querySelectorAll('button').forEach(b=>b.classList.remove('active'));button.classList.add('active');closeBtn.focus();
+    }
+    specs.forEach(spec=>{
+      const oldSection=document.getElementById(spec.id);if(!oldSection)return;
+      const content=oldSection.querySelector('.wrap')||oldSection;
+      const panel=document.createElement('section');panel.className='nsf-form-panel';panel.dataset.formPanel=spec.id;
       while(content.firstChild){
         const child=content.firstChild;
-        if(child.nodeType===1 && (child.classList.contains('vol-banner') || child.classList.contains('sec-head'))) { child.remove(); continue; }
-        card.appendChild(child);
+        if(child.nodeType===1&&(child.classList.contains('vol-banner')||child.classList.contains('sec-head'))){child.remove();continue;}
+        panel.appendChild(child);
       }
-      cards.appendChild(card);
-      const button=document.createElement('button');
-      button.type='button'; button.innerHTML='<span>'+spec.icon+'</span>'+spec.title;
-      button.addEventListener('click',()=>{document.getElementById('nsf-card-'+spec.id)?.scrollIntoView({behavior:'smooth',block:'start'});menu.querySelectorAll('button').forEach(b=>b.classList.remove('active'));button.classList.add('active');});
-      menu.appendChild(button);
-      oldSection.remove();
+      dialogBody.appendChild(panel);oldSection.remove();
+      const card=document.createElement('article');card.className='nsf-form-menu-card';
+      card.innerHTML='<div class="nsf-form-menu-icon" aria-hidden="true">'+spec.icon+'</div><div class="nsf-form-menu-copy"><h3>'+spec.title+'</h3><span>'+spec.sub+'</span></div><span class="nsf-form-menu-arrow" aria-hidden="true">↗</span>';
+      const button=document.createElement('button');button.type='button';button.className='nsf-form-open-button';button.setAttribute('aria-label','Open '+spec.title);button.textContent='Open Form';
+      button.addEventListener('click',()=>openForm(spec,button));card.appendChild(button);menu.appendChild(card);
     });
-    // Remove the old popup launchers and shells after moving their form contents.
+    closeBtn.addEventListener('click',closeForm);overlay.addEventListener('click',ev=>{if(ev.target===overlay)closeForm();});
+    document.addEventListener('keydown',ev=>{if(ev.key==='Escape'&&overlay.classList.contains('open'))closeForm();});
     ['volunteerHub','memberHub','internshipHub','contactHub','volunteerModal','memberModal','internshipModal','contactModal'].forEach(id=>document.getElementById(id)?.remove());
-    const anchor=document.getElementById('donors') || document.querySelector('main')?.lastElementChild;
-    if(anchor?.parentNode) anchor.parentNode.insertBefore(page,anchor);
+    const anchor=document.getElementById('donors')||document.querySelector('main')?.lastElementChild;
+    if(anchor?.parentNode)anchor.parentNode.insertBefore(page,anchor);
     const nav=document.querySelector('nav.links');
-    if(nav && !nav.querySelector('a[href="#nsfFormsPage"]')){const a=document.createElement('a');a.href='#nsfFormsPage';a.textContent='Forms';nav.appendChild(a);}
+    if(nav&&!nav.querySelector('a[href="#nsfFormsPage"]')){const link=document.createElement('a');link.href='#nsfFormsPage';link.textContent='Application Forms';nav.appendChild(link);}
     const mobile=document.getElementById('mobilemenu');
-    if(mobile && !mobile.querySelector('a[href="#nsfFormsPage"]')){const a=document.createElement('a');a.href='#nsfFormsPage';a.textContent='Application Forms';mobile.appendChild(a);}
-    // Remove navigation links for the two removed visual sections.
-    document.querySelectorAll('a[href="#page-two-banner"],a[href="#community-help"]').forEach(a=>a.remove());
-    // First card is the active starting point.
-    menu.querySelector('button')?.classList.add('active');
+    if(mobile&&!mobile.querySelector('a[href="#nsfFormsPage"]')){const link=document.createElement('a');link.href='#nsfFormsPage';link.textContent='Application Forms';mobile.appendChild(link);}
+    document.querySelectorAll('a[href="#page-two-banner"],a[href="#community-help"]').forEach(link=>link.remove());
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',setupForms,{once:true});
-  else setupForms();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',setupForms,{once:true});else setupForms();
 })();
 </script>
 </body></html>
+
+<style id="nsf-mobile-forms-payment-v3">
+/* Application form selector: only the four launch cards are visible on the page */
+.nsf-request-forms{padding:64px 0 72px;background:linear-gradient(180deg,#f4fbf6,#fff)}
+.nsf-forms-heading{text-align:center;margin:0 auto 26px}
+.nsf-forms-heading h2{font-size:clamp(1.7rem,4vw,2.35rem);color:#0a3a24}
+.nsf-form-menu{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.nsf-form-menu-card{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:12px;padding:22px;border:1px solid #dcece3;border-radius:20px;background:rgba(255,255,255,.96);box-shadow:0 10px 30px rgba(15,81,50,.07);transition:transform .24s ease,box-shadow .24s ease,border-color .24s ease}
+.nsf-form-menu-card:hover{transform:translateY(-5px);border-color:#75bea0;box-shadow:0 18px 38px rgba(15,81,50,.14)}
+.nsf-form-menu-icon{width:52px;height:52px;display:grid;place-items:center;border-radius:16px;background:linear-gradient(135deg,#e0f5e9,#fff0dd);font-size:1.65rem}
+.nsf-form-menu-copy h3{font-size:1.04rem;color:#123d2c}
+.nsf-form-menu-copy span{font-size:.82rem;color:#66786e}
+.nsf-form-menu-arrow{align-self:flex-end;color:#0f7657;font-size:1.2rem;font-weight:900}
+.nsf-form-open-button{width:100%;min-height:46px;border:0;border-radius:13px;background:linear-gradient(110deg,#0f5132,#2a9d8f);color:#fff;font-weight:800;box-shadow:0 8px 18px rgba(15,81,50,.18);transition:transform .2s,box-shadow .2s,filter .2s}
+.nsf-form-open-button:hover{transform:translateY(-3px);box-shadow:0 14px 26px rgba(15,81,50,.24);filter:brightness(1.08)}
+.nsf-form-open-button:active{transform:scale(.98)}
+.nsf-form-overlay{position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(5,20,14,.72);backdrop-filter:blur(7px)}
+.nsf-form-overlay.open{display:flex}
+.nsf-form-dialog{width:min(900px,100%);max-height:min(92dvh,900px);display:flex;flex-direction:column;overflow:hidden;border-radius:22px;background:#fff;box-shadow:0 28px 90px rgba(0,0,0,.35);animation:nsfFormIn .24s ease-out}
+.nsf-form-dialog-head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 22px;border-bottom:1px solid #e6eee9;background:linear-gradient(100deg,#f4fbf6,#fff)}
+.nsf-form-dialog-head h3{font-size:1.2rem;color:#0a3a24}
+.nsf-form-close{width:42px;height:42px;border:0;border-radius:50%;background:#e8f3ed;color:#0a3a24;font-size:1.8rem;line-height:1}
+.nsf-form-dialog-body{overflow:auto;padding:22px;overscroll-behavior:contain}
+.nsf-form-dialog-body>.wrap{max-width:none;padding:0}
+.nsf-form-dialog-body .form-card,.nsf-form-dialog-body .internship-card{width:100%;max-width:none!important;padding:0!important;border:0!important;box-shadow:none!important;background:transparent!important}
+.nsf-form-dialog-body .vol-banner,.nsf-form-dialog-body .sec-head{display:none!important}
+.nsf-form-dialog-body form{width:100%}
+body.nsf-form-open{overflow:hidden}
+@keyframes nsfFormIn{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+/* Payment panel and Cashfree CTA */
+#donate .donate-cta{position:relative;overflow:hidden;background:radial-gradient(circle at 12% 5%,rgba(255,255,255,.22),transparent 28%),linear-gradient(125deg,#063d2b,#08764f 55%,#2a9d8f)!important;box-shadow:0 22px 55px rgba(7,59,43,.22)}
+#nsfDonationForm{border:1px solid #dceee4!important;border-radius:22px!important;background:linear-gradient(145deg,#fff,#f2fbf6)!important;padding:22px!important;box-shadow:0 16px 42px rgba(7,59,43,.13)!important}
+#nsfDonationForm input{border-radius:12px!important;background:#fff!important;border:1px solid #c9e3d5!important;padding:13px!important}
+#nsfDonationForm .nsf-amount-choice{border-radius:999px!important;border:1px solid #b6dbc8!important;background:#fff!important;color:#0b6448!important;font-weight:800!important;transition:transform .2s,box-shadow .2s,background .2s!important}
+#nsfDonationForm .nsf-amount-choice:hover,#nsfDonationForm .nsf-amount-choice.active,#nsfDonationForm .nsf-amount-choice[aria-pressed="true"]{transform:translateY(-2px);background:linear-gradient(120deg,#0f7657,#2a9d8f)!important;color:#fff!important;box-shadow:0 9px 20px rgba(8,118,79,.2)}
+#nsfDonateSubmit{position:relative;overflow:hidden;border:0!important;border-radius:14px!important;padding:15px 22px!important;background:linear-gradient(105deg,#ff9d43,#f16b43 52%,#df4e75)!important;color:#fff!important;font-size:1rem!important;font-weight:900!important;box-shadow:0 12px 25px rgba(226,91,67,.28)!important;transition:transform .22s,box-shadow .22s,filter .22s!important}
+#nsfDonateSubmit:after{content:"";position:absolute;inset:0;transform:translateX(-130%);background:linear-gradient(110deg,transparent,rgba(255,255,255,.38),transparent);transition:transform .65s}
+#nsfDonateSubmit:hover:after{transform:translateX(130%)}
+#nsfDonateSubmit:hover{transform:translateY(-3px);box-shadow:0 17px 32px rgba(226,91,67,.36)!important;filter:saturate(1.1)}
+#nsfDonateSubmit:active{transform:scale(.985)}
+/* Hide explanatory/help copy, not section content, labels, validation, or payment feedback */
+.demo-note,.easy-help,.help-text,.helper-text,.form-hint,.field-hint,.role-description,.module-description,.nsf-help,.nsf-explainer{display:none!important}
+@media(max-width:980px){.nsf-form-menu{grid-template-columns:repeat(2,minmax(0,1fr))}.hero-grid{gap:28px}}
+@media(max-width:680px){
+  .wrap{padding-left:16px!important;padding-right:16px!important}
+  header .navrow{padding:11px 14px!important;gap:8px}
+  .logo{font-size:.88rem;gap:7px}
+  .site-logo{width:36px;height:36px}
+  .donate-btn{padding:8px 12px!important;font-size:.8rem!important}
+  #mobilemenu{padding:10px 16px 18px!important}
+  .hero{padding:36px 0 24px}
+  .hero-grid{grid-template-columns:1fr!important;gap:22px}
+  .hero-visual{height:245px!important}
+  .hero-ctas{gap:9px}
+  .hero-ctas a,.hero-ctas button{min-height:44px;padding:11px 16px!important}
+  section{padding:54px 0}
+  .mission{padding:28px 20px!important;border-radius:20px}
+  .stats{padding-top:28px}
+  .stat{padding:18px 10px}
+  .stat b{font-size:1.55rem}
+  .donate-cta{padding:34px 18px!important;border-radius:20px!important}
+  .form-card{padding:20px!important}
+  .nsf-request-forms{padding:44px 0}
+  .nsf-form-menu{gap:11px}
+  .nsf-form-menu-card{padding:16px;border-radius:16px}
+  .nsf-form-menu-icon{width:44px;height:44px;font-size:1.35rem}
+  .nsf-form-dialog{max-height:100dvh;height:100dvh;border-radius:0}
+  .nsf-form-overlay{padding:0}
+  .nsf-form-dialog-head{padding:12px 16px}
+  .nsf-form-dialog-body{padding:16px}
+  #nsfDonationForm{padding:16px!important}
+  #nsfDonateSubmit{width:100%;min-height:48px}
+  .foot-grid{grid-template-columns:1fr 1fr!important;gap:20px!important}
+}
+@media(max-width:380px){.nsf-form-menu{grid-template-columns:1fr}.foot-grid{grid-template-columns:1fr!important}}
+@media(prefers-reduced-motion:reduce){.nsf-form-dialog,.nsf-form-menu-card,.nsf-form-open-button,#nsfDonateSubmit{animation:none!important;transition:none!important}}
+</style>
+
+<style id="nsf-form-panel-hidden-v3">
+.nsf-form-panel{display:none!important}
+.nsf-form-panel.active{display:block!important}
+.nsf-form-dialog-body>.nsf-form-panel>.wrap{max-width:none;padding:0}
+</style>
+
+<style id="nsf-hide-original-form-sections-before-init">
+/* Prevent a flash of the legacy full forms before the Application Forms controller runs. */
+.nsf-modal-section{display:none!important}
+</style>
