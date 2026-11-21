@@ -1404,12 +1404,14 @@ async function render(){
       <div class="easy-help">✨ <b>आसान तरीका:</b> नीचे दिए गए बटन से नया कंटेंट जोड़ें, फोटो चुनें और Save करें। कोड लिखने की जरूरत नहीं है। केवल वही बदलाव सेव करें जिन्हें आप वेबसाइट पर दिखाना चाहते हैं।</div>
 
       <div class="easy-action-grid">
-        ${["programs","events","gallery","documents","donors","impactLocations","missions","certificates","impactStories","communityEvents","knowledgeLibrary"].includes(current) ? `
+        ${["programs","impactLocations","missions","certificates","impactStories","communityEvents","knowledgeLibrary"].includes(current) ? `
+          <button class="easy-action ea-add" onclick="communityContentEditor()"><span class="ea-icon">＋</span><span><b>${({programs:'Add Program',impactLocations:'Add Impact Location',missions:'Create Volunteer Mission',certificates:'Add Certificate Record',impactStories:'Publish Impact Story',communityEvents:'Add Community Event',knowledgeLibrary:'Upload Knowledge Resource'})[current]}</b><small>इस module के अनुसार सभी जानकारी और सही फ़ाइल प्रकार भरें</small></span></button>
+        ` : (["events","gallery","documents","donors"].includes(current) ? `
           <button class="easy-action ea-title" onclick="quickContentEditor('title')"><span class="ea-icon">T</span><span><b>Title</b><small>Title जोड़ें या बदलें</small></span></button>
           <button class="easy-action ea-description" onclick="quickContentEditor('description')"><span class="ea-icon">☷</span><span><b>Description</b><small>Details लिखें या संपादित करें</small></span></button>
           <button class="easy-action ea-picture" onclick="current==='gallery'?galleryEditor():quickContentEditor('picture')"><span class="ea-icon">▧</span><span><b>Picture Upload</b><small>फोटो चुनें और अपलोड करें</small></span></button>
-          <button class="easy-action ea-add" onclick="current==='gallery'?galleryEditor():quickContentEditor('all')"><span class="ea-icon">＋</span><span><b>${({programs:'Add Program',events:'Add Event',gallery:'Add Gallery Item',documents:'Add Document',donors:'Add Donor',impactLocations:'Add Impact Location',missions:'Create Mission',certificates:'Add Certificate Record',impactStories:'Publish Impact Story',communityEvents:'Add Community Event',knowledgeLibrary:'Add Resource'})[current]}</b><small>पूरा कंटेंट भरकर सेव करें</small></span></button>
-        ` : ""}
+          <button class="easy-action ea-add" onclick="current==='gallery'?galleryEditor():quickContentEditor('all')"><span class="ea-icon">＋</span><span><b>${({events:'Add Event',gallery:'Add Gallery Item',documents:'Add Document',donors:'Add Donor'})[current]}</b><small>पूरा कंटेंट भरकर सेव करें</small></span></button>
+        ` : "")}
         ${current === "volunteers" ? `<div class="easy-action"><span class="ea-icon">♟</span><span><b>Volunteer Management</b><small>Record खोलें और उपलब्ध action buttons इस्तेमाल करें</small></span></div>` : ""}
         ${current === "internships" ? `<div class="easy-action"><span class="ea-icon">🎓</span><span><b>Student Internship</b><small>आवेदन खोलें, review करें और approval actions इस्तेमाल करें</small></span></div>` : ""}
         ${current === "projectSubmissions" ? `<div class="easy-action"><span class="ea-icon">▤</span><span><b>Student Projects</b><small>प्रोजेक्ट खोलें और submission review करें</small></span></div>` : ""}
@@ -1563,13 +1565,13 @@ function card(x){
   }
 
 
-  if(["impactLocations","missions","certificates","impactStories","communityEvents","knowledgeLibrary"].includes(current)){
-    const titles={impactLocations:"Impact Location",missions:"Volunteer Mission",certificates:"Certificate Record",impactStories:"Impact Story",communityEvents:"Community Event",knowledgeLibrary:"Knowledge Resource"};
-    const icons={impactLocations:"🗺️",missions:"🎯",certificates:"🏅",impactStories:"✨",communityEvents:"📅",knowledgeLibrary:"📚"};
+  if(["programs","impactLocations","missions","certificates","impactStories","communityEvents","knowledgeLibrary"].includes(current)){
+    const titles={programs:"Program",impactLocations:"Impact Location",missions:"Volunteer Mission",certificates:"Certificate Record",impactStories:"Impact Story",communityEvents:"Community Event",knowledgeLibrary:"Knowledge Resource"};
+    const icons={programs:"🌱",impactLocations:"🗺️",missions:"🎯",certificates:"🏅",impactStories:"✨",communityEvents:"📅",knowledgeLibrary:"📚"};
     const title=x.title||x.name||x.certificateId||x.location||titles[current];
     const image=x.image||x.imageUrl||x.photo||x.coverImage||"";
     const meta=[x.category,x.location,x.date||x.eventDate,x.status].filter(Boolean).join(" · ");
-    return `<div class="item nsf-dynamic-admin-card"><div class="row" style="align-items:flex-start"><div style="display:flex;gap:14px;align-items:center;min-width:0;flex:1">${image?`<img src="${esc(image)}" alt="${esc(title)}" style="width:100px;height:82px;object-fit:cover;border-radius:14px;border:1px solid #e0e8ef">`:`<div style="width:70px;height:70px;border-radius:18px;background:linear-gradient(135deg,#e4f5eb,#fff0d5);display:grid;place-items:center;font-size:30px;flex:none">${icons[current]}</div>`}<div><b style="font-size:16px">${esc(title)}</b><div class="small" style="margin-top:5px">${esc(meta||titles[current])}</div><div class="small">Record ID: ${esc(x.id)}</div></div></div><div class="actions"><button class="muted" onclick='editor(${JSON.stringify(x).replace(/'/g,"&#39;")})'>✏️ Edit</button><button class="danger" onclick="del(${x.id})">🗑️ Delete</button></div></div>${x.description?`<p style="margin:14px 0;color:#52677a">${esc(x.description)}</p>`:""}${current==="certificates"?`<div class="small">Certificate ID: ${esc(x.certificateId||x.certificate_id||"Not set")} · Status: ${esc(x.status||"active")}</div>`:""}${x.link||x.url||x.resourceUrl?`<div style="margin-top:12px"><a href="${esc(x.link||x.url||x.resourceUrl)}" target="_blank" rel="noopener">↗ Open linked resource</a></div>`:""}</div>`;
+    return `<div class="item nsf-dynamic-admin-card"><div class="row" style="align-items:flex-start"><div style="display:flex;gap:14px;align-items:center;min-width:0;flex:1">${image?`<img src="${esc(image)}" alt="${esc(title)}" style="width:100px;height:82px;object-fit:cover;border-radius:14px;border:1px solid #e0e8ef">`:`<div style="width:70px;height:70px;border-radius:18px;background:linear-gradient(135deg,#e4f5eb,#fff0d5);display:grid;place-items:center;font-size:30px;flex:none">${icons[current]}</div>`}<div><b style="font-size:16px">${esc(title)}</b><div class="small" style="margin-top:5px">${esc(meta||titles[current])}</div><div class="small">Record ID: ${esc(x.id)}</div></div></div><div class="actions"><button class="muted" onclick='communityContentEditor(${JSON.stringify(x).replace(/'/g,"&#39;")})'>✏️ Edit</button><button class="danger" onclick="del(${x.id})">🗑️ Delete</button></div></div>${x.description?`<p style="margin:14px 0;color:#52677a">${esc(x.description)}</p>`:""}${current==="certificates"?`<div class="small">Certificate ID: ${esc(x.certificateId||x.certificate_id||"Not set")} · Status: ${esc(x.status||"active")}</div>`:""}${x.mapLink?`<div style="margin-top:10px"><a href="${esc(x.mapLink)}" target="_blank" rel="noopener">📍 Open Map</a></div>`:""}${x.registrationUrl?`<div style="margin-top:10px"><a href="${esc(x.registrationUrl)}" target="_blank" rel="noopener">📝 Registration Link</a></div>`:""}${x.resourceUrl||x.reportUrl||x.attachmentUrl||x.certificateUrl?`<div style="margin-top:10px"><a href="${esc(x.resourceUrl||x.reportUrl||x.attachmentUrl||x.certificateUrl)}" target="_blank" rel="noopener">📄 Open / Download PDF</a></div>`:""}${x.link||x.url?`<div style="margin-top:10px"><a href="${esc(x.link||x.url)}" target="_blank" rel="noopener">↗ Open linked resource</a></div>`:""}</div>`;
   }
 
 
@@ -1765,6 +1767,7 @@ async function saveGallery(id){
 /* Quick content editor for Title / Description / Picture buttons.
    Uses the existing authenticated /api/upload route and section CRUD endpoints. */
 function quickContentEditor(focusField){
+  if(['programs','impactLocations','missions','certificates','impactStories','communityEvents','knowledgeLibrary'].includes(current)){communityContentEditor();return;}
   const labels={programs:'Program',events:'Event',documents:'Document',donors:'Donor'};
   const sectionLabel=labels[current]||'Content';
   const initial={title:'',description:'',image:'',name:'',amount:''};
@@ -1781,6 +1784,195 @@ function quickContentEditor(focusField){
   if(focusField==='picture')setTimeout(()=>document.getElementById('qcPicture')?.click(),100);
 }
 function previewQuickPicture(input){const file=input.files&&input.files[0];if(!file)return;if(file.size>5*1024*1024){alert('Picture 5MB से कम रखें।');input.value='';return;}const reader=new FileReader();reader.onload=e=>{const box=document.getElementById('qcPreview');if(box)box.innerHTML=`<img alt="Picture preview" src="${e.target.result}" style="max-width:100%;max-height:220px;object-fit:contain;border-radius:12px;border:1px solid #dce5ed">`;};reader.readAsDataURL(file);}
+
+/* =========================================================
+   COMMUNITY IMPACT — MODULE-SPECIFIC CONTENT EDITORS
+   ========================================================= */
+const NSF_COMMUNITY_EDITOR_FIELDS = {
+  programs: {
+    title:'🌱 Our Programs — Add Program',
+    fields:[
+      ['title','Program Title','text',true],
+      ['category','Program Category','select',true,['Education','Health','Environment','Women & Youth','Child Welfare','Digital Literacy','Community','Other']],
+      ['location','Village / District / Location','text',false],
+      ['description','Program Description / Activities','textarea',true],
+      ['progress','Progress Percentage (0–100)','number',false],
+      ['beneficiaries','People / Beneficiaries Reached','number',false],
+      ['image','Program Photo (JPG / PNG / WEBP)','file',false,'image'],
+      ['status','Publish Status','select',true,['published','draft','archived']]
+    ]
+  },
+  impactLocations: {
+    title:'🗺️ Impact Map — Add Field Location',
+    fields:[
+      ['title','Location / Project Title','text',true],
+      ['category','Impact Category','select',true,['Education','Health','Environment','Women & Youth','Community','Other']],
+      ['location','Village / Area','text',true],
+      ['district','District','text',false],
+      ['state','State','text',false],
+      ['mapLink','Google Maps Link','url',false],
+      ['latitude','Latitude','text',false],
+      ['longitude','Longitude','text',false],
+      ['description','Impact Summary / Description','textarea',true],
+      ['image','Location Photo (JPG / PNG / WEBP)','file',false,'image']
+    ]
+  },
+  missions: {
+    title:'🎯 Volunteer Missions — Create Mission',
+    fields:[
+      ['title','Mission Title','text',true],
+      ['category','Mission Type','select',true,['Education','Health','Environment','Relief','Awareness','Community','Other']],
+      ['location','Mission Location','text',true],
+      ['startDate','Start Date','date',false],
+      ['endDate','End Date','date',false],
+      ['deadline','Volunteer Registration Deadline','date',false],
+      ['volunteersNeeded','Volunteers Needed','number',false],
+      ['registrationUrl','Registration / Information Link','url',false],
+      ['status','Publish Status','select',true,['published','draft','archived']],
+      ['description','Mission Details / Instructions','textarea',true],
+      ['image','Mission Poster / Photo (JPG / PNG / WEBP)','file',false,'image']
+    ]
+  },
+  certificates: {
+    title:'🏅 Certificate Records — Add Verified Record',
+    fields:[
+      ['applicationId','Internship Application ID (Required)','number',true],
+      ['certificateId','Certificate ID','text',true],
+      ['name','Certificate Holder Name','text',true],
+      ['fatherName','Father Name','text',false],
+      ['college','College / Institution','text',false],
+      ['course','Course / Program','text',false],
+      ['internshipId','Internship ID','text',false],
+      ['issueDate','Issue Date','date',false],
+      ['status','Certificate Status','select',true,['active','revoked']],
+      ['certificateUrl','Certificate PDF (PDF only)','file',false,'pdf']
+    ],
+    note:'Certificate जारी करने की मौजूदा सुरक्षा शर्तें लागू रहेंगी: संबंधित Internship Application में 21/21 attendance और approved project होना आवश्यक है।'
+  },
+  impactStories: {
+    title:'✨ Impact Stories — Publish a Story',
+    fields:[
+      ['title','Story Title','text',true],
+      ['category','Story Category','select',true,['Education','Health','Environment','Women & Youth','Community','Other']],
+      ['location','Village / Location','text',false],
+      ['storyDate','Story Date','date',false],
+      ['beneficiaries','People / Beneficiaries Reached','number',false],
+      ['summary','Short Highlight','text',false],
+      ['description','Full Story / Impact Description','textarea',true],
+      ['image','Story Photo (JPG / PNG / WEBP)','file',false,'image'],
+      ['reportUrl','Supporting Report (PDF only)','file',false,'pdf'],
+      ['status','Publish Status','select',true,['published','draft','archived']]
+    ]
+  },
+  communityEvents: {
+    title:'📅 Community Calendar — Add Event',
+    fields:[
+      ['title','Event Title','text',true],
+      ['category','Event Category','select',true,['Education','Health','Environment','Awareness','Community','Other']],
+      ['eventDate','Event Date','date',true],
+      ['startTime','Start Time','time',false],
+      ['endTime','End Time','time',false],
+      ['location','Venue / Location','text',true],
+      ['registrationUrl','Registration Link','url',false],
+      ['description','Event Details / Instructions','textarea',true],
+      ['image','Event Poster / Photo (JPG / PNG / WEBP)','file',false,'image'],
+      ['attachmentUrl','Event Notice / Schedule (PDF only)','file',false,'pdf'],
+      ['status','Publish Status','select',true,['published','draft','archived']]
+    ]
+  },
+  knowledgeLibrary: {
+    title:'📚 Knowledge Library — Upload Resource',
+    fields:[
+      ['title','Resource Title','text',true],
+      ['category','Resource Category','select',true,['Education','Health','Environment','Awareness','Government Schemes','Training','Other']],
+      ['topic','Topic / Subject','text',false],
+      ['author','Author / Publisher','text',false],
+      ['language','Language','select',false,['Hindi','English','Hindi & English','Other']],
+      ['description','Resource Description','textarea',true],
+      ['resourceUrl','Upload PDF Resource (PDF only)','file',true,'pdf'],
+      ['status','Publish Status','select',true,['published','draft','archived']]
+    ]
+  }
+};
+
+function communityContentEditor(record){
+  const cfg=NSF_COMMUNITY_EDITOR_FIELDS[current];
+  if(!cfg){alert('इस section के लिए अलग content form उपलब्ध नहीं है।');return;}
+  const x=record&&typeof record==='object'?record:{};
+  const isEdit=x.id!==undefined&&x.id!==null;
+  const fieldHtml=cfg.fields.map(([key,label,type,required,extra])=>{
+    const value=x[key]??(key==='status'?(current==='certificates'?'active':'published'):'');
+    const req=required?'required':'';
+    const id='nsfCommunityField_'+key;
+    if(type==='file'){
+      const accept=extra==='pdf'?'.pdf,application/pdf':'.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp';
+      const currentUrl=value?`<div class="small" style="margin-top:7px">मौजूदा फ़ाइल: <a href="${esc(value)}" target="_blank" rel="noopener">Open / View</a></div>`:'';
+      return `<div class="nsf-editor-field"><label for="${id}"><b>${esc(label)}</b></label><input id="${id}" type="file" accept="${accept}" ${required&&!value&&!isEdit?'required':''}><small>${extra==='pdf'?'केवल PDF फ़ाइल स्वीकार होगी।':'केवल JPG, PNG या WEBP इमेज स्वीकार होगी।'} ${extra==='pdf'?'अधिकतम 15 MB':'अधिकतम 5 MB'}</small>${currentUrl}</div>`;
+    }
+    if(type==='textarea')return `<div class="nsf-editor-field nsf-editor-wide"><label for="${id}"><b>${esc(label)}</b></label><textarea id="${id}" rows="4" ${req}>${esc(value)}</textarea></div>`;
+    if(type==='select')return `<div class="nsf-editor-field"><label for="${id}"><b>${esc(label)}</b></label><select id="${id}" ${req}>${(extra||[]).map(v=>`<option value="${esc(v)}" ${String(value)===v?'selected':''}>${esc(v)}</option>`).join('')}</select></div>`;
+    return `<div class="nsf-editor-field"><label for="${id}"><b>${esc(label)}</b></label><input id="${id}" type="${type}" value="${esc(value)}" ${req} ${type==='number'?'min="0"':''}></div>`;
+  }).join('');
+  document.getElementById('nsfCommunityContentModal')?.remove();
+  document.body.insertAdjacentHTML('beforeend',`
+    <div class="modal" id="nsfCommunityContentModal">
+      <div class="modalbox nsf-community-editor-modal">
+        <div class="row"><div><h2>${esc(cfg.title)}</h2><p class="small">${isEdit?'मौजूदा रिकॉर्ड में बदलाव करें।':'सभी आवश्यक जानकारी भरें और Save करें।'}</p></div><button type="button" class="muted" onclick="document.getElementById('nsfCommunityContentModal').remove()">✕ Close</button></div>
+        ${cfg.note?`<div class="easy-help">${esc(cfg.note)}</div>`:''}
+        <form id="nsfCommunityContentForm" class="nsf-community-editor-grid">
+          ${fieldHtml}
+          <div class="nsf-editor-wide" id="nsfCommunityEditorMessage" aria-live="polite"></div>
+          <div class="nsf-editor-wide actions nsf-editor-actions">
+            <button type="button" class="muted" onclick="document.getElementById('nsfCommunityContentModal').remove()">Cancel</button>
+            <button type="submit" class="success">✓ ${isEdit?'Update Record':'Save Record'}</button>
+          </div>
+        </form>
+      </div>
+    </div>`);
+  const form=document.getElementById('nsfCommunityContentForm');
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();
+    const submit=form.querySelector('button[type="submit"]');
+    const message=document.getElementById('nsfCommunityEditorMessage');
+    submit.disabled=true;submit.textContent='Uploading & Saving…';
+    try{
+      const payload={...x};delete payload.id;
+      for(const [key,label,type] of cfg.fields){
+        const input=document.getElementById('nsfCommunityField_'+key);
+        if(!input)continue;
+        if(type==='file'){
+          const file=input.files&&input.files[0];
+          if(!file)continue;
+          const isPdf=key==='certificateUrl'||key==='reportUrl'||key==='attachmentUrl'||key==='resourceUrl';
+          if(isPdf){
+            if(file.type!=='application/pdf'&&!/\.pdf$/i.test(file.name))throw new Error(label+': केवल PDF फ़ाइल चुनें।');
+            if(file.size>15*1024*1024)throw new Error(label+': PDF 15 MB से छोटी होनी चाहिए।');
+          }else{
+            if(!/^image\/(jpeg|png|webp)$/i.test(file.type))throw new Error(label+': JPG, PNG या WEBP इमेज चुनें।');
+            if(file.size>5*1024*1024)throw new Error(label+': इमेज 5 MB से छोटी होनी चाहिए।');
+          }
+          const fd=new FormData();fd.append('file',file);
+          const uploaded=await api(isPdf?'/api/upload-document':'/api/upload',{method:'POST',body:fd});
+          if(!uploaded||!uploaded.url)throw new Error(label+': Upload URL नहीं मिली।');
+          payload[key]=uploaded.url;
+        }else{
+          const value=input.value.trim();
+          if(value!==''||input.required)payload[key]=value;
+          else if(!isEdit)delete payload[key];
+        }
+      }
+      const method=isEdit?'PUT':'POST';
+      const endpoint='/api/'+current+(isEdit?'/'+encodeURIComponent(x.id):'');
+      await api(endpoint,{method,body:JSON.stringify(payload)});
+      document.getElementById('nsfCommunityContentModal')?.remove();
+      await render();
+    }catch(error){
+      message.innerHTML=`<div class="err">${esc(error.message||'Save नहीं हो पाया।')}</div>`;
+      submit.disabled=false;submit.textContent=isEdit?'✓ Update Record':'✓ Save Record';
+    }
+  });
+}
+
 async function saveQuickContent(){
   const msg=document.getElementById('qcMessage');
   try{
@@ -1803,6 +1995,7 @@ async function saveQuickContent(){
    ========================================================= */
 
 function editor(x){
+  if(['programs','impactLocations','missions','certificates','impactStories','communityEvents','knowledgeLibrary'].includes(current)){communityContentEditor(x);return;}
 
   x = x || {
     title:"",
@@ -4117,4 +4310,18 @@ render();
   .item{padding:13px!important}
 }
 @media(max-width:360px){.tabs{grid-template-columns:1fr!important}}
+</style>
+
+<style id="nsf-community-editor-v4">
+.nsf-community-editor-modal{max-width:920px!important}
+.nsf-community-editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:18px}
+.nsf-editor-field{display:flex;flex-direction:column;gap:7px;min-width:0;padding:13px;border:1px solid #e3ebf0;border-radius:14px;background:#fbfdfc}
+.nsf-editor-field label{color:#18354a;font-size:13px}
+.nsf-editor-field input,.nsf-editor-field textarea,.nsf-editor-field select{width:100%;min-width:0}
+.nsf-editor-field small{font-size:12px;color:#718397}
+.nsf-editor-wide{grid-column:1/-1}
+.nsf-editor-actions{justify-content:flex-end}
+.nsf-dynamic-admin-card{overflow-wrap:anywhere}
+.nsf-dynamic-admin-card img{flex:none}
+@media(max-width:650px){.nsf-community-editor-grid{grid-template-columns:1fr}.nsf-editor-wide{grid-column:auto}.nsf-community-editor-modal{padding:16px!important}}
 </style>
