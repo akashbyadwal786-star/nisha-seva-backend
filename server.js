@@ -213,6 +213,15 @@ app.use(
   )
 );
 
+// Student Portal is hosted with the public website. When this backend/API
+// subdomain receives the same page URL, send the browser to the canonical
+// public-site page and preserve QR profile query strings.
+app.get('/student-portal.html', (req, res) => {
+  const queryIndex = String(req.originalUrl || '').indexOf('?');
+  const query = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : '';
+  return res.redirect(302, `https://nishasevafoundation.org/student-portal.html${query}`);
+});
+
 
 /* =========================================================
    ADMIN AUTH
