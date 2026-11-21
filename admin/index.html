@@ -748,80 +748,238 @@ const secretaryFeatures = [
   ["president_report","Send Report to President","Prepare and submit reports or updates for the President","📨"]
 ];
 let secretaryActiveFeature = "";
+
+const secretaryFormSchemas = {
+  meeting: {
+    heading:"Meeting Schedule",
+    fields:[
+      ["meetingType","Meeting Type","select",["Executive Committee","General Body","Subcommittee","Emergency","Online"]],
+      ["date","Meeting Date","date",null,true],["meetingTime","Meeting Time","time",null,true],
+      ["location","Venue / Meeting Link","text",null,true],
+      ["chairperson","Chairperson","text"],["participants","Invited Participants","textarea"],
+      ["agenda","Agenda Items","textarea",null,true]
+    ]
+  },
+  meeting_notice: {
+    heading:"Meeting Notice",
+    fields:[
+      ["noticeType","Notice Type","select",["Regular Meeting","Annual General Meeting","Special General Meeting","Emergency Notice"]],
+      ["date","Meeting Date","date",null,true],["meetingTime","Meeting Time","time",null,true],
+      ["location","Meeting Venue","text",null,true],
+      ["noticeTo","Notice To","select",["All Members","Executive Committee","Office Bearers","Volunteers","Specific Group"]],
+      ["responseDeadline","RSVP Deadline","date"],["noticeText","Notice / Instructions","textarea",null,true]
+    ]
+  },
+  meeting_minutes: {
+    heading:"Meeting Minutes",
+    fields:[
+      ["date","Meeting Date","date",null,true],
+      ["meetingType","Meeting Type","select",["Executive Committee","General Body","Subcommittee","Emergency","Online"]],
+      ["location","Meeting Venue","text"],["presidingOfficer","Presiding Officer","text",null,true],
+      ["attendees","Members Present","textarea",null,true],
+      ["resolutions","Resolutions / Decisions","textarea",null,true],
+      ["actionPoints","Action Points and Responsible Members","textarea"]
+    ]
+  },
+  attendance: {
+    heading:"Member Attendance Register",
+    fields:[
+      ["date","Attendance Date","date",null,true],
+      ["eventType","Meeting / Activity","select",["Executive Meeting","General Body Meeting","Training","Field Activity","Foundation Event"]],
+      ["location","Venue","text"],["totalPresent","Members Present","number",null,true],
+      ["presentNames","Present Member Names / IDs","textarea",null,true],
+      ["absentNames","Absent Member Names / IDs","textarea"],
+      ["verifiedBy","Attendance Verified By","text"]
+    ]
+  },
+  proposal: {
+    heading:"Project / Committee Proposal",
+    fields:[
+      ["proposalType","Proposal Category","select",["Education","Healthcare","Environment","Women Empowerment","Youth Development","Community Development","Infrastructure","Other"]],
+      ["submittedBy","Proposed By","text",null,true],["targetArea","Target Village / Area","text"],
+      ["beneficiaries","Estimated Beneficiaries","number"],["budget","Estimated Budget (₹)","number"],
+      ["startDate","Proposed Start Date","date"],["endDate","Proposed End Date","date"],
+      ["objectives","Objectives","textarea",null,true],["activities","Planned Activities","textarea",null,true],
+      ["outcomes","Expected Outcomes","textarea"]
+    ]
+  },
+  official_letter: {
+    heading:"Official Letter Draft",
+    fields:[
+      ["letterType","Letter Type","select",["Request","Permission","Invitation","Appreciation","Office Order","Reply / Response","Other"]],
+      ["recipient","Recipient Name / Designation","text",null,true],
+      ["organisation","Department / Organisation","text"],["referenceNo","Reference Number","text"],
+      ["date","Letter Date","date",null,true],["location","Place of Issue","text"],
+      ["subject","Letter Subject","text",null,true],["letterBody","Letter Body","textarea",null,true],
+      ["signatory","Signatory / Designation","text"]
+    ]
+  },
+  program_report: {
+    heading:"Program Activity Report",
+    fields:[
+      ["programCategory","Program Category","select",["Education","Health","Environment","Women & Child Welfare","Community Development","Digital Literacy","Other"]],
+      ["date","Program Date","date",null,true],["location","Village / Venue","text",null,true],
+      ["beneficiaries","Beneficiaries Reached","number"],["volunteers","Volunteers Participated","number"],
+      ["activities","Activities Conducted","textarea",null,true],
+      ["results","Results / Impact","textarea",null,true],["followUp","Follow-up Required","textarea"]
+    ]
+  },
+  annual_report: {
+    heading:"Annual Foundation Report",
+    fields:[
+      ["reportYear","Financial Year","select",["2024-25","2025-26","2026-27","2027-28"]],
+      ["programmes","Programmes and Activities","textarea",null,true],
+      ["beneficiaries","Total Beneficiaries","number"],["fundingSummary","Funding / Resource Summary","textarea"],
+      ["achievements","Major Achievements","textarea",null,true],
+      ["challenges","Challenges and Learnings","textarea"],
+      ["futurePlan","Next Year Action Plan","textarea",null,true]
+    ]
+  },
+  pending_task: {
+    heading:"Task Assignment and Follow-up",
+    fields:[
+      ["taskCategory","Task Category","select",["Administration","Meeting Follow-up","Documentation","Program Coordination","Field Visit","Communication","Other"]],
+      ["assignedTo","Assigned To","text",null,true],["priority","Priority","select",["Low","Normal","High","Urgent"]],
+      ["dueDate","Due Date","date",null,true],["location","Related Location","text"],
+      ["taskStatus","Task Progress","select",["Not Started","In Progress","On Hold","Completed"]],
+      ["taskDetails","Task Details","textarea",null,true],
+      ["followUp","Follow-up Notes","textarea"]
+    ]
+  },
+  president_report: {
+    heading:"Report to President",
+    fields:[
+      ["reportType","Report Type","select",["Weekly Update","Monthly Report","Program Update","Meeting Outcome","Urgent Matter","Administrative Update","Other"]],
+      ["reportPeriod","Reporting Period","text",null,true],
+      ["date","Report Date","date",null,true],
+      ["priority","Priority","select",["Normal","Important","Urgent"]],
+      ["summary","Report Summary","textarea",null,true],
+      ["decisionNeeded","Decision / Approval Required","textarea"],
+      ["attachments","Attached Documents / References","text"]
+    ]
+  },
+  office_bearers: {
+    heading:"Office Bearer Change Request",
+    fields:[
+      ["requestType","Request Type","select",["Add New Office Bearer","Update Details","Change Designation","Remove Office Bearer"]],
+      ["personName","Full Name","text",null,true],
+      ["designation","Designation","select",["President","Vice President","Secretary","Joint Secretary","Treasurer","Executive Member","Other"]],
+      ["mobile","Mobile Number","tel"],["email","Email Address","email"],
+      ["termStart","Term Start Date","date"],["termEnd","Term End Date","date"],
+      ["reason","Reason / Resolution Reference","textarea",null,true]
+    ]
+  }
+};
+
+function secretaryInputMarkup(field){
+  const [name,label,type,options,required]=field;
+  const req=required?' required':'';
+  if(type==="textarea") return `<label class="secretary-field">${label}<textarea name="${name}" rows="3" maxlength="5000"${req}></textarea></label>`;
+  if(type==="select") return `<label class="secretary-field">${label}<select name="${name}"${req}><option value="">Select ${label}</option>${options.map(v=>`<option value="${v}">${v}</option>`).join("")}</select></label>`;
+  return `<label class="secretary-field">${label}<input name="${name}" type="${type}" ${type==="number"?'min="0" step="1"':''} ${type==="tel"?'inputmode="numeric" maxlength="10"':''} ${type==="email"?'maxlength="180"':''} ${["text"].includes(type)?'maxlength="220"':''}${req}></label>`;
+}
+function secretaryFormShell(title,fields,buttonLabel){
+  return `<form class="item nsf-secretary-form" id="secretaryRecordForm">
+    <h3>${title}</h3>
+    <label class="secretary-field">Record Title<input name="title" required maxlength="180"></label>
+    ${fields.map(secretaryInputMarkup).join("")}
+    <label class="secretary-field">Record Status<select name="status"><option value="draft">Draft</option><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select></label>
+    <button class="primary" type="submit">${buttonLabel}</button><div id="secretaryRecordMsg"></div>
+  </form>`;
+}
 async function renderSecretaryPanel(){
   const content=document.getElementById("content");
   if(!content)return;
   content.innerHTML=`
-    <div class="row"><div><div class="small" style="font-weight:800;letter-spacing:.12em;color:#0f7657">NISHA SEVA FOUNDATION · SECRETARIAT</div><h2>Secretary Panel</h2><p class="small">Manage foundation administration, meetings, members, reports and documents.</p></div><span class="status active">Secretary Workspace</span></div>
-    <div class="easy-help">All 15 Secretary functions are available here. New member requests are sent to the President/Admin for approval; submitting a request does not activate a member.</div>
-    <div class="easy-action-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
-      ${secretaryFeatures.map(f=>`<button class="easy-action" onclick="secretaryOpenFeature('${f[0]}')"><span class="ea-icon">${f[3]}</span><span><b>${f[1]}</b><small>${f[2]}</small></span></button>`).join("")}
-    </div>
-    <div class="small" style="margin-top:16px">Security: Secretary access is limited to Secretariat functions. Finance, Admin Settings and other sensitive modules are not available.</div>`;
+    <div class="row"><div><h2>Secretary Panel</h2></div><span class="status active">Secretary Workspace</span></div>
+    <div class="easy-action-grid secretary-menu-grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+      ${secretaryFeatures.map(f=>`<button class="easy-action nsf-secretary-card" onclick="secretaryOpenFeature('${f[0]}')"><span class="ea-icon">${f[3]}</span><span><b>${f[1]}</b></span></button>`).join("")}
+    </div>`;
 }
 async function secretaryOpenFeature(key){
   secretaryActiveFeature=key;
   const content=document.getElementById("content");
   const feature=secretaryFeatures.find(f=>f[0]===key);
   if(!content||!feature)return;
-  content.innerHTML=`<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2><p class="small">${feature[2]}</p></div><button class="muted" onclick="renderSecretaryPanel()">← All Functions</button></div><div class="small">Loading…</div>`;
+  content.innerHTML=`<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2></div><button class="muted" onclick="renderSecretaryPanel()">← All Functions</button></div><div class="small">Loading…</div>`;
   try{
     if(key==="member_applications" || key==="volunteers"){
       const rows=await api(key==="member_applications"?"/api/members":"/api/volunteers");
       const fields=key==="member_applications"?["name","fullName","applicantName","email","phone","mobile","status","submittedAt"]:["name","fullName","email","phone","status","submittedAt","volunteerId"];
-      content.innerHTML=secretaryFeatureHeader(feature)+
-        `<div class="easy-help">${key==="member_applications"?"Membership applications are view-only. Final approval remains with the President/Admin.":"Volunteer records are view-only. Only Admin can approve/reject applications and issue IDs."}</div>`+
-        (rows.length?rows.map(x=>secretaryRecordCard(x,fields)).join(""):'<div class="ok">No records are available yet.</div>');
+      content.innerHTML=secretaryFeatureHeader(feature)+(rows.length?rows.map(x=>secretaryRecordCard(x,fields)).join(""):'<div class="ok">No records found.</div>');
       return;
     }
     if(key==="documents"){
       const rows=await api("/api/secretary/records?category=document");
       content.innerHTML=secretaryFeatureHeader(feature)+`
-        <div class="item"><h3>Upload Document</h3><form id="secretaryDocForm"><label>Document Title</label><input name="title" required maxlength="180" placeholder="e.g. Meeting Minutes 2026"><br><br><label>File (PDF, JPG, PNG, DOC, DOCX · Maximum 10 MB)</label><input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"><br><br><button class="primary">Upload Securely</button></form><div id="secretaryDocMsg"></div></div>
+        <form class="item" id="secretaryDocForm"><h3>Upload Foundation Document</h3>
+          <label class="secretary-field">Document Type<select name="documentType" required><option value="">Select document type</option><option>Meeting Minutes</option><option>Official Letter</option><option>Project Proposal</option><option>Program Report</option><option>Annual Report</option><option>Registration / Legal Document</option><option>Other</option></select></label>
+          <label class="secretary-field">Document Title<input name="title" required maxlength="180"></label>
+          <label class="secretary-field">Document Date<input name="date" type="date"></label>
+          <label class="secretary-field">Select File<input type="file" name="file" required accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"></label>
+          <button class="primary" type="submit">Upload Document</button><div id="secretaryDocMsg"></div>
+        </form>
         <h3>Uploaded Documents</h3>`+
-        (rows.length?rows.map(x=>`<div class="item"><b>${esc(x.title||"Document")}</b><p class="small">${esc(x.fileName||"")} · ${esc(x.createdAt||"")}</p><button class="muted" onclick="secretaryDownloadDoc(${Number(x.id)})">Download</button></div>`).join(""):'<div class="ok">No documents have been uploaded yet.</div>');
+        (rows.length?rows.map(x=>`<div class="item"><b>${esc(x.title||"Document")}</b><div>${esc(x.fileName||"")} · ${esc(x.createdAt||"")}</div><button class="muted" onclick="secretaryDownloadDoc(${Number(x.id)})">Download</button></div>`).join(""):'<div class="ok">No documents found.</div>');
       document.getElementById("secretaryDocForm").addEventListener("submit",secretaryUploadDocument);
       return;
     }
     if(key==="member_add_request"){
       content.innerHTML=secretaryFeatureHeader(feature)+`
-        <div class="easy-help">This request will be sent to the President/Admin for approval. The person will not become an active member until approval is granted.</div>
-        <form class="item" id="secretaryMemberForm"><label>Full Name</label><input name="name" required maxlength="140"><br><br><label>Mobile Number</label><input name="phone" required maxlength="20"><br><br><label>Email (Optional)</label><input name="email" type="email" maxlength="180"><br><br><label>Address / Area</label><input name="address" maxlength="300"><br><br><label>Reason for Membership / Notes</label><textarea name="reason" rows="3" maxlength="3000"></textarea><br><br><button class="primary">Submit for President Approval</button><div id="secretaryMemberMsg"></div></form>`;
+        <form class="item nsf-secretary-form" id="secretaryMemberForm">
+          <h3>New Membership Request</h3>
+          <label class="secretary-field">Membership Category<select name="membershipType" required><option value="">Select category</option><option>General Member</option><option>Life Member</option><option>Student Member</option><option>Volunteer Member</option><option>Institutional Member</option></select></label>
+          <label class="secretary-field">Full Name<input name="name" required maxlength="140"></label>
+          <label class="secretary-field">Mobile Number<input name="phone" type="tel" inputmode="numeric" required maxlength="10"></label>
+          <label class="secretary-field">Email Address<input name="email" type="email" maxlength="180"></label>
+          <label class="secretary-field">Residential Address<input name="address" maxlength="300"></label>
+          <label class="secretary-field">Occupation<input name="occupation" maxlength="160"></label>
+          <label class="secretary-field">Reason for Membership<textarea name="reason" rows="3" maxlength="3000"></textarea></label>
+          <button class="primary" type="submit">Submit Membership Request</button><div id="secretaryMemberMsg"></div>
+        </form>`;
       document.getElementById("secretaryMemberForm").addEventListener("submit",secretarySubmitMemberRequest);
       return;
     }
     const category=key==="office_bearers"?"office_bearer_request":key;
     const rows=await api("/api/secretary/records?category="+encodeURIComponent(category));
-    const extra=key==="office_bearers"?`<div class="easy-help">View the current office bearers list or request a new/updated entry. Final changes require President/Admin approval.</div><button class="muted" onclick="secretaryOpenOfficeBearerList()">View Office Bearers List</button>`:"";
-    content.innerHTML=secretaryFeatureHeader(feature)+extra+`
-      <form class="item" id="secretaryRecordForm"><h3>Create New Record</h3>
-        <label>Title</label><input name="title" required maxlength="180" placeholder="Enter a title">
-        <br><br><label>Date</label><input name="date" type="date">
-        <br><br><label>Location / Related Person (if applicable)</label><input name="location" maxlength="220">
-        <br><br><label>Details / Proceedings / Report</label><textarea name="content" rows="6" required maxlength="12000" placeholder="Enter the full details"></textarea>
-        <br><br><label>Status</label><select name="status"><option value="draft">Draft</option><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="completed">Completed</option></select>
-        <br><br><button class="primary">Save Record</button><div id="secretaryRecordMsg"></div>
-      </form>
-      <h3>Previously Saved Records (${rows.length})</h3>`+
-      (rows.length?rows.map(x=>secretaryRecordCard(x,["title","date","location","status","content","createdAt"])).join(""):'<div class="ok">No records have been created yet.</div>');
+    if(key==="office_bearers"){
+      content.innerHTML=secretaryFeatureHeader(feature)+
+        `<button class="muted" onclick="secretaryOpenOfficeBearerList()">View Current Office Bearers</button>`+
+        secretaryFormShell("Office Bearer Change Request",secretaryFormSchemas.office_bearers.fields,"Submit Change Request")+
+        (rows.length?`<h3>Previous Requests (${rows.length})</h3>`+rows.map(x=>secretaryRecordCard(x,["title","date","location","status","content","createdAt"])).join(""):'');
+    }else{
+      const schema=secretaryFormSchemas[key];
+      if(!schema){content.innerHTML=secretaryFeatureHeader(feature)+'<div class="err">This menu does not have a configured form.</div>';return;}
+      content.innerHTML=secretaryFeatureHeader(feature)+
+        secretaryFormShell(schema.heading,schema.fields,"Save "+schema.heading)+
+        `<h3>Saved Records (${rows.length})</h3>`+
+        (rows.length?rows.map(x=>secretaryRecordCard(x,["title","date","location","status","content","createdAt"])).join(""):'<div class="ok">No saved records.</div>');
+    }
     document.getElementById("secretaryRecordForm").addEventListener("submit",secretarySaveRecord);
   }catch(e){content.innerHTML=secretaryFeatureHeader(feature)+`<div class="err">${esc(e.message||"Unable to load data.")}</div>`;}
 }
 function secretaryFeatureHeader(feature){
-  return `<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2><span class="small">${feature[2]}</span></div><button class="muted" onclick="renderSecretaryPanel()">← All Functions</button></div>`;
+  return `<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2></div><button class="muted" onclick="renderSecretaryPanel()">← All Functions</button></div>`;
 }
 function secretaryRecordCard(x,fields){
   const labels={name:"Name",fullName:"Full Name",applicantName:"Applicant",email:"Email",phone:"Mobile",mobile:"Mobile",status:"Status",submittedAt:"Submitted On",volunteerId:"Volunteer ID",title:"Title",date:"Date",location:"Location",content:"Details",createdAt:"Created At"};
   return `<div class="item"><div class="row"><b>${esc(x.title||x.name||x.fullName||x.applicantName||("Record #"+(x.id||"")))}</b><span class="status ${["completed","active","approved"].includes(String(x.status||"").toLowerCase())?"active":"pending"}">${esc(x.status||"Record")}</span></div><div class="volunteer-info">${fields.filter(k=>x[k]!==undefined&&x[k]!==null&&x[k]!=="").map(k=>`<div class="info-box"><strong>${labels[k]||k}</strong>${esc(typeof x[k]==="object"?JSON.stringify(x[k]):x[k])}</div>`).join("")}</div></div>`;
 }
 async function secretarySubmitMemberRequest(ev){
-  ev.preventDefault();const form=ev.currentTarget;const data=Object.fromEntries(new FormData(form).entries());const msg=document.getElementById("secretaryMemberMsg");
-  try{await api("/api/secretary/member-requests",{method:"POST",body:JSON.stringify(data)});msg.innerHTML='<div class="ok">The request has been saved for President/Admin approval.</div>';form.reset();}
+  ev.preventDefault();const form=ev.currentTarget;const raw=Object.fromEntries(new FormData(form).entries());const msg=document.getElementById("secretaryMemberMsg");
+  const extras=[raw.membershipType&&("Membership Category: "+raw.membershipType),raw.occupation&&("Occupation: "+raw.occupation)].filter(Boolean).join("\n");
+  const data={name:raw.name,phone:raw.phone,email:raw.email,address:raw.address,reason:[raw.reason,extras].filter(Boolean).join("\n\n")};
+  try{await api("/api/secretary/member-requests",{method:"POST",body:JSON.stringify(data)});msg.innerHTML='<div class="ok">Membership request submitted.</div>';form.reset();}
   catch(e){msg.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
 }
 async function secretarySaveRecord(ev){
-  ev.preventDefault();const form=ev.currentTarget;const data=Object.fromEntries(new FormData(form).entries());const msg=document.getElementById("secretaryRecordMsg");
-  try{await api("/api/secretary/records",{method:"POST",body:JSON.stringify({...data,category:secretaryActiveFeature==="office_bearers"?"office_bearer_request":secretaryActiveFeature})});msg.innerHTML='<div class="ok">Record saved successfully.</div>';form.reset();secretaryOpenFeature(secretaryActiveFeature);}
+  ev.preventDefault();const form=ev.currentTarget;const raw=Object.fromEntries(new FormData(form).entries());const msg=document.getElementById("secretaryRecordMsg");
+  const labels={meetingType:"Meeting Type",meetingTime:"Meeting Time",chairperson:"Chairperson",participants:"Invited Participants",agenda:"Agenda",noticeType:"Notice Type",noticeTo:"Notice To",responseDeadline:"RSVP Deadline",noticeText:"Notice Details",presidingOfficer:"Presiding Officer",attendees:"Members Present",resolutions:"Resolutions",actionPoints:"Action Points",eventType:"Activity Type",totalPresent:"Members Present",presentNames:"Present Members",absentNames:"Absent Members",verifiedBy:"Verified By",proposalType:"Proposal Category",submittedBy:"Proposed By",targetArea:"Target Area",beneficiaries:"Beneficiaries",budget:"Estimated Budget",startDate:"Start Date",endDate:"End Date",objectives:"Objectives",activities:"Activities",outcomes:"Expected Outcomes",letterType:"Letter Type",recipient:"Recipient",organisation:"Organisation",referenceNo:"Reference Number",subject:"Subject",letterBody:"Letter Body",signatory:"Signatory",programCategory:"Program Category",volunteers:"Volunteers",results:"Results / Impact",followUp:"Follow-up",reportYear:"Financial Year",programmes:"Programmes",fundingSummary:"Funding Summary",achievements:"Achievements",challenges:"Challenges",futurePlan:"Future Plan",taskCategory:"Task Category",assignedTo:"Assigned To",priority:"Priority",dueDate:"Due Date",taskStatus:"Task Progress",taskDetails:"Task Details",reportType:"Report Type",reportPeriod:"Reporting Period",summary:"Report Summary",decisionNeeded:"Decision Required",attachments:"Attachments",requestType:"Request Type",personName:"Person Name",designation:"Designation",mobile:"Mobile",email:"Email",termStart:"Term Start",termEnd:"Term End",reason:"Reason"};
+  const reserved=new Set(["title","date","location","status"]);
+  const details=Object.entries(raw).filter(([k,v])=>!reserved.has(k)&&String(v||"").trim()).map(([k,v])=>(labels[k]||k)+": "+v);
+  const data={title:raw.title,date:raw.date||"",location:raw.location||"",status:raw.status||"draft",content:details.join("\n\n"),category:secretaryActiveFeature==="office_bearers"?"office_bearer_request":secretaryActiveFeature};
+  if(!data.content.trim()){msg.innerHTML='<div class="err">Please complete the required details.</div>';return;}
+  try{await api("/api/secretary/records",{method:"POST",body:JSON.stringify(data)});msg.innerHTML='<div class="ok">Record saved successfully.</div>';form.reset();secretaryOpenFeature(secretaryActiveFeature);}
   catch(e){msg.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
 }
 async function secretaryUploadDocument(ev){
@@ -3929,3 +4087,34 @@ render();
 </style>
 </body>
 </html>
+
+<style id="nsf-secretary-tailored-mobile-v3">
+.nsf-secretary-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.nsf-secretary-form h3,.nsf-secretary-form button,.nsf-secretary-form #secretaryRecordMsg{grid-column:1/-1}
+.secretary-field{display:flex;flex-direction:column;gap:7px;min-width:0;font-size:13px;font-weight:750;color:#29445a}
+.secretary-field input,.secretary-field select,.secretary-field textarea{width:100%;min-width:0;max-width:100%;font:inherit;font-weight:500}
+.nsf-secretary-form button{justify-self:start;min-width:190px;transition:transform .2s,box-shadow .2s}
+.nsf-secretary-form button:hover{transform:translateY(-3px);box-shadow:0 12px 22px rgba(15,118,87,.2)}
+.nsf-secretary-card{min-height:88px!important;border-radius:16px!important;transition:transform .2s,box-shadow .2s!important}
+.nsf-secretary-card:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(7,100,72,.15)!important}
+#content{min-width:0;overflow-wrap:anywhere}
+#content input,#content select,#content textarea{max-width:100%;min-width:0}
+#content .volunteer-info{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.easy-help,.role-description,.module-description,.help-text,.helper-text,.form-hint,.field-hint{display:none!important}
+@media(max-width:700px){
+  .wrap{display:block!important;margin:10px auto!important;padding:0 10px!important}
+  .tabs{position:static!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:6px!important;padding:9px!important}
+  .tabs button{min-width:0!important;white-space:normal!important;font-size:12px!important;padding:10px 7px!important}
+  #content{padding:14px!important;border-radius:16px!important}
+  #content h2{font-size:20px!important}
+  .nsf-secretary-form{grid-template-columns:1fr!important;gap:11px!important;padding:14px!important}
+  .nsf-secretary-form h3,.nsf-secretary-form button,.nsf-secretary-form #secretaryRecordMsg{grid-column:1}
+  .nsf-secretary-form button{width:100%;min-height:46px}
+  .nsf-secretary-card{min-height:70px!important;padding:12px!important}
+  .nsf-secretary-card .ea-icon{width:36px!important;height:36px!important}
+  .row{align-items:flex-start!important}
+  .actions button{flex:1 1 auto}
+  .item{padding:13px!important}
+}
+@media(max-width:360px){.tabs{grid-template-columns:1fr!important}}
+</style>
