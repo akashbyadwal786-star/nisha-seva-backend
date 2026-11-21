@@ -682,6 +682,61 @@ app.post(
 );
 
 
+
+/* =========================================================
+   PRIVATE-ADMIN PDF UPLOADS FOR COMMUNITY CONTENT
+   Dedicated bucket keeps PDF rules separate from image uploads.
+   ========================================================= */
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const isPdf = file.mimetype === 'application/pdf' && /\.pdf$/i.test(file.originalname || '');
+    if (!isPdf) return cb(new Error('Only PDF documents are allowed.'));
+    cb(null, true);
+  }
+});
+
+app.post('/api/upload-document', requireAdmin, pdfUpload.single('file'), async (req, res) => {
+  let uploadedPath = null;
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No PDF document uploaded.' });
+    const bucketName = 'resource-documents';
+    uploadedPath = `community/${Date.now()}-${crypto.randomUUID()}.pdf`;
+    const uploadOptions = { contentType: 'application/pdf', cacheControl: '3600', upsert: false };
+    let result = await supabase.storage.from(bucketName).upload(uploadedPath, req.file.buffer, uploadOptions);
+    if (result.error && /bucket not found|not found/i.test(result.error.message || '')) {
+      const created = await supabase.storage.createBucket(bucketName, {
+        public: true,
+        fileSizeLimit: 15 * 1024 * 1024,
+        allowedMimeTypes: ['application/pdf']
+      });
+      if (created.error && !/already exists|duplicate/i.test(created.error.message || '')) {
+        console.error('PDF bucket creation error:', created.error);
+        return res.status(500).json({ error: 'PDF Storage bucket setup failed', details: created.error.message });
+      }
+      result = await supabase.storage.from(bucketName).upload(uploadedPath, req.file.buffer, uploadOptions);
+    }
+    if (result.error) {
+      console.error('PDF upload error:', result.error);
+      return res.status(500).json({ error: 'PDF upload failed', details: result.error.message, hint: 'Supabase Storage में resource-documents bucket की settings जाँचें।' });
+    }
+    const { data } = supabase.storage.from(bucketName).getPublicUrl(uploadedPath);
+    const url = data?.publicUrl || '';
+    if (!url) {
+      await supabase.storage.from(bucketName).remove([uploadedPath]);
+      return res.status(500).json({ error: 'Could not generate PDF URL.' });
+    }
+    return res.json({ ok: true, url, path: uploadedPath, name: req.file.originalname, type: 'application/pdf' });
+  } catch (error) {
+    if (uploadedPath) {
+      try { await supabase.storage.from('resource-documents').remove([uploadedPath]); } catch (cleanupError) { console.error('PDF cleanup error:', cleanupError); }
+    }
+    console.error('POST /api/upload-document:', error);
+    return res.status(500).json({ error: error.message || 'PDF upload failed.' });
+  }
+});
+
 /* =========================================================
    GENERIC CRUD ROUTES
    ========================================================= */
