@@ -503,6 +503,42 @@ header button{background:#f0b633!important;color:#182333!important}
 </style>
 
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<style id="nsf-internship-workflow-premium">
+:root{--nsf-midnight:#071827;--nsf-midnight2:#102b43;--nsf-cyan:#19d3f3;--nsf-lime:#a3f56b;--nsf-violet:#9b7bff;--nsf-rose:#ff6687;--nsf-amber:#ffc857}
+.internship-workflow-card{position:relative;overflow:hidden;border:1px solid #cbd8e5!important;background:linear-gradient(145deg,#fff 0%,#f8fbff 72%,#f4fbfa 100%)!important}
+.internship-workflow-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:linear-gradient(180deg,#16c7e8,#8b72ff,#18b889)}
+.internship-workflow-card .internship-action-zone{display:grid;gap:12px;margin-top:16px}
+.internship-workflow-card .action-group{display:flex;flex-wrap:wrap;gap:9px;align-items:center;padding:12px;border-radius:15px;background:linear-gradient(135deg,#071827,#102b43);border:1px solid #23435d;box-shadow:inset 0 1px #ffffff12}
+.internship-workflow-card .action-group-label{flex:0 0 100%;font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:#9db4c8;margin:0 0 1px}
+.internship-workflow-card .action-group button{min-height:42px;padding:10px 14px;border:1px solid #ffffff24!important;border-radius:11px!important;color:#fff!important;font-weight:800;letter-spacing:.01em;box-shadow:0 5px 14px #0003;transition:transform .2s,filter .2s,box-shadow .2s;position:relative;overflow:hidden}
+.internship-workflow-card .action-group button:after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 25%,#ffffff30 48%,transparent 70%);transform:translateX(-130%);transition:transform .55s}
+.internship-workflow-card .action-group button:hover{transform:translateY(-3px) scale(1.015);filter:brightness(1.12);box-shadow:0 9px 22px #0005}
+.internship-workflow-card .action-group button:hover:after{transform:translateX(130%)}
+.internship-workflow-card .action-group button:disabled{opacity:.55;cursor:not-allowed;transform:none}
+.internship-workflow-card .wf-approve{background:linear-gradient(135deg,#087a62,#13b88b)!important}
+.internship-workflow-card .wf-project{background:linear-gradient(135deg,#5541c8,#8768ff)!important}
+.internship-workflow-card .wf-attendance{background:linear-gradient(135deg,#075d83,#0da9d2)!important}
+.internship-workflow-card .wf-certificate{background:linear-gradient(135deg,#a65a00,#f0a51b)!important;color:#101b26!important}
+.internship-workflow-card .wf-download{background:linear-gradient(135deg,#1455a5,#2387e8)!important}
+.internship-workflow-card .wf-edit{background:linear-gradient(135deg,#38485b,#63768d)!important}
+.internship-workflow-card .wf-reject{background:linear-gradient(135deg,#9e2442,#ed4b68)!important}
+.internship-workflow-card .wf-id{background:linear-gradient(135deg,#08766f,#16b7ad)!important}
+.internship-project-review{margin-top:15px;padding:15px;border-radius:16px;background:linear-gradient(135deg,#091c2d,#153b57);border:1px solid #2b5574;color:#f5f9ff}
+.internship-project-review h4{margin:0 0 10px;color:#9fe9ff;font-size:14px;letter-spacing:.04em}
+.internship-project-row{padding:12px;margin-top:9px;border-radius:12px;background:#ffffff0d;border:1px solid #ffffff1c}
+.internship-project-row .project-meta{font-size:12px;color:#b7c8d8;line-height:1.6;margin-top:5px}
+.internship-project-row .project-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.internship-project-row a{color:#8eeaff;font-weight:800}
+.internship-project-row .project-actions button{min-height:38px}
+.internship-project-empty{color:#bdcad7;font-size:13px;line-height:1.6}
+.internship-workflow-card .workflow-lock{display:inline-flex;align-items:center;gap:7px;padding:9px 12px;border:1px solid #8b6a28;border-radius:10px;background:#fff5d8;color:#76500c;font-size:12px;font-weight:800}
+@keyframes nsfGlowPulse{0%,100%{box-shadow:0 0 0 0 #16c7e833}50%{box-shadow:0 0 0 5px #16c7e800}}
+.internship-workflow-card .wf-project:not(:disabled),.internship-workflow-card .wf-certificate:not(:disabled){animation:nsfGlowPulse 2.8s infinite}
+@media(prefers-reduced-motion:reduce){.internship-workflow-card .action-group button,.internship-workflow-card .action-group button:after{transition:none}.internship-workflow-card .wf-project,.internship-workflow-card .wf-certificate{animation:none}}
+@media(max-width:650px){.internship-workflow-card .action-group{padding:10px}.internship-workflow-card .action-group button{flex:1 1 145px}.internship-project-row .project-actions button{flex:1 1 130px}}
+</style>
+
 </head>
 
 <body>
@@ -531,6 +567,7 @@ let token = localStorage.getItem("nisha_token") || "";
 let currentRole = localStorage.getItem("nisha_role") || "admin";
 let current = currentRole === "secretary" ? "secretaryPanel" : (currentRole === "coordinator" ? "internships" : (currentRole === "treasurer" ? "financeDashboard" : "dashboard"));
 let volunteerCache = {};
+let internshipProjectSubmissionsCache = [];
 
 
 /* =========================================================
@@ -2210,7 +2247,8 @@ async function reviewProjectSubmission(id, status){
       body:JSON.stringify({status})
     });
     alert(status === 'approved' ? 'Project approved successfully.' : 'Project rejected.');
-    await renderProjectSubmissions();
+    if(current === 'internships') await renderInternships();
+    else await renderProjectSubmissions();
   }catch(error){
     alert('Project ' + action + ' नहीं हो सका: ' + error.message);
   }
@@ -2604,20 +2642,95 @@ async function downloadInternshipIdCard(id){
  }catch(e){console.error('Student ID Card generation failed:',e);alert('Student ID Card नहीं बन सका: '+(e?.message||e));}
 }
 async function renderInternships(){
- content.innerHTML='<h2>Student Internship Applications</h2><p>Loading internship applications...</p>';
- try{const data=await api('/api/internships');const rows=Array.isArray(data)?data:[];internshipCache={};rows.forEach(x=>internshipCache[x.id]=x);let html=addRecordSearch('Student Internships',rows.length)+`<div class="row"><div><h2>BA Internship Applications</h2><span class="small">${rows.length} application(s)</span></div></div>`;html+=rows.length?rows.map(internshipCard).join(''):'<div class="ok">अभी कोई Student Internship application नहीं है।</div>';content.innerHTML=html;}catch(e){content.innerHTML=`<div class="err">${esc(e.message)}</div>`;}}
+ content.innerHTML='<h2>Student Internship Applications</h2><p>Loading internship applications and student projects...</p>';
+ try{
+  const [data,projectData]=await Promise.all([
+   api('/api/internships'),
+   api('/api/projectSubmissions').catch(error=>{console.warn('Project submissions could not be loaded in Internship view:',error);return [];})
+  ]);
+  const rows=Array.isArray(data)?data:[];
+  internshipProjectSubmissionsCache=Array.isArray(projectData)?projectData:[];
+  internshipCache={};rows.forEach(x=>internshipCache[x.id]=x);
+  let html=addRecordSearch('Student Internships',rows.length)+`<div class="row"><div><h2>BA Internship Applications</h2><span class="small">${rows.length} application(s) · Project review is available inside each student card</span></div><button class="primary" onclick="renderInternships()">↻ Refresh</button></div>`;
+  html+=rows.length?rows.map(internshipCard).join(''):'<div class="ok">अभी कोई Student Internship application नहीं है।</div>';
+  content.innerHTML=html;
+ }catch(e){content.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
+}
+function getProjectsForInternship(x){
+ const appId=Number(x.id||0);
+ const email=String(x.email||'').trim().toLowerCase();
+ const internshipId=String(x.internshipId||x.referenceNo||x.applicationReference||'').trim().toLowerCase();
+ return internshipProjectSubmissionsCache.filter(p=>{
+  const pAppId=Number(p.applicationId||0);
+  if(pAppId>0 && pAppId===appId)return true;
+  const pEmail=String(p.email||'').trim().toLowerCase();
+  const pInternshipId=String(p.internshipId||p.referenceNo||'').trim().toLowerCase();
+  // Fallback only when the submission carries a matching unique identity field.
+  return (!!email && !!pEmail && email===pEmail) || (!!internshipId && !!pInternshipId && internshipId===pInternshipId);
+ });
+}
+function internshipProjectPanel(x){
+ const projects=getProjectsForInternship(x);
+ const approved=projects.filter(p=>String(p.status||'pending').toLowerCase()==='approved');
+ const pending=projects.filter(p=>!['approved','rejected'].includes(String(p.status||'pending').toLowerCase()));
+ const rejected=projects.filter(p=>String(p.status||'').toLowerCase()==='rejected');
+ let body='';
+ if(!projects.length){
+  body='<div class="internship-project-empty">अभी इस विद्यार्थी के Internship Application ID / Email / Internship ID से जुड़ा कोई Project Submission नहीं मिला। विद्यार्थी के Student Dashboard से Project submit होने के बाद यहाँ दिखाई देगा।</div>';
+ }else{
+  body=projects.map(p=>{
+   const st=String(p.status||'pending').toLowerCase();
+   const file=p.projectFile&&typeof p.projectFile==='object'?p.projectFile:null;
+   const fileData=file&&typeof file.data==='string'?file.data:'';
+   const safeLink=/^https?:\/\//i.test(String(p.projectLink||''))?String(p.projectLink):'';
+   const fileMarkup=fileData?`<a href="${esc(fileData)}" download="${esc(file.name||'student-project')}">⬇ Download Project File</a>`:'<span class="project-meta">No attached file</span>';
+   return `<div class="internship-project-row">
+    <div class="row"><b>${esc(p.title||'Student Project')}</b><span class="status ${st==='approved'?'active':st==='rejected'?'rejected':'pending'}">${esc(st.toUpperCase())}</span></div>
+    <div class="project-meta">Submission #${esc(p.id)} · ${esc(p.category||'Project')} · ${esc(p.submittedAt?new Date(p.submittedAt).toLocaleString('en-IN'):'Submission date unavailable')}</div>
+    <div class="project-meta">${esc(p.description||'No project description provided.')}</div>
+    <div class="project-meta">${fileMarkup}${safeLink?` &nbsp;·&nbsp; <a href="${esc(safeLink)}" target="_blank" rel="noopener noreferrer">Open Project Link ↗</a>`:''}</div>
+    <div class="project-actions">
+      <button class="wf-project" onclick="reviewProjectSubmission(${Number(p.id)},'approved')" ${st==='approved'?'disabled':''}>✓ Approve Project</button>
+      <button class="wf-reject" onclick="reviewProjectSubmission(${Number(p.id)},'rejected')" ${st==='rejected'?'disabled':''}>✕ Reject Project</button>
+    </div>
+   </div>`;
+  }).join('');
+ }
+ return `<section class="internship-project-review"><h4>📁 STUDENT PROJECT REVIEW · ${projects.length} submission(s) · ${approved.length} approved · ${pending.length} pending · ${rejected.length} rejected</h4>${body}</section>`;
+}
 function internshipCard(x){
- const status=String(x.status||'pending').toLowerCase(),cls=['pending','active','rejected','revoked'].includes(status)?status:'pending';let actions='';
- if(status==='pending')actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button><button class="danger" onclick="rejectInternship(${x.id})">✕ Reject</button>`;
- else if(status==='active')actions=`<button class="primary" onclick="showOfferLetterById(${x.id})">📄 Offer Letter</button><button class="warning" onclick="revokeInternship(${x.id})">Revoke Approval</button>`;
- else if(status==='rejected')actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button>`;
- else actions=`<button class="success" onclick="approveInternship(${x.id})">✓ Approve & Issue Offer Letter</button>`;
+ const status=String(x.status||'pending').toLowerCase(),cls=['pending','active','rejected','revoked'].includes(status)?status:'pending';
  const revisionPending=Boolean(x.pendingFormRevision && x.formRevisionStatus==='pending_approval');
- if(revisionPending) actions += `<span class="status pending">EDIT APPROVAL PENDING</span><button class="success" onclick="approveEditedInternshipForm(${Number(x.id)})">✓ Approve Edited Form</button>`;
- actions += `<button class="success" onclick="downloadInternshipIdCard(${Number(x.id)})">🪪 Generate / Download ID Card</button><button class="warning" onclick="editInternshipApplication(${Number(x.id)})">✏️ Edit Form</button><button class="primary" onclick="downloadInternshipApplication(${Number(x.id)})">${revisionPending?'⬇️ Download Edited Draft (7-page PDF)':'⬇️ Download Form (7-page PDF)'}</button><button class="warning" onclick="manageInternshipAttendance(${Number(x.id)})">📊 Mark 21-Day Attendance</button>${Number((x.attendance||{}).presentDays||0)===21&&x.projectApproved?`<button class="success" onclick="generateApprovedInternshipCertificate(${Number(x.id)})">🏅 Generate Certificate & QR</button>`:`<span class="status pending">Certificate Locked · ${Number((x.attendance||{}).presentDays||0)}/21 days · Project ${x.projectApproved?'Approved':'Pending'}</span>`}<button class="danger" onclick="deleteAdminRecord('internships',${Number(x.id)},'internship application')">🗑 Delete</button>`;
+ const projects=getProjectsForInternship(x);
+ const hasApprovedProject=projects.some(p=>String(p.status||'').toLowerCase()==='approved') || x.projectApproved===true;
+ const presentDays=Number((x.attendance||{}).presentDays||0);
+ const certificateReady=presentDays===21&&hasApprovedProject;
+ let adminButtons='';
+ if(status==='pending')adminButtons+=`<button class="wf-approve" onclick="approveInternship(${x.id})">✓ Approve Internship</button><button class="wf-reject" onclick="rejectInternship(${x.id})">✕ Reject</button>`;
+ else if(status==='active')adminButtons+=`<button class="wf-download" onclick="showOfferLetterById(${x.id})">📄 Offer Letter</button><button class="wf-reject" onclick="revokeInternship(${x.id})">↶ Revoke Internship</button>`;
+ else if(status==='rejected'||status==='revoked')adminButtons+=`<button class="wf-approve" onclick="approveInternship(${x.id})">✓ Re-approve Internship</button>`;
+ if(revisionPending)adminButtons+=`<button class="wf-approve" onclick="approveEditedInternshipForm(${Number(x.id)})">✓ Approve Edited Form</button>`;
+ const documentButtons=`<button class="wf-id" onclick="downloadInternshipIdCard(${Number(x.id)})">🪪 Generate ID Card</button><button class="wf-edit" onclick="editInternshipApplication(${Number(x.id)})">✏️ Edit Application</button><button class="wf-download" onclick="downloadInternshipApplication(${Number(x.id)})">⬇ Download Application PDF</button>`;
+ const attendanceButton=`<button class="wf-attendance" onclick="manageInternshipAttendance(${Number(x.id)})">📊 Manage 21-Day Attendance · ${presentDays}/21</button>`;
+ const certificateButton=certificateReady
+  ?`<button class="wf-certificate" onclick="generateApprovedInternshipCertificate(${Number(x.id)})">🏅 Generate & Download Certificate + QR</button>`
+  :`<span class="workflow-lock">🔒 Certificate Locked · Attendance ${presentDays}/21 · Project ${hasApprovedProject?'Approved':'Pending'}</span>`;
+ const actionMarkup=`<div class="internship-action-zone">
+  <div class="action-group"><div class="action-group-label">01 · Internship Approval</div>${adminButtons||'<span class="small" style="color:#c5d4e1">No internship action available</span>'}</div>
+  <div class="action-group"><div class="action-group-label">02 · Student Documents</div>${documentButtons}</div>
+  <div class="action-group"><div class="action-group-label">03 · Completion & Certificate</div>${attendanceButton}${certificateButton}</div>
+ </div>`;
  const interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'-');
- return `<div class="item"><div class="row"><div><h3 style="margin:0 0 6px">${esc(x.studentName||x.name||'Student')}</h3><span class="status ${cls}">${esc(status.toUpperCase())}</span></div><div class="actions">${actions}</div></div><div class="internship-admin-grid">
- <div class="info-box"><strong>Student ID</strong>${esc(x.studentId||'Will be generated on ID Card action')}</div><div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId||'Not issued')}</div><div class="info-box"><strong>Application ID</strong>${esc(x.id)}</div><div class="info-box"><strong>Reference Number</strong>${esc(x.referenceNo||x.applicationReference||('NSF-INT-'+x.id))}</div><div class="info-box"><strong>Father / Mother</strong>${esc(x.parentName||'-')}</div><div class="info-box"><strong>Mobile</strong>${esc(x.mobile||x.phone||'-')}</div><div class="info-box"><strong>Email</strong>${esc(x.email||'-')}</div><div class="info-box"><strong>College</strong>${esc(x.collegeName||x.educationCollege||'-')}</div><div class="info-box"><strong>University</strong>${esc(x.university||'-')}</div><div class="info-box"><strong>Class / Year</strong>${esc((x.className||'BA')+' / '+(x.yearSemester||'-'))}</div><div class="info-box"><strong>Enrollment / Roll</strong>${esc(x.enrollmentRoll||'-')}</div><div class="info-box"><strong>Previous %</strong>${esc(x.previousPercentage||'-')}%</div><div class="info-box"><strong>Duration</strong>${esc(x.duration||'-')}</div><div class="info-box"><strong>Availability</strong>${esc(x.availability||'-')}</div><div class="info-box"><strong>Preferred Area</strong>${esc(x.preferredPlace||'-')}</div><div class="info-box"><strong>Application Date</strong>${esc(x.applicationDate||'-')}</div></div><div style="margin-top:12px"><b>Internship Interest:</b> ${esc(interests)}</div>${x.otherInterest?`<div style="margin-top:7px"><b>Other:</b> ${esc(x.otherInterest)}</div>`:''}${x.address?`<div style="margin-top:7px"><b>Address:</b> ${esc(x.address)}</div>`:''}${x.studentNote?`<div style="margin-top:7px"><b>Student Note:</b> ${esc(x.studentNote)}</div>`:''}${x.recommendation?`<div style="margin-top:7px"><b>College Recommendation:</b> ${esc(x.recommendation)}</div>`:''}<div class="upload-field"><b>📎 Uploaded Documents</b><div style="display:grid;gap:8px;margin-top:10px"><div><b>10th Marksheet:</b> ${documentLink(docValue(x,['tenthMarksheet','marksheet10','class10Marksheet','tenthMarksheetUrl','marksheet10Url']),'10th_Marksheet')}</div><div><b>Last Year Marksheet:</b> ${documentLink(docValue(x,['lastYearMarksheet','previousYearMarksheet','lastYearMarksheetUrl','previousMarksheet']),'Last_Year_Marksheet')}</div><div><b>Aadhaar Card:</b> ${documentLink(docValue(x,['aadharCard','aadhaarCard','aadhaar','aadharCardUrl','aadhaarCardUrl']),'Aadhaar_Card')}</div></div></div></div>`;
+ return `<div class="item internship-workflow-card">
+  <div class="row"><div><h3 style="margin:0 0 6px">${esc(x.studentName||x.name||'Student')}</h3><span class="status ${cls}">${esc(status.toUpperCase())}</span></div><span class="status ${hasApprovedProject?'active':'pending'}">PROJECT ${hasApprovedProject?'APPROVED':'PENDING'}</span></div>
+  <div class="internship-admin-grid">
+   <div class="info-box"><strong>Student ID</strong>${esc(x.studentId||'Will be generated on ID Card action')}</div><div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId||'Not issued')}</div><div class="info-box"><strong>Application ID</strong>${esc(x.id)}</div><div class="info-box"><strong>Reference Number</strong>${esc(x.referenceNo||x.applicationReference||('NSF-INT-'+x.id))}</div><div class="info-box"><strong>Father / Mother</strong>${esc(x.parentName||'-')}</div><div class="info-box"><strong>Mobile</strong>${esc(x.mobile||x.phone||'-')}</div><div class="info-box"><strong>Email</strong>${esc(x.email||'-')}</div><div class="info-box"><strong>College</strong>${esc(x.collegeName||x.educationCollege||'-')}</div><div class="info-box"><strong>University</strong>${esc(x.university||'-')}</div><div class="info-box"><strong>Class / Year</strong>${esc((x.className||'BA')+' / '+(x.yearSemester||'-'))}</div><div class="info-box"><strong>Enrollment / Roll</strong>${esc(x.enrollmentRoll||'-')}</div><div class="info-box"><strong>Previous %</strong>${esc(x.previousPercentage||'-')}%</div><div class="info-box"><strong>Duration</strong>${esc(x.duration||'-')}</div><div class="info-box"><strong>Availability</strong>${esc(x.availability||'-')}</div><div class="info-box"><strong>Preferred Area</strong>${esc(x.preferredPlace||'-')}</div><div class="info-box"><strong>Application Date</strong>${esc(x.applicationDate||'-')}</div></div>
+  <div style="margin-top:12px"><b>Internship Interest:</b> ${esc(interests)}</div>${x.otherInterest?`<div style="margin-top:7px"><b>Other:</b> ${esc(x.otherInterest)}</div>`:''}${x.address?`<div style="margin-top:7px"><b>Address:</b> ${esc(x.address)}</div>`:''}${x.studentNote?`<div style="margin-top:7px"><b>Student Note:</b> ${esc(x.studentNote)}</div>`:''}${x.recommendation?`<div style="margin-top:7px"><b>College Recommendation:</b> ${esc(x.recommendation)}</div>`:''}
+  <div class="upload-field"><b>📎 Uploaded Documents</b><div style="display:grid;gap:8px;margin-top:10px"><div><b>10th Marksheet:</b> ${documentLink(docValue(x,['tenthMarksheet','marksheet10','class10Marksheet','tenthMarksheetUrl','marksheet10Url']),'10th_Marksheet')}</div><div><b>Last Year Marksheet:</b> ${documentLink(docValue(x,['lastYearMarksheet','previousYearMarksheet','lastYearMarksheetUrl','previousMarksheet']),'Last_Year_Marksheet')}</div><div><b>Aadhaar Card:</b> ${documentLink(docValue(x,['aadharCard','aadhaarCard','aadhaar','aadharCardUrl','aadhaarCardUrl']),'Aadhaar_Card')}</div></div></div>
+  ${internshipProjectPanel(x)}
+  ${actionMarkup}
+  <div style="margin-top:14px"><button class="wf-reject" onclick="deleteAdminRecord('internships',${Number(x.id)},'internship application')">🗑 Delete Internship Application</button></div>
+ </div>`;
 }
 const INTERNSHIP_EDIT_PROTECTED = new Set(['id','status','internshipId','approvedAt','issuedAt','rejectedAt','revokedAt','publicProfileId','studentAccount','pendingFormRevision','formRevisionStatus','formRevisionSubmittedAt','formRevisionApprovedAt']);
 function internshipFieldLabel(key){
