@@ -3641,9 +3641,32 @@ app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) =>
     const found = await pool.query('SELECT id,data FROM project_submissions WHERE id=$1 LIMIT 1', [id]);
     if (!found.rows.length) return res.status(404).json({ error: 'Project submission not found.' });
     const data = { ...(found.rows[0].data || {}), status, reviewedAt: new Date().toISOString(), reviewedByRole: req.userRole || 'admin' };
-    await pool.query('UPDATE project_submissions SET data=$1::jsonb WHERE id=$2', [JSON.stringify(data), id]);
-    const applicationId = Number(data.applicationId || 0);
+    let applicationId = Number(data.applicationId || 0);
+
+    // Student dashboard submissions should carry applicationId. For older submissions,
+    // safely link only when email or internship/reference ID identifies exactly one application.
+    if (!Number.isSafeInteger(applicationId) || applicationId < 1) {
+      const email = String(data.email || '').trim().toLowerCase();
+      const internshipId = String(data.internshipId || data.referenceNo || '').trim().toLowerCase();
+      let candidates = [];
+      if (email) {
+        const matchByEmail = await pool.query(
+          `SELECT id FROM internships WHERE lower(COALESCE(data->>'email',''))=$1`,
+          [email]
+        );
+        candidates = matchByEmail.rows;
+      }
+      if (candidates.length !== 1 && internshipId) {
+        const matchByInternship = await pool.query(
+          `SELECT id FROM internships WHERE lower(COALESCE(data->>'internshipId', data->>'referenceNo', data->>'applicationReference',''))=$1`,
+          [internshipId]
+        );
+        candidates = matchByInternship.rows;
+      }
+      if (candidates.length === 1) applicationId = Number(candidates[0].id);
+    }
     if (Number.isSafeInteger(applicationId) && applicationId > 0) {
+      data.applicationId = applicationId;
       const appRow = await pool.query('SELECT id,data FROM internships WHERE id=$1 LIMIT 1', [applicationId]);
       if (appRow.rows.length) {
         const appData = appRow.rows[0].data || {};
