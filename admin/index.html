@@ -2449,14 +2449,7 @@ async function downloadPremiumInternshipCertificate(c){
  cornerOrnament(39,39,1,1);cornerOrnament(W-39,39,-1,1);
  cornerOrnament(39,H-39,1,-1);cornerOrnament(W-39,H-39,-1,-1);
  ctx.restore();
- // Darker but translucent centre watermark, kept behind text.
- const logo=await loadLogo();
- if(logo){
-  ctx.save();ctx.globalAlpha=.16;ctx.filter='grayscale(1) contrast(1.35) brightness(.72)';
-  const lw=Math.min(205,W*.38),lh=lw*logo.height/logo.width;
-  ctx.drawImage(logo,(W-lw)/2,(H-lh)/2+10,lw,lh);
-  ctx.restore();
- }
+ // Centre watermark/shadow intentionally removed for a clean certificate background.
  const student=String(c.studentName||c.name||'Student').trim();
  const father=String(c.fatherName||c.parentName||'').trim();
  const college=String(c.college||'').trim(),university=String(c.university||'').trim();
