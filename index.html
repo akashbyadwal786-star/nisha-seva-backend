@@ -1213,13 +1213,73 @@ section.stats .stats-grid{margin-top:0!important}
 const API_BASE = window.NISHA_API_URL || 'https://api.nishasevafoundation.org'; // Render backend; public website is hosted on Hostinger
  const apiUrl = (path) => API_BASE.replace(/\/$/, '') + path;
  const internshipVerificationUrl = (code) => API_BASE.replace(/\/$/, '') + '/verify/internship/' + encodeURIComponent(code || '');
+ // Fast public-data cache: only allow-listed, non-personal GET endpoints are cached.
+ // Session cache avoids repeat downloads after navigation/reload; in-flight requests are deduplicated.
+ const NSF_PUBLIC_CACHE_TTL = 60 * 1000;
+ const NSF_PUBLIC_CACHE_KEYS = new Set([
+   '/api/programs','/api/events','/api/gallery','/api/documents',
+   '/api/donors','/api/impactLocations','/api/public-impact-stats'
+ ]);
+ const nsfMemoryCache = new Map();
+ const nsfPendingGets = new Map();
+ function nsfReadSessionCache(key) {
+   try {
+     const raw = sessionStorage.getItem('nsf-public-v2:' + key);
+     if (!raw) return null;
+     const item = JSON.parse(raw);
+     if (!item || !item.savedAt || !Array.isArray(item.value) && typeof item.value !== 'object') return null;
+     return item;
+   } catch (_) { return null; }
+ }
+ function nsfWriteSessionCache(key, value) {
+   try {
+     const serialized = JSON.stringify({ savedAt: Date.now(), value });
+     // Avoid filling browser storage with large gallery payloads.
+     if (serialized.length <= 350000) sessionStorage.setItem('nsf-public-v2:' + key, serialized);
+   } catch (_) {}
+ }
  async function apiFetch(path, options = {}) {
- const response = await fetch(apiUrl(path), {
- headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
- ...options
- });
- if (!response.ok) throw new Error('API ' + response.status);
- return response.json();
+   const method = String(options.method || 'GET').toUpperCase();
+   const cacheable = method === 'GET' && NSF_PUBLIC_CACHE_KEYS.has(path);
+   const cacheKey = path;
+   if (cacheable) {
+     const memory = nsfMemoryCache.get(cacheKey);
+     if (memory && Date.now() - memory.savedAt < NSF_PUBLIC_CACHE_TTL) return memory.value;
+     const stored = nsfReadSessionCache(cacheKey);
+     if (stored && Date.now() - stored.savedAt < NSF_PUBLIC_CACHE_TTL) {
+       nsfMemoryCache.set(cacheKey, stored);
+       return stored.value;
+     }
+     if (nsfPendingGets.has(cacheKey)) return nsfPendingGets.get(cacheKey);
+   }
+   const request = (async () => {
+     const response = await fetch(apiUrl(path), {
+       headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+       ...options,
+       // Browser HTTP cache may reuse public responses; never cache form submissions.
+       ...(cacheable ? { cache: 'default' } : {})
+     });
+     if (!response.ok) throw new Error('API ' + response.status);
+     const value = await response.json();
+     if (cacheable) {
+       const entry = { savedAt: Date.now(), value };
+       nsfMemoryCache.set(cacheKey, entry);
+       nsfWriteSessionCache(cacheKey, value);
+     }
+     return value;
+   })();
+   if (cacheable) nsfPendingGets.set(cacheKey, request);
+   try { return await request; }
+   catch (error) {
+     // If the network is temporarily unavailable, use last-known public data only.
+     if (cacheable) {
+       const stale = nsfMemoryCache.get(cacheKey) || nsfReadSessionCache(cacheKey);
+       if (stale) return stale.value;
+     }
+     throw error;
+   } finally {
+     if (cacheable) nsfPendingGets.delete(cacheKey);
+   }
  }
  const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;',"\"":'&quot;'}[ch]));
  const first = (obj, keys, fallback='') => { for (const k of keys) if (obj?.[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k]; return fallback; };
@@ -1265,7 +1325,17 @@ async function loadDynamicContent(){
  console.info('Set API_BASE to your live backend URL to enable dynamic content.');
  return;
  }
- // Live impact figures
+ // Warm the public homepage cache concurrently: this avoids a slow serial chain
+ // of API round-trips. Only public collections are cached; personal form records are not.
+ await Promise.allSettled([
+   apiFetch('/api/public-impact-stats'),
+   apiFetch('/api/programs'),
+   apiFetch('/api/events'),
+   apiFetch('/api/gallery'),
+   apiFetch('/api/documents'),
+   apiFetch('/api/donors')
+ ]);
+ // Render using the cache populated above.
  await loadLiveImpactStats();
  // PROGRAMS — load separately
  try {
