@@ -2354,7 +2354,7 @@ async function generateApprovedInternshipCertificate(id){
  const a=x.attendance||{};
  if(Number(a.presentDays)!==21 || !x.projectApproved){alert('Certificate के लिए 21/21 Attendance और approved Project दोनों जरूरी हैं।');return;}
  try{
-  const all=await api('/api/projectSubmissions?summary=1&limit=500');
+  const all=await api('/api/projectSubmissions?limit=500');
   const rows=Array.isArray(all)?all:[];
   const projects=rows.filter(p=>Number(p.applicationId||0)===Number(id)&&String(p.status).toLowerCase()==='approved');
   if(!projects.length)throw new Error('Approved project record नहीं मिला।');
@@ -2364,8 +2364,8 @@ async function generateApprovedInternshipCertificate(id){
   const verificationUrl=API+'/certificate-verification/'+encodeURIComponent(certificateId);
   const projectDetails=projects.map(p=>[p.title,p.description].filter(Boolean).join(' — ')).filter(Boolean);
   const interests=Array.isArray(x.interests)?x.interests.join(', '):String(x.interests||'');
-  let studentPhoto=x.studentPhoto||x.photoUrl||x.photo||x.imageUrl||x.image||x.profilePhoto||x.passportPhoto||'';
-  if(studentPhoto&&typeof studentPhoto==='object')studentPhoto=studentPhoto.dataUrl||studentPhoto.url||studentPhoto.src||'';
+  let studentPhoto=x.studentPhoto||x.photoUrl||x.photo||x.imageUrl||x.image||x.profilePhoto||x.passportPhoto||x.photoDataUrl||x.studentPhotoUrl||x.uploadedPhoto||x.profileImage||'';
+  if(studentPhoto&&typeof studentPhoto==='object')studentPhoto=studentPhoto.dataUrl||studentPhoto.url||studentPhoto.src||studentPhoto.preview||'';
   if(typeof studentPhoto!=='string')studentPhoto='';
   const certificate={
    certificateId,name:x.studentName||x.name||'Student',studentName:x.studentName||x.name||'Student',
@@ -2494,11 +2494,11 @@ async function downloadPremiumInternshipCertificate(c){
   new QRCode(qrHost,{text:qrUrl,width:420,height:420,colorDark:'#102c50',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
   await new Promise(r=>setTimeout(r,250));
   const qrCanvas=qrHost.querySelector('canvas');if(!qrCanvas)throw new Error('QR Code generate नहीं हुआ।');
-  const footerTop=H-205, qs=78, qx=(W-qs)/2, qy=footerTop+2;
+  const qs=62, qx=(W-qs)/2, qy=H-148;
   ctx.save();ctx.fillStyle='#fff';ctx.fillRect(qx-5,qy-5,qs+10,qs+10);
   ctx.strokeStyle=gold;ctx.lineWidth=1.15;ctx.strokeRect(qx-5,qy-5,qs+10,qs+10);
   ctx.drawImage(qrCanvas,qx,qy,qs,qs);ctx.restore();
-  text('SCAN TO VERIFY',W/2,qy+qs+13,7.4,navy,'bold','center','Arial');
+  text('SCAN TO VERIFY',W/2,qy+qs+11,7.2,navy,'bold','center','Arial');
  }finally{qrHost.remove();}
  // Three aligned footer columns. Issue date is intentionally above its rule.
  const footerLineY=H-78;
