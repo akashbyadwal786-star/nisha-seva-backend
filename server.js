@@ -1778,7 +1778,26 @@ app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => 
       `SELECT id, data, created_at FROM internships WHERE data->>'publicProfileId'=$1 LIMIT 1`, [token]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Student profile not found.' });
-    const row=result.rows[0], d=row.data||{};
+    await projectSubmissionTableReady;
+    const projectResult = await pool.query(
+      `SELECT id, data, created_at FROM project_submissions WHERE data->>'applicationId'=$1 ORDER BY created_at ASC`,
+      [String(row.id)]
+    );
+    const attendance = d.attendance && typeof d.attendance === 'object' ? d.attendance : {};
+    const attendanceDays = Array.isArray(attendance.days) ? attendance.days.map(day => ({
+      day: Number(day.day || 0), date: day.date || null,
+      status: String(day.status || 'absent').toLowerCase() === 'present' ? 'Present' : 'Absent'
+    })) : [];
+    const projects = projectResult.rows.map(projectRow => {
+      const project = projectRow.data || {};
+      return {
+        projectId: projectRow.id,
+        title: String(project.title || 'Submitted Project').slice(0,180),
+        description: String(project.description || '').slice(0,1200),
+        status: String(project.status || 'pending').slice(0,40),
+        submittedAt: project.submittedAt || projectRow.created_at
+      };
+    });
     const safe = {
       studentId: d.studentId || `NSF-STU-${String(row.id).padStart(6,'0')}`,
       applicationId: row.id,
@@ -1792,6 +1811,13 @@ app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => 
       duration: d.duration || null,
       interests: Array.isArray(d.interests) ? d.interests : (d.interests ? [String(d.interests)] : []),
       internshipId: d.internshipId || null,
+      attendance: {
+        totalDays: Number(attendance.totalDays || attendanceDays.length || 21),
+        presentDays: Number(attendance.presentDays ?? attendanceDays.filter(day => day.status === 'Present').length),
+        absentDays: Number(attendance.absentDays ?? attendanceDays.filter(day => day.status === 'Absent').length),
+        days: attendanceDays
+      },
+      submittedProjects: projects,
       applicationStatus: d.status || 'pending',
       submittedOn: d.applicationDate || row.created_at,
       verificationStatus: ['revoked','rejected'].includes(String(d.status||'').toLowerCase()) ? 'Not Valid' : 'Record Found'
