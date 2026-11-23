@@ -2399,93 +2399,126 @@ async function downloadPremiumInternshipCertificate(c){
  const {PDFDocument}=window.PDFLib;
  const pdf=await PDFDocument.load(Uint8Array.from(atob(NSF_LETTERHEAD_PDF_B64),ch=>ch.charCodeAt(0)));
  const page=pdf.getPages()[0],{width:W,height:H}=page.getSize();
- const scale=3,canvas=document.createElement('canvas');
+ const scale=2,canvas=document.createElement('canvas');
  canvas.width=Math.round(W*scale);canvas.height=Math.round(H*scale);
- const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Certificate canvas उपलब्ध नहीं है।');
+ const ctx=canvas.getContext('2d');
+ if(!ctx)throw new Error('Certificate canvas उपलब्ध नहीं है।');
  ctx.scale(scale,scale);
- const navy='#17365D',gold='#B58A45',ink='#263445',muted='#64748B',cream='#FFFEFA',green='#176B52';
- // Opaque clean sheet: removes every trace of the old certificate underneath.
- ctx.fillStyle=cream;ctx.fillRect(0,0,W,H);
- // Fine double border and restrained corner ornaments.
- ctx.strokeStyle=navy;ctx.lineWidth=2.1;ctx.strokeRect(13,13,W-26,H-26);
- ctx.strokeStyle=gold;ctx.lineWidth=.8;ctx.strokeRect(19,19,W-38,H-38);
- const corner=(x,y,sx,sy)=>{ctx.save();ctx.translate(x,y);ctx.scale(sx,sy);ctx.strokeStyle=gold;ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(0,22);ctx.bezierCurveTo(0,4,8,0,22,0);ctx.moveTo(5,22);ctx.bezierCurveTo(5,10,10,5,22,5);ctx.stroke();ctx.restore();};
- corner(25,25,1,1);corner(W-25,25,-1,1);corner(25,H-25,1,-1);corner(W-25,H-25,-1,-1);
- // Watermark logo, kept subtle and behind all content.
- const logo=new Image();logo.src=NSF_ID_LOGO;
- await new Promise((resolve,reject)=>{logo.onload=resolve;logo.onerror=()=>reject(new Error('NSF logo load नहीं हुआ।'));});
- ctx.save();ctx.globalAlpha=.075;ctx.drawImage(logo,W/2-105,H/2-105,210,210);ctx.restore();
- const fit=(txt,max,size,min=8,font='Arial',weight='400')=>{let z=size;ctx.font=`${weight} ${z}px ${font}`;while(ctx.measureText(String(txt||'')).width>max&&z>min){z-=.5;ctx.font=`${weight} ${z}px ${font}`;}return z;};
- const text=(txt,x,y,max,size=11,color=ink,weight='400',align='left',font='Arial')=>{
-  const v=String(txt??'').trim();ctx.save();ctx.fillStyle=color;ctx.textAlign=align;ctx.textBaseline='middle';
-  const z=fit(v,max,size,8,font,weight);ctx.font=`${weight} ${z}px ${font}`;ctx.fillText(v,x,y,max);ctx.restore();
+ const cream='#faf7ef',navy='#263f8c',gold='#b88a4b',ink='#30333a',green='#16714f';
+ const mask=(x,y,w,h)=>{
+  ctx.save();ctx.fillStyle=cream;ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle='rgba(190,170,135,.12)';ctx.lineWidth=.55;
+  for(let k=-h;k<w;k+=15){ctx.beginPath();ctx.moveTo(x+k,y+h);ctx.lineTo(x+k+h,y);ctx.stroke();}
+  ctx.restore();
  };
- const wrap=(value,max,size=11,weight='400')=>{
-  const words=String(value||'').trim().split(/\s+/);const lines=[];let line='';
-  ctx.font=`${weight} ${size}px Arial`;
-  for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>max&&line){lines.push(line);line=word;}else line=test;}
+ const fontReady=async()=>{
+  try{await document.fonts.load('16px "Noto Sans Devanagari"');await document.fonts.load('bold 20px "Noto Sans Devanagari"');await document.fonts.ready;}catch(_){}
+ };
+ await fontReady();
+ const fit=(text,maxWidth,startSize,minSize=10,font='Noto Sans Devanagari')=>{
+  let size=startSize;ctx.font=`${size}px "${font}"`;
+  while(ctx.measureText(String(text||'')).width>maxWidth&&size>minSize){size-=1;ctx.font=`${size}px "${font}"`;}
+  return size;
+ };
+ const centered=(text,y,size,color=ink,weight='400',maxWidth=700,font='Noto Sans Devanagari')=>{
+  const t=String(text??'').trim();ctx.save();ctx.fillStyle=color;ctx.textAlign='center';ctx.textBaseline='middle';
+  const s=fit(t,maxWidth,size,10,font);ctx.font=`${weight} ${s}px "${font}"`;ctx.fillText(t,W/2,y,maxWidth);ctx.restore();
+ };
+ const wrap=(text,maxWidth,size,weight='400',font='Noto Sans Devanagari')=>{
+  const words=String(text||'').trim().split(/\s+/);const lines=[];let line='';
+  ctx.font=`${weight} ${size}px "${font}"`;
+  for(const word of words){const test=line?line+' '+word:word;if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=word;}else line=test;}
   if(line)lines.push(line);return lines;
  };
- const line=(x1,y1,x2,y2,color='#D8C9A8',width=.7)=>{ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();};
- const val=(...v)=>v.find(x=>x!==undefined&&x!==null&&String(x).trim()!=='')||'—';
- const name=val(c.studentName,c.name),father=val(c.fatherName,c.parentName),course=val(c.course,c.program,'Internship Programme');
- const semester=val(c.semester),roll=val(c.rollNumber),college=val(c.college),university=val(c.university);
- const academic=val(c.academicYear),org='NISHA SEVA FOUNDATION';
- // Brand header and certificate number.
- text('NISHA SEVA FOUNDATION',W/2,43,W-110,20,navy,'700','center','Georgia');
- text('SOCIAL IMPACT  |  EDUCATION  |  COMMUNITY DEVELOPMENT',W/2,60,W-130,8.5,green,'700','center');
- text('CERTIFICATE NO.',34,85,120,8.5,navy,'700');
- text(c.certificateId,34,99,190,10,gold,'700');
- text('APPENDIX – INTERNSHIP COMPLETION',W-34,88,230,8,muted,'700','right');
- line(34,111,W-34,111,gold,1.1);
- text('CERTIFICATE OF INTERNSHIP',W/2,145,W-100,23,navy,'700','center','Georgia');
- text('Issued by Nisha Seva Foundation',W/2,166,W-100,10,green,'700','center');
- // Body follows the college certificate wording and uses English only.
- const intro=[
-  `This is to certify that ${name}, S/o / D/o ${father},`,
-  `a student of ${course}, Semester ${semester}, Roll No. ${roll}, at ${college},`,
-  `${university}, has successfully completed the compulsory internship of minimum 120 hours`,
-  `during the academic year ${academic}, in partial fulfillment of the requirements of the programme.`
+ // Hide the DPIIT / Government identity marks and original issuer text while preserving the ornamental border and gold wreath.
+ mask(150,110,320,180);                 // original certificate number
+ mask(500,90,684,270);               // Government emblem and department text
+ mask(1250,110,260,180);              // DPIIT logo
+ mask(200,300,1284,190);             // original certificate heading
+ mask(140,445,1404,270);             // original recognition body and legal clause
+ // Certificate number block
+ ctx.save();ctx.fillStyle=navy;ctx.font='bold 19px Georgia';ctx.textAlign='left';ctx.fillText('CERTIFICATE NO:',74,126);
+ ctx.font='italic 17px Georgia';ctx.fillText(String(c.certificateId||''),74,151);ctx.restore();
+ // NGO logo and name in the former Government emblem position
+ const logo=new Image();logo.src=NSF_ID_LOGO;
+ await new Promise((resolve,reject)=>{logo.onload=resolve;logo.onerror=()=>reject(new Error('NSF logo load नहीं हुआ।'));});
+ ctx.save();ctx.fillStyle='#fffdf8';ctx.beginPath();ctx.arc(W/2,101,35,0,Math.PI*2);ctx.fill();
+ ctx.drawImage(logo,W/2-27,74,54,54);
+ const brand='NISHA SEVA FOUNDATION',grad=ctx.createLinearGradient(W/2-190,0,W/2+190,0);
+ grad.addColorStop(0,'#0b6a4b');grad.addColorStop(.48,'#174a9a');grad.addColorStop(1,'#c17a24');
+ ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 22px "Noto Sans Devanagari"';ctx.fillStyle=grad;ctx.fillText(brand,W/2,151);
+ ctx.font='bold 10px "Noto Sans Devanagari"';ctx.fillStyle=navy;ctx.fillText('SOCIAL IMPACT  •  EDUCATION  •  COMMUNITY DEVELOPMENT',W/2,173);
+ ctx.font='10px Arial';ctx.fillStyle=ink;ctx.fillText('nishasevafoundation.org',W/2,190);ctx.restore();
+ // Replace DPIIT mark with NSF issuer details only.
+ ctx.save();ctx.textAlign='center';ctx.fillStyle=green;ctx.font='bold 13px "Noto Sans Devanagari"';ctx.fillText('ISSUED BY',1215,125);
+ ctx.font='bold 15px "Noto Sans Devanagari"';ctx.fillText('NISHA SEVA FOUNDATION',1215,148);
+ ctx.font='11px Arial';ctx.fillStyle=navy;ctx.fillText('NGO • INTERNSHIP PROGRAMME',1215,170);ctx.restore();
+ // Main certificate heading. Gold divider ornaments are redrawn; original border and background remain unchanged.
+ ctx.save();ctx.strokeStyle=gold;ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(390,382);ctx.lineTo(1294,382);ctx.stroke();
+ const title='INTERNSHIP COMPLETION CERTIFICATE';
+ const titleGrad=ctx.createLinearGradient(250,0,1430,0);titleGrad.addColorStop(0,'#183d89');titleGrad.addColorStop(.55,'#3155a4');titleGrad.addColorStop(1,'#183d89');
+ ctx.fillStyle=titleGrad;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 34px Georgia';ctx.fillText(title,W/2,414,1220);
+ ctx.fillStyle=gold;ctx.font='italic 17px "Noto Sans Devanagari"';ctx.fillText('इंटर्नशिप पूर्णता प्रमाणपत्र',W/2,449);ctx.restore();
+ // Student details mapped from the existing internship application.
+ const name=String(c.studentName||c.name||'Student').trim();
+ const father=String(c.fatherName||c.parentName||'').trim();
+ const college=String(c.college||'').trim();
+ const university=String(c.university||'').trim();
+ const course=String(c.course||c.program||'').trim();
+ const semester=String(c.semester||'').trim();
+ const roll=String(c.rollNumber||'').trim();
+ const academic=String(c.academicYear||'').trim();
+ const duration=String(c.internshipDuration||'').trim();
+ const start=String(c.internshipStartDate||'').trim();
+ const end=String(c.internshipEndDate||'').trim();
+ const work=String(c.workDescription||'').trim();
+ const bodyLines=[
+  `यह प्रमाणित किया जाता है कि ${name} ने NISHA SEVA FOUNDATION में इंटर्नशिप सफलतापूर्वक पूर्ण की है।`,
+  `पिता/अभिभावक: ${father||'—'}    कॉलेज: ${college||'—'}`,
+  `विश्वविद्यालय: ${university||'—'}    पाठ्यक्रम: ${course||'—'}    सेमेस्टर: ${semester||'—'}`,
+  `रोल / एनरोलमेंट नं.: ${roll||'—'}    शैक्षणिक वर्ष: ${academic||'—'}`,
+  `इंटर्नशिप अवधि: ${duration||'—'}    अवधि: ${start||'—'} से ${end||'—'}`,
+  `कार्य / प्रोजेक्ट विवरण: ${work||'इंटर्नशिप गतिविधियाँ'}`
  ];
- let y=207;
- intro.forEach((ln,idx)=>{text(ln,42,y,W-84,idx===0?11.4:10.5,ink,idx===0?'600':'400','left');y+=18;});
- y+=10;
- const duration=val(c.internshipDuration,`${c.attendance?.totalDays||21} Days`);
- const start=val(c.internshipStartDate),end=val(c.internshipEndDate);
- const paragraph=`The internship was carried out at ${org} from ${start} to ${end}. During the internship period, the student was assigned duties and responsibilities relevant to the objectives of the internship and demonstrated sincerity, discipline, and satisfactory performance.`;
- const paraLines=wrap(paragraph,W-84,10.3,'400');
- paraLines.slice(0,4).forEach(ln=>{text(ln,42,y,W-84,10.3,ink,'400');y+=16;});
- // Student and internship information strip in the remaining whitespace.
- y+=7;line(42,y,W-42,y,'#D8C9A8',.7);y+=14;
- const info=[
-  ['INTERNSHIP ID',val(c.internshipId,c.referenceNo)],
-  ['INTERNSHIP PERIOD',`${start} – ${end}`],
-  ['ATTENDANCE',`${Number(c.attendance?.presentDays||0)}/${Number(c.attendance?.totalDays||21)} Days`],
-  ['APPROVED PROJECTS',String((c.projects||[]).filter(p=>String(p.status||'').toLowerCase()==='approved').length)]
- ];
- const colW=(W-84)/4;
- info.forEach((it,i)=>{const x=42+i*colW;text(it[0],x,y,colW-8,7.1,muted,'700');text(it[1],x,y+13,colW-8,8.7,navy,'700');});
- // QR is deliberately at the lower-left; the signing/seal panel stays blank.
- const verifyUrl='https://api.nishasevafoundation.org/api/certificate-verify/'+encodeURIComponent(c.certificateId);
- const qrHost=document.createElement('div');qrHost.style.cssText='position:fixed;left:-10000px;top:-10000px;width:300px;height:300px;background:#fff';document.body.appendChild(qrHost);
+ ctx.save();ctx.fillStyle=ink;ctx.textAlign='center';ctx.textBaseline='middle';
+ let y=520;
+ for(let i=0;i<bodyLines.length;i++){
+  const lines=wrap(bodyLines[i],1220,i===0?18:15,i===0?'600':'400');
+  for(const line of lines.slice(0,2)){ctx.font=`${i===0?'600':'400'} ${i===0?18:15}px "Noto Sans Devanagari"`;ctx.fillText(line,W/2,y,1230);y+=25;}
+  y+=4;
+ }
+ ctx.restore();
+ // Dates on either side of the original gold wreath; QR sits in its centre.
+ const issue=String(c.issueDate||new Date().toLocaleDateString('en-IN'));
+ const dateBlock=(x,label,value)=>{
+  ctx.save();ctx.textAlign='center';ctx.fillStyle=navy;ctx.font='bold 17px Georgia';ctx.fillText(value,x,850);
+  ctx.strokeStyle=gold;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x-105,865);ctx.lineTo(x+105,865);ctx.stroke();
+  ctx.font='bold 14px "Noto Sans Devanagari"';ctx.fillStyle=navy;ctx.fillText(label,x,890);ctx.restore();
+ };
+ dateBlock(330,'DATE OF ISSUE',issue);
+ dateBlock(1350,'INTERNSHIP DURATION',duration||String((c.attendance?.totalDays||21)+' Days'));
+ // Signature area — no fabricated handwritten signature is inserted.
+ ctx.save();ctx.textAlign='center';ctx.fillStyle=navy;ctx.font='bold 15px "Noto Sans Devanagari"';ctx.fillText('अधिकृत हस्ताक्षर',1340,1020);
+ ctx.font='bold 14px "Noto Sans Devanagari"';ctx.fillText('अध्यक्ष / अधिकृत प्रतिनिधि',1340,1043);
+ ctx.font='bold 13px "Noto Sans Devanagari"';ctx.fillText('NISHA SEVA FOUNDATION',1340,1066);ctx.restore();
+ // High-resolution QR links to the public verification section; the API record is checked on scan.
+ const verifyUrl='https://nishasevafoundation.org/?certificate='+encodeURIComponent(c.certificateId)+'#certificate-check';
+ const qrHost=document.createElement('div');qrHost.style.cssText='position:fixed;left:-10000px;top:-10000px;width:240px;height:240px;background:#fff';document.body.appendChild(qrHost);
  try{
-  new QRCode(qrHost,{text:verifyUrl,width:300,height:300,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.H});
-  await new Promise(r=>setTimeout(r,180));const qr=qrHost.querySelector('canvas');if(!qr)throw new Error('QR Code generate नहीं हुआ।');
-  ctx.fillStyle='#fff';ctx.fillRect(40,H-111,86,86);ctx.drawImage(qr,43,H-108,80,80);
-  text('SCAN TO VERIFY',83,H-20,90,7,navy,'700','center');
+  new QRCode(qrHost,{text:verifyUrl,width:240,height:240,colorDark:'#000000',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.H});
+  await new Promise(r=>setTimeout(r,180));
+  const qrCanvas=qrHost.querySelector('canvas');if(!qrCanvas)throw new Error('QR Code generate नहीं हुआ।');
+  ctx.save();ctx.fillStyle='#fff';ctx.fillRect(W/2-65,820,130,130);ctx.drawImage(qrCanvas,W/2-55,830,110,110);
+  ctx.fillStyle=ink;ctx.textAlign='center';ctx.font='bold 11px Arial';ctx.fillText('SCAN TO VERIFY',W/2,952);ctx.restore();
  }finally{qrHost.remove();}
- // Signature and official seal spaces are intentionally empty.
- line(W-265,H-69,W-48,H-69,'#AAB3BD',.8);
- text('SIGNATURE & OFFICIAL SEAL',W-156,H-55,210,8,navy,'700','center');
- text('Authorized Signatory',W-156,H-42,210,7.5,muted,'400','center');
- text('NISHA SEVA FOUNDATION',W-156,H-29,210,8,green,'700','center');
- text(`Date of Issue: ${val(c.issueDate)}`,W/2,H-30,210,8,ink,'400','center');
- const overlayPng=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!overlayPng)throw new Error('Certificate render नहीं हुआ।');
- const overlay=await pdf.embedPng(new Uint8Array(await overlayPng.arrayBuffer()));
+ const overlayPng=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+ if(!overlayPng)throw new Error('Certificate overlay render नहीं हुआ।');
+ const overlayBytes=new Uint8Array(await overlayPng.arrayBuffer()),overlay=await pdf.embedPng(overlayBytes);
  page.drawImage(overlay,{x:0,y:0,width:W,height:H});
  const out=await pdf.save(),blob=new Blob([out],{type:'application/pdf'}),url=URL.createObjectURL(blob);
  const a=document.createElement('a');a.href=url;a.download=String(c.certificateId||'NSF-Internship-Certificate').replace(/[^a-z0-9_-]/gi,'_')+'.pdf';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
 }
+
 async function ensureInternshipQrRecord(id){
  const x=internshipCache[id];if(!x)throw new Error('Application record not found.');
  if(x.publicProfileUrl&&x.publicProfileId&&x.studentId)return x;
