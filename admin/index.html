@@ -2364,7 +2364,9 @@ async function generateApprovedInternshipCertificate(id){
   const verificationUrl=API+'/certificate-verification/'+encodeURIComponent(certificateId);
   const projectDetails=projects.map(p=>[p.title,p.description].filter(Boolean).join(' — ')).filter(Boolean);
   const interests=Array.isArray(x.interests)?x.interests.join(', '):String(x.interests||'');
-  const studentPhoto=x.studentPhoto||x.photoUrl||x.photo||x.imageUrl||x.image||x.profilePhoto||x.passportPhoto||'';
+  let studentPhoto=x.studentPhoto||x.photoUrl||x.photo||x.imageUrl||x.image||x.profilePhoto||x.passportPhoto||'';
+  if(studentPhoto&&typeof studentPhoto==='object')studentPhoto=studentPhoto.dataUrl||studentPhoto.url||studentPhoto.src||'';
+  if(typeof studentPhoto!=='string')studentPhoto='';
   const certificate={
    certificateId,name:x.studentName||x.name||'Student',studentName:x.studentName||x.name||'Student',
    fatherName:x.parentName||x.fatherName||x.father_name||x.fatherNameEnglish||'',
@@ -2429,27 +2431,23 @@ async function downloadPremiumInternshipCertificate(c){
   if(!NSF_ID_LOGO)return null;
   return await new Promise(resolve=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=()=>resolve(null);im.src=NSF_ID_LOGO;});
  };
- // Rich double frame with four botanical corner ornaments.
+ // Premium multi-line frame with clean geometric corner ornaments (no leaves).
  ctx.save();
  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
  ctx.strokeStyle=navy;ctx.lineWidth=3.2;ctx.strokeRect(17,17,W-34,H-34);
- ctx.strokeStyle=gold;ctx.lineWidth=1.2;ctx.strokeRect(25,25,W-50,H-50);
+ ctx.strokeStyle=gold;ctx.lineWidth=1.25;ctx.strokeRect(25,25,W-50,H-50);
  ctx.strokeStyle=blue;ctx.lineWidth=.65;ctx.strokeRect(31,31,W-62,H-62);
- function leaf(x,y,angle,color,flip=1){
-  ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.scale(flip,1);
-  ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.fillStyle=color+'20';
-  ctx.beginPath();ctx.moveTo(0,0);ctx.bezierCurveTo(7,-18,27,-22,39,-7);ctx.bezierCurveTo(28,8,10,12,0,0);ctx.fill();ctx.stroke();
-  ctx.beginPath();ctx.moveTo(1,0);ctx.quadraticCurveTo(20,-7,37,-8);ctx.stroke();
+ function cornerOrnament(x,y,sx,sy){
+  ctx.save();ctx.translate(x,y);ctx.scale(sx,sy);
+  ctx.strokeStyle=gold;ctx.lineWidth=1.35;
+  ctx.beginPath();ctx.moveTo(0,30);ctx.lineTo(0,0);ctx.lineTo(30,0);ctx.stroke();
+  ctx.strokeStyle=teal;ctx.lineWidth=.9;
+  ctx.beginPath();ctx.moveTo(7,25);ctx.lineTo(7,7);ctx.lineTo(25,7);ctx.stroke();
+  ctx.fillStyle=gold;ctx.beginPath();ctx.arc(8,8,2.1,0,Math.PI*2);ctx.fill();
   ctx.restore();
  }
- function cornerLeaves(x,y,fx,fy){
-  const c1=teal,c2=gold,c3=rose;
-  leaf(x,y,fy>0?-.65:.65,c1,fx);leaf(x+fx*12,y+fy*15,fy>0?-.15:Math.PI+.15,c2,fx);
-  leaf(x+fx*23,y+fy*4,fy>0?-.95:.95,c3,fx);
-  ctx.save();ctx.strokeStyle=gold;ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(x+fx*4,y+fy*4,3,0,Math.PI*2);ctx.stroke();ctx.restore();
- }
- cornerLeaves(42,42,1,1);cornerLeaves(W-42,42,-1,1);
- cornerLeaves(42,H-42,1,-1);cornerLeaves(W-42,H-42,-1,-1);
+ cornerOrnament(39,39,1,1);cornerOrnament(W-39,39,-1,1);
+ cornerOrnament(39,H-39,1,-1);cornerOrnament(W-39,H-39,-1,-1);
  ctx.restore();
  // Darker but translucent centre watermark, kept behind text.
  const logo=await loadLogo();
@@ -2467,49 +2465,56 @@ async function downloadPremiumInternshipCertificate(c){
  const start=String(c.internshipStartDate||'').trim(),end=String(c.internshipEndDate||'').trim();
  const issue=String(c.issueDate||new Date().toLocaleDateString('en-IN'));
  // Header: foundation title and registered details replace the old tagline.
- text('NISHA SEVA FOUNDATION',W/2,72,22,navy,'bold','center','Georgia');
- text(orgAddress,W/2,94,7.6,ink,'600','center','Arial');
- text(cinNo,W/2,108,8.1,blue,'bold','center','Arial');
- text(orgContact,W/2,121,7.2,ink,'600','center','Arial');
- ctx.save();ctx.strokeStyle=gold;ctx.lineWidth=1.1;ctx.beginPath();ctx.moveTo(62,137);ctx.lineTo(W-62,137);ctx.stroke();ctx.restore();
- text('CERTIFICATE OF INTERNSHIP',W/2,169,22,navy,'bold','center','Georgia');
- text('(Issued by Nisha Seva Foundation)',W/2,192,10,teal,'italic','center','Georgia');
- text('CERTIFICATE NO: '+String(c.certificateId||''),W/2,216,9,navy,'bold','center','Arial');
- ctx.save();ctx.strokeStyle=gold;ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(W/2-70,231);ctx.lineTo(W/2+70,231);ctx.stroke();ctx.restore();
+ text('NISHA SEVA FOUNDATION',W/2,67,23,navy,'bold','center','Georgia');
+ const addressLines=wrap(orgAddress,W-150,7.8,'600','Arial').slice(0,2);
+ addressLines.forEach((line,i)=>text(line,W/2,88+i*10,7.8,ink,'600','center','Arial'));
+ const detailY=88+addressLines.length*10+5;
+ text(cinNo,W/2,detailY,8.1,blue,'bold','center','Arial');
+ text(orgContact,W/2,detailY+13,7.3,ink,'600','center','Arial');
+ const ruleY=detailY+28;
+ ctx.save();ctx.strokeStyle=gold;ctx.lineWidth=1.1;ctx.beginPath();ctx.moveTo(62,ruleY);ctx.lineTo(W-62,ruleY);ctx.stroke();ctx.restore();
+ const titleY=ruleY+29;
+ text('CERTIFICATE OF INTERNSHIP',W/2,titleY,22,navy,'bold','center','Georgia');
+ text('(Issued by Nisha Seva Foundation)',W/2,titleY+23,10,teal,'italic','center','Georgia');
+ text('CERTIFICATE NO: '+String(c.certificateId||''),W/2,titleY+47,9,navy,'bold','center','Arial');
+ ctx.save();ctx.strokeStyle=gold;ctx.lineWidth=.8;ctx.beginPath();ctx.moveTo(W/2-70,titleY+62);ctx.lineTo(W/2+70,titleY+62);ctx.stroke();ctx.restore();
  const p1=`This is to certify that ${student}${father?' S/o / D/o '+father:''}, a student of ${course||'________'} Course${semester?', Semester '+semester:''}${roll?', Roll No. '+roll:''}${college?', at '+college:''}${university?', affiliated to '+university:''}, has successfully completed the compulsory internship of minimum 120 hours during the academic year ${academic||'________'}, in partial fulfillment of the requirements of the NEP 2020 Undergraduate Curriculum.`;
  const p2=`The internship was carried out at Nisha Seva Foundation from ${start||'________'} to ${end||'________'}. During the internship period, the student was assigned duties and responsibilities relevant to the objectives of the internship and demonstrated sincerity, discipline, and satisfactory performance.`;
- let y=267;
+ let y=titleY+88;
  y=drawWrapped(p1,58,y,W-116,11.2,17,'400',ink,5)+18;
  y=drawWrapped(p2,58,y,W-116,11.2,17,'400',ink,4)+15;
  text(`VERIFIED INTERNSHIP HOURS: ${Number(c.attendance?.verifiedHours||c.attendance?.presentDays*(c.attendance?.hoursPerDay||0)||120)} HOURS`,W/2,y,10.5,teal,'bold','center','Arial');
  y+=22;
  text(`ATTENDANCE: ${Number(c.attendance?.presentDays||0)} / ${Number(c.attendance?.totalDays||21)} DAYS`,W/2,y,10,teal,'bold','center','Arial');
- // QR is deliberately centred, with a clear quiet zone and no photo overlay.
+ // Compact QR in the centre column; never overlaps body copy or footer labels.
  const qrUrl=String(c.verificationUrl||((API||'https://api.nishasevafoundation.org')+'/certificate-verification/'+encodeURIComponent(c.certificateId||'')));
  if(!/^https:\/\/[^ ]+/i.test(qrUrl))throw new Error('Certificate verification URL सही नहीं है।');
  const qrHost=document.createElement('div');qrHost.style.cssText='position:fixed;left:-10000px;top:-10000px;width:420px;height:420px;background:#fff';document.body.appendChild(qrHost);
  try{
-  new QRCode(qrHost,{text:qrUrl,width:420,height:420,colorDark:'#102c50',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.H});
+  new QRCode(qrHost,{text:qrUrl,width:420,height:420,colorDark:'#102c50',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});
   await new Promise(r=>setTimeout(r,250));
   const qrCanvas=qrHost.querySelector('canvas');if(!qrCanvas)throw new Error('QR Code generate नहीं हुआ।');
-  const qs=112,qx=(W-qs)/2,qy=Math.min(Math.max(y+30,570),H-220);
-  ctx.save();ctx.fillStyle='#fff';ctx.fillRect(qx-8,qy-8,qs+16,qs+16);
-  ctx.strokeStyle=gold;ctx.lineWidth=1.5;ctx.strokeRect(qx-8,qy-8,qs+16,qs+16);
-  ctx.strokeStyle=navy;ctx.lineWidth=.65;ctx.strokeRect(qx-4,qy-4,qs+8,qs+8);
+  const footerTop=H-205, qs=78, qx=(W-qs)/2, qy=footerTop+2;
+  ctx.save();ctx.fillStyle='#fff';ctx.fillRect(qx-5,qy-5,qs+10,qs+10);
+  ctx.strokeStyle=gold;ctx.lineWidth=1.15;ctx.strokeRect(qx-5,qy-5,qs+10,qs+10);
   ctx.drawImage(qrCanvas,qx,qy,qs,qs);ctx.restore();
-  text('SCAN QR CODE TO VERIFY',W/2,qy+qs+18,8.5,navy,'bold','center','Arial');
-  text('Student profile • Certificate details • Full attendance',W/2,qy+qs+31,7.1,muted,'400','center','Arial');
+  text('SCAN TO VERIFY',W/2,qy+qs+13,7.4,navy,'bold','center','Arial');
  }finally{qrHost.remove();}
- // Date and authorized signature are balanced on the lower left/right.
- const footerY=H-94;
- ctx.save();ctx.strokeStyle=gold;ctx.lineWidth=.8;
- ctx.beginPath();ctx.moveTo(62,footerY);ctx.lineTo(205,footerY);ctx.moveTo(W-205,footerY);ctx.lineTo(W-62,footerY);ctx.stroke();ctx.restore();
- text(issue,133,footerY+17,10,navy,'bold','center','Georgia');
- text('DATE OF ISSUE',133,footerY+32,8,muted,'bold','center','Arial');
- text('(SIGNING AUTHORITY)',W-133,footerY+16,9.5,navy,'bold','center','Georgia');
- text('Signature with Seal',W-133,footerY+32,8.5,ink,'italic','center','Georgia');
- text('NISHA SEVA FOUNDATION',W-133,footerY+46,8,navy,'bold','center','Arial');
- text('To be submitted to the concerned College by the student.',W/2,H-43,7.2,muted,'italic','center','Arial');
+ // Three aligned footer columns. Issue date is intentionally above its rule.
+ const footerLineY=H-78;
+ const leftX=118, rightX=W-118;
+ text(issue,leftX,footerLineY-17,9.5,navy,'bold','center','Georgia');
+ text('(DATE OF ISSUE)',leftX,footerLineY+12,7.2,muted,'bold','center','Arial');
+ text('(SIGNING AUTHORITY)',rightX,footerLineY-17,8.8,navy,'bold','center','Georgia');
+ text('Signature with Seal',rightX,footerLineY-3,7.8,ink,'italic','center','Georgia');
+ text('NISHA SEVA FOUNDATION',rightX,footerLineY+12,7.2,navy,'bold','center','Arial');
+ ctx.save();ctx.strokeStyle=gold;ctx.lineWidth=.85;
+ ctx.beginPath();
+ ctx.moveTo(55,footerLineY);ctx.lineTo(180,footerLineY);
+ ctx.moveTo(W-180,footerLineY);ctx.lineTo(W-55,footerLineY);
+ ctx.stroke();ctx.restore();
+ text('QR VERIFICATION',W/2,footerLineY+12,7.2,muted,'bold','center','Arial');
+ text('Submit to the concerned College by the student.',W/2,H-42,6.8,muted,'italic','center','Arial');
  const overlayPng=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
  if(!overlayPng)throw new Error('Certificate overlay render नहीं हुआ।');
  const overlay=await pdf.embedPng(new Uint8Array(await overlayPng.arrayBuffer()));
