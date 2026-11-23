@@ -1242,6 +1242,24 @@ app.delete('/api/certificates/:id', requireAdmin, async (req, res) => {
   try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const before=db.certificates.length; db.certificates=db.certificates.filter(x=>Number(x.id)!==id); if(before===db.certificates.length)return res.status(404).json({error:'Not found'}); await writeDB(db); res.json({ok:true}); }
   catch(e) { console.error('DELETE /api/certificates',e); res.status(500).json({error:'Database error'}); }
 });
+
+// Public, read-only certificate verification page for QR scans.
+app.get('/certificate-verification/:certificateId', (req, res) => {
+  const certificateId = String(req.params.certificateId || '').trim().slice(0, 100);
+  res.set('Cache-Control', 'no-store');
+  res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Certificate Verification | Nisha Seva Foundation</title><style>
+  *{box-sizing:border-box}body{margin:0;padding:22px;background:#f2f5f8;color:#1c2b3a;font-family:Arial,sans-serif}.card{max-width:900px;margin:24px auto;background:#fff;border:1px solid #dce5ec;border-radius:18px;padding:26px;box-shadow:0 12px 35px #102a4312}.brand{text-align:center;color:#155b47;border-bottom:2px solid #e5bd63;padding-bottom:16px}.brand h1{font-size:22px;margin:0}.brand p{color:#64748b;margin:7px 0 0}.valid{display:inline-block;background:#e3f6eb;color:#11633f;padding:7px 12px;border-radius:20px;font-weight:700;margin:18px 0}.invalid{background:#fde8e8;color:#a3222b}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{padding:12px;background:#f7f9fb;border:1px solid #e7edf2;border-radius:10px}.field small{display:block;color:#718096;margin-bottom:5px}.field strong{overflow-wrap:anywhere}.section{margin-top:22px}.section h2{font-size:17px;color:#173e62;border-bottom:1px solid #e6edf2;padding-bottom:8px}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e8edf1;text-align:left}th{background:#f4f7fa;color:#526477}.present{color:#08764f;font-weight:700}.absent{color:#b42332;font-weight:700}.foot{text-align:center;color:#748295;font-size:12px;margin-top:22px}@media(max-width:600px){body{padding:8px}.card{padding:16px;margin:8px auto}.grid{grid-template-columns:1fr}table{font-size:12px}}
+  </style></head><body><main class="card"><header class="brand"><h1>NISHA SEVA FOUNDATION</h1><p>Official Internship Certificate Verification</p></header><div id="result">Verifying certificate…</div><p class="foot">This is an online verification record. If any detail appears incorrect, contact the issuing institute.</p></main><script>
+  const id=${JSON.stringify(certificateId)};
+  const root=document.getElementById('result');
+  const addField=(grid,label,value)=>{const d=document.createElement('div');d.className='field';const s=document.createElement('small');s.textContent=label;const b=document.createElement('strong');b.textContent=value||'—';d.append(s,b);grid.append(d);};
+  (async()=>{try{const r=await fetch('/api/certificate-verify/'+encodeURIComponent(id),{cache:'no-store'});const j=await r.json();if(!j.valid){root.textContent=j.message||'Certificate not valid.';return;}const c=j.certificate||{};const badge=document.createElement('div');badge.className='valid';badge.textContent='✓ VALID CERTIFICATE';root.append(badge);const grid=document.createElement('div');grid.className='grid';root.append(grid);
+  [['Certificate No.',c.certificateId],['Student Name',c.name],['Parent Name',c.fatherName],['College / Institute',c.college],['University',c.university],['Course',c.course],['Semester',c.semester],['Roll / Enrollment No.',c.rollNumber],['Academic Year',c.academicYear],['Internship Organization',c.internshipOrganization],['Internship Period',(c.internshipStartDate||'—')+' to '+(c.internshipEndDate||'—')],['Issue Date',c.issueDate],['Verified Hours',String(c.hoursCompleted||0)],['Attendance',String(c.attendance?.presentDays||0)+' / '+String(c.attendance?.totalDays||0)+' days ('+String(c.attendance?.percentage||0)+'%)'],['Approved Project',c.projectApproved?'Yes':'No']].forEach(x=>addField(grid,x[0],String(x[1]||'')));
+  const sec=document.createElement('section');sec.className='section';const h=document.createElement('h2');h.textContent='Day-wise Attendance Record';sec.append(h);const table=document.createElement('table');const thead=document.createElement('thead');thead.innerHTML='<tr><th>Day</th><th>Date</th><th>Status</th></tr>';table.append(thead);const tb=document.createElement('tbody');(Array.isArray(c.attendance?.days)?c.attendance.days:[]).forEach(d=>{const tr=document.createElement('tr');[String(d.day||''),String(d.date||'—'),String(d.status||'Absent')].forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i===2)td.className=String(d.status||'').toLowerCase()==='present'?'present':'absent';tr.append(td);});tb.append(tr);});table.append(tb);sec.append(table);root.append(sec);
+  }catch(e){root.textContent='Verification service is temporarily unavailable. Please try again later.';}})();
+  </script></body></html>`);
+});
+
 app.get('/api/certificate-verify/:certificateId', async (req, res) => {
   try {
     const wanted=String(req.params.certificateId||'').trim().toLowerCase();
@@ -1251,6 +1269,7 @@ app.get('/api/certificate-verify/:certificateId', async (req, res) => {
     if(!item || String(item.status||'active').toLowerCase()==='revoked') return res.json({valid:false,message:'Certificate not found or revoked'});
     const attendance = item.attendance && typeof item.attendance === 'object' ? item.attendance : {};
     const projects = Array.isArray(item.projects) ? item.projects : [];
+    res.set('Cache-Control','no-store');
     res.json({valid:true,certificate:{
       certificateId:item.certificateId||item.certificate_id,
       name:item.name||item.studentName||'',
@@ -1269,7 +1288,18 @@ app.get('/api/certificate-verify/:certificateId', async (req, res) => {
       internshipId:item.internshipId||'',
       referenceNo:item.referenceNo||item.internshipId||'',
       issueDate:item.issueDate||item.issuedAt||'',
-      attendance:{presentDays:Number(attendance.presentDays||0),totalDays:Number(attendance.totalDays||0),percentage:Number(attendance.percentage||0)},
+      attendance:{
+        presentDays:Number(attendance.presentDays||0),
+        totalDays:Number(attendance.totalDays||0),
+        absentDays:Number(attendance.absentDays||0),
+        percentage:Number(attendance.percentage||0),
+        days:Array.isArray(attendance.days)?attendance.days.map((d,i)=>({
+          day:Number(d.day||i+1),
+          date:String(d.date||''),
+          status:String(d.status||'absent').toLowerCase()==='present'?'Present':'Absent'
+        })):[]
+      },
+      hoursCompleted:Number(item.hoursCompleted||item.internshipHours||0),
       projectWork:projects.some(p=>String(p.status||'').toLowerCase()==='approved')?'Yes':'No',
       projectApproved:projects.some(p=>String(p.status||'').toLowerCase()==='approved'),
       projectTitles:projects.map(p=>String(p.title||p.projectTitle||'')).filter(Boolean).slice(0,10),
