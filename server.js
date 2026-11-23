@@ -753,6 +753,15 @@ function crudRoutes(name) {
     async (req, res) => {
 
       try {
+        // Cache only public, non-personal collections. Internship and volunteer
+        // application records are deliberately excluded from browser caching.
+        const publicCacheCollections = new Set(['programs','events','gallery','documents','donors','impactLocations']);
+        if (publicCacheCollections.has(name)) {
+          res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
+          res.set('Vary', 'Origin, Accept-Encoding');
+        } else {
+          res.set('Cache-Control', 'no-store');
+        }
 
         let items = await readCollection(name);
 
@@ -1269,20 +1278,9 @@ app.get('/api/certificate-verify/:certificateId', async (req, res) => {
       internshipId:item.internshipId||'',
       referenceNo:item.referenceNo||item.internshipId||'',
       issueDate:item.issueDate||item.issuedAt||'',
-      attendance:{
-        presentDays:Number(attendance.presentDays||0),
-        totalDays:Number(attendance.totalDays||0),
-        percentage:Number(attendance.percentage||0),
-        days:attendance.days && typeof attendance.days==='object' ? attendance.days : {}
-      },
+      attendance:{presentDays:Number(attendance.presentDays||0),totalDays:Number(attendance.totalDays||0),percentage:Number(attendance.percentage||0)},
       projectWork:projects.some(p=>String(p.status||'').toLowerCase()==='approved')?'Yes':'No',
       projectApproved:projects.some(p=>String(p.status||'').toLowerCase()==='approved'),
-      projects:projects.map(p=>({
-        title:String(p.title||p.projectTitle||'Project'),
-        description:String(p.description||''),
-        status:String(p.status||''),
-        submittedAt:String(p.submittedAt||'')
-      })),
       projectTitles:projects.map(p=>String(p.title||p.projectTitle||'')).filter(Boolean).slice(0,10),
       issuer:'Nisha Seva Foundation',
       status:'Valid'
