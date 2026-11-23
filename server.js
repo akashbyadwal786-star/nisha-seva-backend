@@ -70,7 +70,7 @@ app.use((req, res, next) => {
   res.once('finish', () => {
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
     if (durationMs >= 750) {
-      console.warn(`[API SLOW] ${req.method} ${req.route?.path || req.path} status=${res.statusCode} duration=${durationMs.toFixed(1)}ms`);
+      console.warn(`[API SLOW] ${req.method} ${req.route?.path || req.path} status=${res.statusCode} duration=${durationMs.toFixed(1)}ms poolTotal=${pool.totalCount} poolIdle=${pool.idleCount} poolWaiting=${pool.waitingCount}`);
     }
   });
   next();
@@ -753,15 +753,6 @@ function crudRoutes(name) {
     async (req, res) => {
 
       try {
-        // Cache only public, non-personal collections. Internship and volunteer
-        // application records are deliberately excluded from browser caching.
-        const publicCacheCollections = new Set(['programs','events','gallery','documents','donors','impactLocations']);
-        if (publicCacheCollections.has(name)) {
-          res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=120');
-          res.set('Vary', 'Origin, Accept-Encoding');
-        } else {
-          res.set('Cache-Control', 'no-store');
-        }
 
         let items = await readCollection(name);
 
@@ -1313,6 +1304,42 @@ const submissionTables = {
 };
 
 
+// Admin list optimization: strip inline data URLs from summary-only responses.
+function nsfStripInlinePayload(value) {
+  if (Array.isArray(value)) return value.map(nsfStripInlinePayload);
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string' && /^data:[^;,]+;base64,/i.test(value)) return undefined;
+    return value;
+  }
+  const out = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (typeof child === 'string' && /^data:[^;,]+;base64,/i.test(child)) {
+      // Keep metadata around uploaded files while omitting the large payload.
+      if (key === 'data') continue;
+      out[key] = '[file payload omitted from list view]';
+      continue;
+    }
+    const clean = nsfStripInlinePayload(child);
+    if (clean !== undefined) out[key] = clean;
+  }
+  return out;
+}
+
+const nsfAdminListCache = new Map();
+function nsfGetCachedList(key) {
+  const entry = nsfAdminListCache.get(key);
+  if (!entry || Date.now() - entry.at > 5000) {
+    nsfAdminListCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+function nsfSetCachedList(key, value) {
+  nsfAdminListCache.set(key, { at: Date.now(), value });
+  if (nsfAdminListCache.size > 20) nsfAdminListCache.delete(nsfAdminListCache.keys().next().value);
+}
+function nsfClearAdminListCache() { nsfAdminListCache.clear(); }
+
 /* =========================================================
    SUBMISSION ROUTES
    ========================================================= */
@@ -1576,6 +1603,7 @@ function submissionRoutes(
         }
 
 
+        nsfClearAdminListCache();
         const row = result.rows[0];
         let referenceNo = null;
         if (name === 'internships') {
@@ -1631,33 +1659,44 @@ function submissionRoutes(
           await internshipTableReady;
         }
 
-        const result =
-          await pool.query(
+        const summaryOnly = req.query.summary === '1';
+        const cacheKey = `admin-list:${name}:${summaryOnly ? 'summary' : 'full'}`;
+        const cachedRows = summaryOnly ? nsfGetCachedList(cacheKey) : null;
+        if (cachedRows) {
+          res.set('X-NSF-Cache', 'HIT');
+          res.set('Cache-Control', 'private, no-store');
+          return res.json(cachedRows);
+        }
 
-            `SELECT id, data, created_at
+        // Summary mode removes top-level inline base64 fields in PostgreSQL,
+        // reducing Supabase -> backend transfer before Node serializes the response.
+        const sql = summaryOnly
+          ? `SELECT id, created_at,
+               COALESCE((
+                 SELECT jsonb_object_agg(k, v)
+                 FROM jsonb_each(data) AS e(k, v)
+                 WHERE NOT (
+                   jsonb_typeof(v) = 'string'
+                   AND (v #>> '{}') LIKE 'data:%;base64,%'
+                 )
+               ), '{}'::jsonb) AS data
              FROM ${table}
              ORDER BY created_at DESC`
+          : `SELECT id, data, created_at FROM ${table} ORDER BY created_at DESC`;
+        const queryStarted = process.hrtime.bigint();
+        const result = await pool.query(sql);
+        const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
+        res.set('X-NSF-DB-Query-Ms', queryMs.toFixed(1));
 
-          );
-
-
-        const rows =
-          result.rows.map(
-            row => ({
-
-              id:
-                row.id,
-
-              submittedAt:
-                row.created_at,
-
-              ...(row.data || {})
-
-            })
-          );
-
-
-        res.json(rows);
+        const rows = result.rows.map(row => ({
+          id: row.id,
+          submittedAt: row.created_at,
+          ...(summaryOnly ? nsfStripInlinePayload(row.data || {}) : (row.data || {}))
+        }));
+        if (summaryOnly) nsfSetCachedList(cacheKey, rows);
+        res.set('X-NSF-Cache', 'MISS');
+        res.set('Cache-Control', 'private, no-store');
+        return res.json(rows);
 
 
       } catch (error) {
@@ -1724,7 +1763,7 @@ function submissionRoutes(
           [id]
 
         );
-
+        nsfClearAdminListCache();
 
         res.json({
           ok: true
@@ -1778,26 +1817,7 @@ app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => 
       `SELECT id, data, created_at FROM internships WHERE data->>'publicProfileId'=$1 LIMIT 1`, [token]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Student profile not found.' });
-    await projectSubmissionTableReady;
-    const projectResult = await pool.query(
-      `SELECT id, data, created_at FROM project_submissions WHERE data->>'applicationId'=$1 ORDER BY created_at ASC`,
-      [String(row.id)]
-    );
-    const attendance = d.attendance && typeof d.attendance === 'object' ? d.attendance : {};
-    const attendanceDays = Array.isArray(attendance.days) ? attendance.days.map(day => ({
-      day: Number(day.day || 0), date: day.date || null,
-      status: String(day.status || 'absent').toLowerCase() === 'present' ? 'Present' : 'Absent'
-    })) : [];
-    const projects = projectResult.rows.map(projectRow => {
-      const project = projectRow.data || {};
-      return {
-        projectId: projectRow.id,
-        title: String(project.title || 'Submitted Project').slice(0,180),
-        description: String(project.description || '').slice(0,1200),
-        status: String(project.status || 'pending').slice(0,40),
-        submittedAt: project.submittedAt || projectRow.created_at
-      };
-    });
+    const row=result.rows[0], d=row.data||{};
     const safe = {
       studentId: d.studentId || `NSF-STU-${String(row.id).padStart(6,'0')}`,
       applicationId: row.id,
@@ -1811,13 +1831,6 @@ app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => 
       duration: d.duration || null,
       interests: Array.isArray(d.interests) ? d.interests : (d.interests ? [String(d.interests)] : []),
       internshipId: d.internshipId || null,
-      attendance: {
-        totalDays: Number(attendance.totalDays || attendanceDays.length || 21),
-        presentDays: Number(attendance.presentDays ?? attendanceDays.filter(day => day.status === 'Present').length),
-        absentDays: Number(attendance.absentDays ?? attendanceDays.filter(day => day.status === 'Absent').length),
-        days: attendanceDays
-      },
-      submittedProjects: projects,
       applicationStatus: d.status || 'pending',
       submittedOn: d.applicationDate || row.created_at,
       verificationStatus: ['revoked','rejected'].includes(String(d.status||'').toLowerCase()) ? 'Not Valid' : 'Record Found'
@@ -3657,11 +3670,60 @@ app.post('/api/projectSubmissions', publicFormLimiter, async (req, res) => {
 app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
   try {
     await projectSubmissionTableReady;
-    const result = await pool.query('SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC');
-    return res.json(result.rows.map(row => ({ id: row.id, submittedAt: row.created_at, ...(row.data || {}) })));
+    const summaryOnly = req.query.summary === '1';
+    const limit = Math.min(1000, Math.max(1, Number.parseInt(req.query.limit || '500', 10) || 500));
+    const projectCacheKey = `project-summary:${limit}`;
+    const cachedProjectRows = summaryOnly ? nsfGetCachedList(projectCacheKey) : null;
+    if (cachedProjectRows) {
+      res.set('X-NSF-Cache', 'HIT');
+      res.set('Cache-Control', 'private, no-store');
+      return res.json(cachedProjectRows);
+    }
+    const sql = summaryOnly
+      ? `SELECT id, created_at,
+           jsonb_set(
+             data,
+             '{projectFile}',
+             COALESCE((data->'projectFile') - 'data', 'null'::jsonb),
+             true
+           ) AS data
+         FROM project_submissions
+         ORDER BY created_at DESC LIMIT $1`
+      : 'SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC';
+    const queryStarted = process.hrtime.bigint();
+    const result = await pool.query(sql, summaryOnly ? [limit] : []);
+    const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
+    res.set('X-NSF-DB-Query-Ms', queryMs.toFixed(1));
+    const rows = result.rows.map(row => ({
+      id: row.id,
+      submittedAt: row.created_at,
+      ...(summaryOnly ? nsfStripInlinePayload(row.data || {}) : (row.data || {}))
+    }));
+    if (summaryOnly) nsfSetCachedList(projectCacheKey, rows);
+    res.set('X-NSF-Cache', 'MISS');
+    res.set('Cache-Control', 'private, no-store');
+    return res.json(rows);
   } catch (error) {
     console.error('GET /api/projectSubmissions:', error);
     return res.status(500).json({ error: 'Could not load project submissions.' });
+  }
+});
+
+app.get('/api/projectSubmissions/:id/file', requireAdmin, async (req, res) => {
+  try {
+    await projectSubmissionTableReady;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid project ID.' });
+    const result = await pool.query(
+      `SELECT data->'projectFile' AS file FROM project_submissions WHERE id=$1 LIMIT 1`,
+      [id]
+    );
+    if (!result.rows.length || !result.rows[0].file?.data) return res.status(404).json({ error: 'Project file not found.' });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ projectFile: result.rows[0].file });
+  } catch (error) {
+    console.error('GET project file error:', error);
+    return res.status(500).json({ error: 'Could not load project file.' });
   }
 });
 
