@@ -1230,13 +1230,12 @@ app.post('/api/certificates', requireAdmin, async (req, res) => {
     if (!Number.isSafeInteger(applicationId) || applicationId < 1) return res.status(400).json({error:'Valid applicationId required.'});
     const appRow = await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]);
     const appData = appRow.rows[0]?.data || {}; const attendance = appData.attendance || {};
-    const approvedProject = await pool.query(`SELECT id FROM project_submissions WHERE (data->>'applicationId')=$1 AND lower(COALESCE(data->>'status','submitted'))='approved' LIMIT 1`,[String(applicationId)]);
-    if (Number(attendance.presentDays || 0) !== 21 || approvedProject.rows.length < 1) return res.status(409).json({error:'Certificate locked: 21/21 attendance and one approved final project are required.'});
+    if (Number(attendance.presentDays || 0) !== 21 || appData.projectApproved !== true) return res.status(409).json({error:'Certificate locked: 21/21 attendance and approved project are required.'});
     const item = {...body, id: nextId(db.certificates)}; db.certificates.push(item); await writeDB(db); res.status(201).json(item);
   } catch(e) { console.error('POST /api/certificates',e); res.status(500).json({error:'Database error'}); }
 });
 app.put('/api/certificates/:id', requireAdmin, async (req, res) => {
-  try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const i=db.certificates.findIndex(x=>Number(x.id)===id); if(i<0)return res.status(404).json({error:'Not found'}); const body=req.body||{}; const applicationId=Number(body.applicationId||db.certificates[i].applicationId); const appRow=await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]); const appData=appRow.rows[0]?.data||{}; const approvedProject=await pool.query(`SELECT id FROM project_submissions WHERE (data->>'applicationId')=$1 AND lower(COALESCE(data->>'status','submitted'))='approved' LIMIT 1`,[String(applicationId)]); if(Number(appData.attendance?.presentDays||0)!==21||approvedProject.rows.length<1)return res.status(409).json({error:'Certificate locked: 21/21 attendance and one approved final project are required.'}); db.certificates[i]={...db.certificates[i],...body,id}; await writeDB(db); res.json(db.certificates[i]);
+  try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const i=db.certificates.findIndex(x=>Number(x.id)===id); if(i<0)return res.status(404).json({error:'Not found'}); const body=req.body||{}; const applicationId=Number(body.applicationId||db.certificates[i].applicationId); const appRow=await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]); const appData=appRow.rows[0]?.data||{}; if(Number(appData.attendance?.presentDays||0)!==21||appData.projectApproved!==true)return res.status(409).json({error:'Certificate locked: 21/21 attendance and approved project are required.'}); db.certificates[i]={...db.certificates[i],...body,id}; await writeDB(db); res.json(db.certificates[i]);
   } catch(e) { console.error('PUT /api/certificates',e); res.status(500).json({error:'Database error'}); }
 });
 app.delete('/api/certificates/:id', requireAdmin, async (req, res) => {
@@ -1270,9 +1269,20 @@ app.get('/api/certificate-verify/:certificateId', async (req, res) => {
       internshipId:item.internshipId||'',
       referenceNo:item.referenceNo||item.internshipId||'',
       issueDate:item.issueDate||item.issuedAt||'',
-      attendance:{presentDays:Number(attendance.presentDays||0),totalDays:Number(attendance.totalDays||0),percentage:Number(attendance.percentage||0)},
+      attendance:{
+        presentDays:Number(attendance.presentDays||0),
+        totalDays:Number(attendance.totalDays||0),
+        percentage:Number(attendance.percentage||0),
+        days:attendance.days && typeof attendance.days==='object' ? attendance.days : {}
+      },
       projectWork:projects.some(p=>String(p.status||'').toLowerCase()==='approved')?'Yes':'No',
       projectApproved:projects.some(p=>String(p.status||'').toLowerCase()==='approved'),
+      projects:projects.map(p=>({
+        title:String(p.title||p.projectTitle||'Project'),
+        description:String(p.description||''),
+        status:String(p.status||''),
+        submittedAt:String(p.submittedAt||'')
+      })),
       projectTitles:projects.map(p=>String(p.title||p.projectTitle||'')).filter(Boolean).slice(0,10),
       issuer:'Nisha Seva Foundation',
       status:'Valid'
@@ -1781,17 +1791,9 @@ app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => 
       course: d.className || d.program || 'Student Internship',
       yearSemester: d.yearSemester || null,
       programme: d.program || 'Student Internship',
-      duration: d.internshipDuration || d.duration || null,
-      parentName: d.parentName || d.fatherName || d.father_name || null,
-      rollNumber: d.enrollmentRoll || d.rollNumber || d.enrollmentNo || null,
-      academicYear: d.academicYear || d.academicSession || null,
-      internshipStartDate: d.internshipStartDate || null,
-      internshipEndDate: d.internshipEndDate || null,
-      attendanceDays: Number(d.attendance?.presentDays || d.attendance?.daysPresent || 0),
-      projectApproved: Boolean(d.projectApproved),
-      approvedProjectTitles: Array.isArray(d.approvedProjects) ? d.approvedProjects.map(p => String(p.title || '')).filter(Boolean) : [],
+      duration: d.duration || null,
       interests: Array.isArray(d.interests) ? d.interests : (d.interests ? [String(d.interests)] : []),
-      internshipId: d.internshipId || d.referenceNo || null,
+      internshipId: d.internshipId || null,
       applicationStatus: d.status || 'pending',
       submittedOn: d.applicationDate || row.created_at,
       verificationStatus: ['revoked','rejected'].includes(String(d.status||'').toLowerCase()) ? 'Not Valid' : 'Record Found'
@@ -2105,7 +2107,7 @@ app.put('/api/internships/:id/attendance', requireAdmin, async (req, res) => {
     };
     const projectCount = await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId') = $1 AND lower(COALESCE(data->>'status','submitted')) = 'approved'`, [String(id)]);
     const projectSubmitted = await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId') = $1`, [String(id)]);
-    const projectApproved = Number(projectCount.rows[0]?.total || 0) >= 1;
+    const projectApproved = Number(projectCount.rows[0]?.total || 0) > 0;
     const completionEligible = presentDays === 21 && projectApproved;
     const updated = { ...current, attendance, projectSubmitted: Number(projectSubmitted.rows[0]?.total || 0) > 0, projectApproved, completionEligible };
     const saved = await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2 RETURNING id,data,created_at', [JSON.stringify(updated), id]);
@@ -3639,29 +3641,6 @@ app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
   }
 });
 
-async function resolveProjectApplicationId(projectData) {
-  const explicit = Number(projectData.applicationId || 0);
-  if (Number.isSafeInteger(explicit) && explicit > 0) {
-    const exists = await pool.query('SELECT id FROM internships WHERE id=$1 LIMIT 1',[explicit]);
-    if (exists.rows.length) return explicit;
-  }
-  const email = String(projectData.email || '').trim().toLowerCase();
-  const ref = String(projectData.internshipId || projectData.referenceNo || projectData.applicationReference || '').trim().toLowerCase();
-  let matches = [];
-  if (email) {
-    const byEmail = await pool.query(`SELECT id FROM internships WHERE lower(COALESCE(data->>'email',''))=$1`,[email]);
-    matches = byEmail.rows;
-  }
-  if (matches.length !== 1 && ref) {
-    const byRef = await pool.query(
-      `SELECT id FROM internships WHERE lower(COALESCE(data->>'internshipId',data->>'referenceNo',data->>'applicationReference',''))=$1`,
-      [ref]
-    );
-    matches = byRef.rows;
-  }
-  return matches.length === 1 ? Number(matches[0].id) : 0;
-}
-
 app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) => {
   try {
     await projectSubmissionTableReady;
@@ -3673,16 +3652,37 @@ app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) =>
     const found = await pool.query('SELECT id,data FROM project_submissions WHERE id=$1 LIMIT 1', [id]);
     if (!found.rows.length) return res.status(404).json({ error: 'Project submission not found.' });
     const data = { ...(found.rows[0].data || {}), status, reviewedAt: new Date().toISOString(), reviewedByRole: req.userRole || 'admin' };
-    const applicationId = await resolveProjectApplicationId(data);
-    if (applicationId) data.applicationId = applicationId;
-    await pool.query('UPDATE project_submissions SET data=$1::jsonb WHERE id=$2', [JSON.stringify(data), id]);
-    if (applicationId) {
+    let applicationId = Number(data.applicationId || 0);
+
+    // Student dashboard submissions should carry applicationId. For older submissions,
+    // safely link only when email or internship/reference ID identifies exactly one application.
+    if (!Number.isSafeInteger(applicationId) || applicationId < 1) {
+      const email = String(data.email || '').trim().toLowerCase();
+      const internshipId = String(data.internshipId || data.referenceNo || '').trim().toLowerCase();
+      let candidates = [];
+      if (email) {
+        const matchByEmail = await pool.query(
+          `SELECT id FROM internships WHERE lower(COALESCE(data->>'email',''))=$1`,
+          [email]
+        );
+        candidates = matchByEmail.rows;
+      }
+      if (candidates.length !== 1 && internshipId) {
+        const matchByInternship = await pool.query(
+          `SELECT id FROM internships WHERE lower(COALESCE(data->>'internshipId', data->>'referenceNo', data->>'applicationReference',''))=$1`,
+          [internshipId]
+        );
+        candidates = matchByInternship.rows;
+      }
+      if (candidates.length === 1) applicationId = Number(candidates[0].id);
+    }
+    if (Number.isSafeInteger(applicationId) && applicationId > 0) {
+      data.applicationId = applicationId;
       const appRow = await pool.query('SELECT id,data FROM internships WHERE id=$1 LIMIT 1', [applicationId]);
       if (appRow.rows.length) {
         const appData = appRow.rows[0].data || {};
         const approvedCount = await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId')=$1 AND lower(COALESCE(data->>'status','submitted'))='approved'`, [String(applicationId)]);
-        // One approved final project is sufficient; this is not a 21-project requirement.
-        const projectApproved = Number(approvedCount.rows[0]?.total || 0) >= 1;
+        const projectApproved = Number(approvedCount.rows[0]?.total || 0) > 0;
         const attendance = appData.attendance || {};
         const completionEligible = Number(attendance.presentDays || 0) === 21 && projectApproved;
         await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify({...appData,projectApproved,completionEligible}),applicationId]);
