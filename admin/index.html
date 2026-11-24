@@ -2364,9 +2364,21 @@ async function generateApprovedInternshipCertificate(id){
   const verificationUrl=API+'/certificate-verification/'+encodeURIComponent(certificateId);
   const projectDetails=projects.map(p=>[p.title,p.description].filter(Boolean).join(' — ')).filter(Boolean);
   const interests=Array.isArray(x.interests)?x.interests.join(', '):String(x.interests||'');
-  let studentPhoto=x.studentPhoto||x.photoUrl||x.photo||x.imageUrl||x.image||x.profilePhoto||x.passportPhoto||x.photoDataUrl||x.studentPhotoUrl||x.uploadedPhoto||x.profileImage||'';
-  if(studentPhoto&&typeof studentPhoto==='object')studentPhoto=studentPhoto.dataUrl||studentPhoto.url||studentPhoto.src||studentPhoto.preview||'';
+  // Student photo comes from the submitted internship form / uploaded profile.
+  // Accept the common field aliases and object shapes returned by the upload API.
+  let studentPhoto=x.studentPhoto||x.studentPhotoUrl||x.photoUrl||x.photoDataUrl||
+    x.passportPhoto||x.profilePhoto||x.profileImage||x.uploadedPhoto||
+    x.photo||x.imageUrl||x.image||x.picture||x.studentImage||'';
+  if(studentPhoto&&typeof studentPhoto==='object'){
+    studentPhoto=studentPhoto.dataUrl||studentPhoto.url||studentPhoto.src||
+      studentPhoto.preview||studentPhoto.publicUrl||studentPhoto.downloadUrl||'';
+  }
   if(typeof studentPhoto!=='string')studentPhoto='';
+  studentPhoto=studentPhoto.trim();
+  if(!studentPhoto)throw new Error('Internship form में Student Photo नहीं मिली। कृपया form record में photo upload/URL जाँचकर फिर certificate बनाएँ।');
+  if(!(/^(https:\/\/|data:image\/(png|jpeg|jpg|webp);base64,)/i.test(studentPhoto))){
+    throw new Error('Student Photo का URL या image format मान्य नहीं है। HTTPS image URL या JPG/PNG/WEBP upload जाँचें।');
+  }
   const certificate={
    certificateId,name:x.studentName||x.name||'Student',studentName:x.studentName||x.name||'Student',
    fatherName:x.parentName||x.fatherName||x.father_name||x.fatherNameEnglish||'',
@@ -2449,8 +2461,7 @@ async function downloadPremiumInternshipCertificate(c){
  cornerOrnament(39,39,1,1);cornerOrnament(W-39,39,-1,1);
  cornerOrnament(39,H-39,1,-1);cornerOrnament(W-39,H-39,-1,-1);
  ctx.restore();
- // Centre watermark/shadow intentionally removed for a clean certificate background.
- const student=String(c.studentName||c.name||'Student').trim();
+ // Centre watermark/shadow removed as requested.\n const student=String(c.studentName||c.name||'Student').trim();
  const father=String(c.fatherName||c.parentName||'').trim();
  const college=String(c.college||'').trim(),university=String(c.university||'').trim();
  const course=String(c.course||c.program||'').trim(),semester=String(c.semester||'').trim();
@@ -2566,7 +2577,7 @@ async function downloadInternshipIdCard(id){
     }catch(_){}
    };
    const resolveStudentPhoto=async(record)=>{
-    let photo=record.studentPhoto||record.photoUrl||record.photo||record.imageUrl||record.image||record.profilePhoto||record.passportPhoto||'';
+    let photo=record.studentPhoto||record.studentPhotoUrl||record.photoUrl||record.photoDataUrl||record.photo||record.imageUrl||record.image||record.profilePhoto||record.passportPhoto||record.profileImage||record.uploadedPhoto||'';
     if(photo&&typeof photo==='object')photo=photo.dataUrl||photo.url||photo.src||'';
     if(!photo)return '';
     if(typeof photo==='string'&&photo.startsWith('data:image/'))return photo;
