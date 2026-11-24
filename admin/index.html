@@ -2365,9 +2365,11 @@ async function generateApprovedInternshipCertificate(id){
   const verificationUrl=API+'/certificate-verification/'+encodeURIComponent(certificateId);
   const projectDetails=projects.map(p=>[p.title,p.description].filter(Boolean).join(' — ')).filter(Boolean);
   const interests=Array.isArray(x.interests)?x.interests.join(', '):String(x.interests||'');
+  // Summary list omits Base64 photos; retrieve the photo from the protected single-record endpoint.
+  const fetchedStudentPhoto=await loadInternshipPhoto(id);
   // Student photo comes from the submitted internship form / uploaded profile.
   // Accept the common field aliases and object shapes returned by the upload API.
-  let studentPhoto=x.studentPhoto||x.studentPhotoUrl||x.photoUrl||x.photoDataUrl||
+  let studentPhoto=fetchedStudentPhoto||x.studentPhoto||x.studentPhotoUrl||x.photoUrl||x.photoDataUrl||
     x.passportPhoto||x.profilePhoto||x.profileImage||x.uploadedPhoto||
     x.photo||x.imageUrl||x.image||x.picture||x.studentImage||'';
   if(studentPhoto&&typeof studentPhoto==='object'){
@@ -2540,6 +2542,7 @@ const NSF_ID_LOGO = 'data:image/webp;base64,UklGRg5DAABXRUJQVlA4IAJDAACw5wGdASoA
 async function downloadInternshipIdCard(id){
  try{
   const x=await ensureInternshipQrRecord(id);
+  try{const photo=await loadInternshipPhoto(id);if(photo)x.studentPhoto=photo;}catch(photoError){console.warn('ID card photo fetch failed',photoError);}
   if(!window.QRCode||!window.jspdf?.jsPDF)throw new Error('QR/PDF library उपलब्ध नहीं है।');
   const publicUrl=x.publicProfileUrl||`https://nishasevafoundation.org/student-verification.html?id=${encodeURIComponent(x.publicProfileId||'')}`;
   const studentId=x.studentId||`NSF-STU-${String(x.id).padStart(6,'0')}`;
@@ -2663,6 +2666,12 @@ async function renderInternships(){
   let html=addRecordSearch('Student Internships',rows.length)+`<div class="row"><div><h2>BA Internship Applications</h2><span class="small">${rows.length} application(s) · Project review is available inside each student card</span></div><button class="primary" onclick="renderInternships()">↻ Refresh</button></div>`;
   html+=rows.length?rows.map(internshipCard).join(''):'<div class="ok">अभी कोई Student Internship application नहीं है।</div>';
   content.innerHTML=html;
+  // Summary mode deliberately omits Base64 images. Fetch each student's photo
+  // separately so large images do not inflate the entire internship-list response.
+  rows.forEach(async row=>{
+   try{const photo=await loadInternshipPhoto(row.id);if(photo){const card=document.querySelector('.internship-workflow-card[data-internship-id="'+String(row.id)+'"]');if(card){const holder=document.createElement('div');holder.innerHTML=internshipCard(internshipCache[row.id]).trim();const fresh=holder.firstElementChild;if(fresh)card.replaceWith(fresh);}}}
+   catch(err){console.warn('Student photo load failed for application',row.id,err);}
+  });
  }catch(e){content.innerHTML=`<div class="err">${esc(e.message)}</div>`;}
 }
 async function downloadProjectFile(id){
@@ -2724,9 +2733,20 @@ function internshipProjectPanel(x){
  return `<section class="internship-project-review"><h4>📁 STUDENT PROJECT REVIEW · ${projects.length} submission(s) · ${approved.length} approved · ${pending.length} pending · ${rejected.length} rejected</h4>${body}</section>`;
 }
 function internshipPhotoValue(record){
- let photo=record.studentPhoto||record.studentPhotoUrl||record.photoUrl||record.photoDataUrl||record.passportPhoto||record.profilePhoto||record.profileImage||record.uploadedPhoto||record.photo||record.imageUrl||record.image||record.picture||record.studentImage||'';
- if(photo&&typeof photo==='object')photo=photo.dataUrl||photo.url||photo.src||photo.preview||photo.publicUrl||photo.downloadUrl||'';
- return typeof photo==='string'?photo.trim():'';
+ let photo=record.studentPhoto||record.studentPhotoUrl||record.photoUrl||record.photoDataUrl||record.passportPhoto||record.profilePhoto||record.profileImage||record.uploadedPhoto||record.photo||record.imageUrl||record.image||record.picture||record.studentImage||record.student_photo||record.student_photo_url||record.profile_picture||'';
+ if(photo&&typeof photo==='object')photo=photo.dataUrl||photo.dataURL||photo.url||photo.src||photo.preview||photo.publicUrl||photo.public_url||photo.downloadUrl||photo.fileUrl||photo.file_url||photo.path||'';
+ if(typeof photo!=='string')return '';
+ photo=photo.trim();
+ if(!photo||photo==='[file payload omitted from list view]')return '';
+ return /^(https:\/\/|data:image\/(png|jpeg|jpg|webp);base64,)/i.test(photo)?photo:'';
+}
+async function loadInternshipPhoto(id){
+ const record=internshipCache[id];if(!record)return '';
+ const existing=internshipPhotoValue(record);if(existing)return existing;
+ const result=await api('/api/internships/'+encodeURIComponent(id)+'/photo');
+ const photo=typeof result?.photo==='string'?result.photo:'';
+ if(photo){record.studentPhoto=photo;internshipCache[id]=record;}
+ return photo;
 }
 function refreshInternshipCard(id){
  const old=document.querySelector('.internship-workflow-card[data-internship-id="'+String(id)+'"]');
