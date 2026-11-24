@@ -1254,6 +1254,7 @@ app.get('/certificate-verification/:certificateId', (req, res) => {
   const root=document.getElementById('result');
   const addField=(grid,label,value)=>{const d=document.createElement('div');d.className='field';const s=document.createElement('small');s.textContent=label;const b=document.createElement('strong');b.textContent=value||'—';d.append(s,b);grid.append(d);};
   (async()=>{try{const r=await fetch('/api/certificate-verify/'+encodeURIComponent(id),{cache:'no-store'});const j=await r.json();if(!j.valid){root.textContent=j.message||'Certificate not valid.';return;}const c=j.certificate||{};const badge=document.createElement('div');badge.className='valid';badge.textContent='✓ VALID CERTIFICATE';root.append(badge);const grid=document.createElement('div');grid.className='grid';root.append(grid);
+  if(c.photo){const photo=document.createElement('img');photo.src=c.photo;photo.alt='Student Photo';photo.loading='lazy';photo.referrerPolicy='no-referrer';photo.style.cssText='display:block;width:112px;height:140px;object-fit:cover;border:2px solid #d5ad52;border-radius:12px;margin:14px auto';photo.onerror=()=>photo.remove();root.insertBefore(photo,grid);}
   [['Certificate No.',c.certificateId],['Student Name',c.name],['Parent Name',c.fatherName],['College / Institute',c.college],['University',c.university],['Course',c.course],['Semester',c.semester],['Roll / Enrollment No.',c.rollNumber],['Academic Year',c.academicYear],['Internship Organization',c.internshipOrganization],['Internship Period',(c.internshipStartDate||'—')+' to '+(c.internshipEndDate||'—')],['Issue Date',c.issueDate],['Verified Hours',String(c.hoursCompleted||0)],['Attendance',String(c.attendance?.presentDays||0)+' / '+String(c.attendance?.totalDays||0)+' days ('+String(c.attendance?.percentage||0)+'%)'],['Approved Project',c.projectApproved?'Yes':'No']].forEach(x=>addField(grid,x[0],String(x[1]||'')));
   const sec=document.createElement('section');sec.className='section';const h=document.createElement('h2');h.textContent='Day-wise Attendance Record';sec.append(h);const table=document.createElement('table');const thead=document.createElement('thead');thead.innerHTML='<tr><th>Day</th><th>Date</th><th>Status</th></tr>';table.append(thead);const tb=document.createElement('tbody');(Array.isArray(c.attendance?.days)?c.attendance.days:[]).forEach(d=>{const tr=document.createElement('tr');[String(d.day||''),String(d.date||'—'),String(d.status||'Absent')].forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i===2)td.className=String(d.status||'').toLowerCase()==='present'?'present':'absent';tr.append(td);});tb.append(tr);});table.append(tb);sec.append(table);root.append(sec);
   }catch(e){root.textContent='Verification service is temporarily unavailable. Please try again later.';}})();
@@ -1269,8 +1270,15 @@ app.get('/api/certificate-verify/:certificateId', async (req, res) => {
     if(!item || String(item.status||'active').toLowerCase()==='revoked') return res.json({valid:false,message:'Certificate not found or revoked'});
     const attendance = item.attendance && typeof item.attendance === 'object' ? item.attendance : {};
     const projects = Array.isArray(item.projects) ? item.projects : [];
+    let certificatePhoto = nsfGetStudentPhoto(item);
+    if (!certificatePhoto && Number.isSafeInteger(Number(item.applicationId)) && Number(item.applicationId) > 0) {
+      await internshipTableReady;
+      const sourceApp = await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1', [Number(item.applicationId)]);
+      certificatePhoto = nsfGetStudentPhoto(sourceApp.rows[0]?.data || {});
+    }
     res.set('Cache-Control','no-store');
     res.json({valid:true,certificate:{
+      photo:certificatePhoto,
       certificateId:item.certificateId||item.certificate_id,
       name:item.name||item.studentName||'',
       fatherName:item.fatherName||item.parentName||'',
@@ -1836,6 +1844,42 @@ function submissionRoutes(
   submissionRoutes
 );
 
+
+// Return only the selected student's photo field. This keeps summary list responses
+// lightweight while allowing Admin cards, ID cards and certificates to load the image.
+function nsfGetStudentPhoto(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  let value = d.studentPhoto || d.studentPhotoUrl || d.photoUrl || d.photoDataUrl ||
+    d.passportPhoto || d.profilePhoto || d.profileImage || d.uploadedPhoto ||
+    d.photo || d.imageUrl || d.image || d.picture || d.studentImage ||
+    d.student_photo || d.student_photo_url || d.profile_picture || null;
+  if (value && typeof value === 'object') {
+    value = value.dataUrl || value.dataURL || value.url || value.src ||
+      value.preview || value.publicUrl || value.public_url || value.downloadUrl ||
+      value.fileUrl || value.file_url || value.path || null;
+  }
+  if (typeof value !== 'string') return null;
+  value = value.trim();
+  if (/^data:image\/(?:png|jpeg|jpg|webp);base64,/i.test(value) || /^https:\/\//i.test(value)) return value;
+  return null;
+}
+
+app.get('/api/internships/:id/photo', requireAdmin, async (req, res) => {
+  try {
+    await internshipTableReady;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid application ID.' });
+    const result = await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1', [id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Application not found.' });
+    const photo = nsfGetStudentPhoto(result.rows[0].data || {});
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ ok: true, photo });
+  } catch (error) {
+    console.error('GET /api/internships/:id/photo:', error);
+    return res.status(500).json({ error: 'Student photo could not be loaded.' });
+  }
+});
+
 // Public QR verification for every submitted internship application.
 // Only deliberately selected basic fields are returned; no contact details or documents.
 app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => {
@@ -1850,9 +1894,7 @@ app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => 
     const row=result.rows[0], d=row.data||{};
     // Accept the photo field aliases already used by the Admin Panel and forms.
     // Only image data URLs or HTTPS URLs are exposed on this public verification profile.
-    let photoValue = d.studentPhoto || d.studentPhotoUrl || d.photoUrl || d.photoDataUrl ||
-      d.photo || d.imageUrl || d.image || d.profilePhoto || d.passportPhoto ||
-      d.profileImage || d.uploadedPhoto || d.picture || d.studentImage || null;
+    let photoValue = nsfGetStudentPhoto(d);
     if (photoValue && typeof photoValue === 'object') {
       photoValue = photoValue.dataUrl || photoValue.url || photoValue.src ||
         photoValue.preview || photoValue.publicUrl || photoValue.downloadUrl || null;
