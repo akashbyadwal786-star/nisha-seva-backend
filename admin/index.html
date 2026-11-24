@@ -648,7 +648,13 @@ async function api(path,opt={}){
     try { data = text ? JSON.parse(text) : {}; }
     catch { data = {error:text}; }
     if(!response.ok) {
-      const mainError = data.error || "HTTP " + response.status;
+      if(response.status === 502 || response.status === 503 || response.status === 504) {
+        const label = response.status === 504 ? "504 Gateway Timeout" : ("HTTP " + response.status);
+        throw new Error(label + ": Backend/Database ने समय पर जवाब नहीं दिया। भारी project list request को हल्का किया गया है; Hostinger backend logs और Supabase connection/pool भी जाँचें।");
+      }
+      const rawError = typeof data.error === "string" ? data.error : "";
+      const mainError = rawError && !/^\\s*<!doctype html|^\\s*<html/i.test(rawError)
+        ? rawError : ("HTTP " + response.status);
       const detail = data.details || data.message || data.hint || "";
       throw new Error(detail ? mainError + " — " + detail : mainError);
     }
@@ -2355,7 +2361,7 @@ async function generateApprovedInternshipCertificate(id){
  const a=x.attendance||{};
  if(Number(a.presentDays)!==21 || !x.projectApproved){alert('Certificate के लिए 21/21 Attendance और approved Project दोनों जरूरी हैं।');return;}
  try{
-  const all=await api('/api/projectSubmissions?limit=500');
+  const all=await api('/api/projectSubmissions?summary=1&limit=500');
   const rows=Array.isArray(all)?all:[];
   const projects=rows.filter(p=>Number(p.applicationId||0)===Number(id)&&String(p.status).toLowerCase()==='approved');
   if(!projects.length)throw new Error('Approved project record नहीं मिला।');
