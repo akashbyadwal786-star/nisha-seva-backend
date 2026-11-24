@@ -1254,7 +1254,6 @@ app.get('/certificate-verification/:certificateId', (req, res) => {
   const root=document.getElementById('result');
   const addField=(grid,label,value)=>{const d=document.createElement('div');d.className='field';const s=document.createElement('small');s.textContent=label;const b=document.createElement('strong');b.textContent=value||'—';d.append(s,b);grid.append(d);};
   (async()=>{try{const r=await fetch('/api/certificate-verify/'+encodeURIComponent(id),{cache:'no-store'});const j=await r.json();if(!j.valid){root.textContent=j.message||'Certificate not valid.';return;}const c=j.certificate||{};const badge=document.createElement('div');badge.className='valid';badge.textContent='✓ VALID CERTIFICATE';root.append(badge);const grid=document.createElement('div');grid.className='grid';root.append(grid);
-  if(c.photo){const photo=document.createElement('img');photo.src=c.photo;photo.alt='Student Photo';photo.loading='lazy';photo.referrerPolicy='no-referrer';photo.style.cssText='display:block;width:112px;height:140px;object-fit:cover;border:2px solid #d5ad52;border-radius:12px;margin:14px auto';photo.onerror=()=>photo.remove();root.insertBefore(photo,grid);}
   [['Certificate No.',c.certificateId],['Student Name',c.name],['Parent Name',c.fatherName],['College / Institute',c.college],['University',c.university],['Course',c.course],['Semester',c.semester],['Roll / Enrollment No.',c.rollNumber],['Academic Year',c.academicYear],['Internship Organization',c.internshipOrganization],['Internship Period',(c.internshipStartDate||'—')+' to '+(c.internshipEndDate||'—')],['Issue Date',c.issueDate],['Verified Hours',String(c.hoursCompleted||0)],['Attendance',String(c.attendance?.presentDays||0)+' / '+String(c.attendance?.totalDays||0)+' days ('+String(c.attendance?.percentage||0)+'%)'],['Approved Project',c.projectApproved?'Yes':'No']].forEach(x=>addField(grid,x[0],String(x[1]||'')));
   const sec=document.createElement('section');sec.className='section';const h=document.createElement('h2');h.textContent='Day-wise Attendance Record';sec.append(h);const table=document.createElement('table');const thead=document.createElement('thead');thead.innerHTML='<tr><th>Day</th><th>Date</th><th>Status</th></tr>';table.append(thead);const tb=document.createElement('tbody');(Array.isArray(c.attendance?.days)?c.attendance.days:[]).forEach(d=>{const tr=document.createElement('tr');[String(d.day||''),String(d.date||'—'),String(d.status||'Absent')].forEach((v,i)=>{const td=document.createElement('td');td.textContent=v;if(i===2)td.className=String(d.status||'').toLowerCase()==='present'?'present':'absent';tr.append(td);});tb.append(tr);});table.append(tb);sec.append(table);root.append(sec);
   }catch(e){root.textContent='Verification service is temporarily unavailable. Please try again later.';}})();
@@ -1270,15 +1269,8 @@ app.get('/api/certificate-verify/:certificateId', async (req, res) => {
     if(!item || String(item.status||'active').toLowerCase()==='revoked') return res.json({valid:false,message:'Certificate not found or revoked'});
     const attendance = item.attendance && typeof item.attendance === 'object' ? item.attendance : {};
     const projects = Array.isArray(item.projects) ? item.projects : [];
-    let certificatePhoto = nsfGetStudentPhoto(item);
-    if (!certificatePhoto && Number.isSafeInteger(Number(item.applicationId)) && Number(item.applicationId) > 0) {
-      await internshipTableReady;
-      const sourceApp = await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1', [Number(item.applicationId)]);
-      certificatePhoto = nsfGetStudentPhoto(sourceApp.rows[0]?.data || {});
-    }
     res.set('Cache-Control','no-store');
     res.json({valid:true,certificate:{
-      photo:certificatePhoto,
       certificateId:item.certificateId||item.certificate_id,
       name:item.name||item.studentName||'',
       fatherName:item.fatherName||item.parentName||'',
@@ -1364,13 +1356,9 @@ function nsfStripInlinePayload(value) {
 }
 
 const nsfAdminListCache = new Map();
-const nsfAdminListInflight = new Map();
-let nsfAdminListGeneration = 0;
-const NSF_ADMIN_LIST_CACHE_TTL_MS = 15000;
-
 function nsfGetCachedList(key) {
   const entry = nsfAdminListCache.get(key);
-  if (!entry || Date.now() - entry.at > NSF_ADMIN_LIST_CACHE_TTL_MS) {
+  if (!entry || Date.now() - entry.at > 5000) {
     nsfAdminListCache.delete(key);
     return null;
   }
@@ -1378,29 +1366,9 @@ function nsfGetCachedList(key) {
 }
 function nsfSetCachedList(key, value) {
   nsfAdminListCache.set(key, { at: Date.now(), value });
-  if (nsfAdminListCache.size > 30) nsfAdminListCache.delete(nsfAdminListCache.keys().next().value);
+  if (nsfAdminListCache.size > 20) nsfAdminListCache.delete(nsfAdminListCache.keys().next().value);
 }
-async function nsfLoadCachedList(key, loader) {
-  const cached = nsfGetCachedList(key);
-  if (cached !== null) return { value: cached, cache: 'HIT' };
-  const pending = nsfAdminListInflight.get(key);
-  if (pending) return { value: await pending, cache: 'WAIT' };
-  const generation = nsfAdminListGeneration;
-  const request = Promise.resolve().then(loader);
-  nsfAdminListInflight.set(key, request);
-  try {
-    const value = await request;
-    if (generation === nsfAdminListGeneration) nsfSetCachedList(key, value);
-    return { value, cache: 'MISS' };
-  } finally {
-    if (nsfAdminListInflight.get(key) === request) nsfAdminListInflight.delete(key);
-  }
-}
-function nsfClearAdminListCache() {
-  nsfAdminListGeneration++;
-  nsfAdminListCache.clear();
-  nsfAdminListInflight.clear();
-}
+function nsfClearAdminListCache() { nsfAdminListCache.clear(); }
 
 /* =========================================================
    SUBMISSION ROUTES
@@ -1536,22 +1504,25 @@ function submissionRoutes(
           try {
             await client.query('BEGIN');
             await client.query('SELECT pg_advisory_xact_lock($1)', [847261904]);
-            // The predicates below intentionally match the existing expression
-            // indexes: idx_internships_email_normalized and idx_internships_mobile.
-            // Compare both 10-digit and legacy +91-prefixed phone forms.
             const duplicate = await client.query(
               `SELECT id,
                       lower(trim(coalesce(data->>'email', data->>'gmail', ''))) AS email,
-                      regexp_replace(
-                        coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''),
-                        '[^0-9]', '', 'g'
-                      ) AS phone_digits
+                      CASE
+                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')) = 12
+                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 2) = '91'
+                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 10)
+                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')
+                      END AS phone
                  FROM internships
                 WHERE lower(trim(coalesce(data->>'email', data->>'gmail', ''))) = $1
-                   OR regexp_replace(
-                        coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''),
-                        '[^0-9]', '', 'g'
-                      ) IN ($2, '91' || $2)
+                   OR (
+                      CASE
+                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')) = 12
+                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 2) = '91'
+                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 10)
+                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')
+                      END
+                   ) = $2
                 LIMIT 1`,
               [email, phone]
             );
@@ -1561,7 +1532,7 @@ function submissionRoutes(
               if (String(old.email || '').toLowerCase() === email) {
                 return res.status(409).json({ error: 'इस Email से Internship Form पहले ही जमा हो चुका है। एक Email से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_EMAIL' });
               }
-              if (String(old.phone_digits || '').replace(/^91(?=\d{10}$)/, '') === phone) {
+              if (String(old.phone || '') === phone) {
                 return res.status(409).json({ error: 'इस मोबाइल नंबर से Internship Form पहले ही जमा हो चुका है। एक मोबाइल नंबर से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_PHONE' });
               }
               return res.status(409).json({ error: 'इस Email या मोबाइल नंबर से आवेदन पहले ही जमा हो चुका है।', code: 'DUPLICATE_INTERNSHIP' });
@@ -1611,28 +1582,25 @@ function submissionRoutes(
             await client.query('BEGIN');
             await client.query('SELECT pg_advisory_xact_lock($1)', [847261903]);
 
-            // Keep the SQL expressions identical to the matching expression indexes.
-            // Legacy +91-prefixed values are checked alongside normalized 10-digit values.
             const duplicate = await client.query(
-              `SELECT id,
-                      lower(trim(coalesce(data->>'email', data->>'gmail', ''))) AS email,
-                      regexp_replace(
-                        coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''),
-                        '[^0-9]', '', 'g'
-                      ) AS phone_digits
+              `SELECT id, data->>'email' AS email, data->>'phone' AS phone
                  FROM volunteers
                 WHERE lower(trim(coalesce(data->>'email', data->>'gmail', ''))) = $1
-                   OR regexp_replace(
-                        coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''),
-                        '[^0-9]', '', 'g'
-                      ) IN ($2, '91' || $2)
+                   OR (
+                     CASE
+                       WHEN length(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g')) = 12
+                        AND left(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g'), 2) = '91'
+                       THEN right(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g'), 10)
+                       ELSE regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g')
+                     END
+                   ) = $2
                 LIMIT 1`,
               [email, phone]
             );
 
             if (duplicate.rows.length) {
               const oldEmail = String(duplicate.rows[0].email || '').trim().toLowerCase();
-              const oldPhone = String(duplicate.rows[0].phone_digits || '').replace(/^91(?=\d{10}$)/, '');
+              const oldPhone = String(duplicate.rows[0].phone || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
               await client.query('ROLLBACK');
               if (oldEmail === email) {
                 return res.status(409).json({ error: 'इस Email/Gmail से Volunteer Form पहले ही जमा हो चुका है। एक Email से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_EMAIL' });
@@ -1723,52 +1691,42 @@ function submissionRoutes(
 
         const summaryOnly = req.query.summary === '1';
         const cacheKey = `admin-list:${name}:${summaryOnly ? 'summary' : 'full'}`;
-
-        const loadRows = async () => {
-          // For the internship workflow list, exclude large inline photo/signature
-          // payloads at SQL level. The dedicated photo endpoint loads one photo
-          // only when the admin card becomes visible or an ID card is generated.
-          const sql = summaryOnly && name === 'internships'
-            ? `SELECT id, created_at,
-                 (data - ARRAY['studentPhoto','studentSignature','parentSignature']::text[]) AS data
-               FROM ${table}
-               ORDER BY created_at DESC`
-            : summaryOnly
-              ? `SELECT id, created_at,
-                   COALESCE((
-                     SELECT jsonb_object_agg(k, v)
-                     FROM jsonb_each(data) AS e(k, v)
-                     WHERE NOT (
-                       jsonb_typeof(v) = 'string'
-                       AND (v #>> '{}') LIKE 'data:%;base64,%'
-                     )
-                   ), '{}'::jsonb) AS data
-                 FROM ${table}
-                 ORDER BY created_at DESC`
-              : `SELECT id, data, created_at FROM ${table} ORDER BY created_at DESC`;
-          const queryStarted = process.hrtime.bigint();
-          const result = await pool.query(sql);
-          const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
-          const rows = result.rows.map(row => ({
-            id: row.id,
-            submittedAt: row.created_at,
-            ...(summaryOnly ? nsfStripInlinePayload(row.data || {}) : (row.data || {}))
-          }));
-          return { rows, queryMs };
-        };
-
-        if (summaryOnly) {
-          const loaded = await nsfLoadCachedList(cacheKey, loadRows);
-          res.set('X-NSF-Cache', loaded.cache);
-          res.set('X-NSF-DB-Query-Ms', loaded.cache === 'MISS' ? 'measured' : 'cached');
+        const cachedRows = summaryOnly ? nsfGetCachedList(cacheKey) : null;
+        if (cachedRows) {
+          res.set('X-NSF-Cache', 'HIT');
           res.set('Cache-Control', 'private, no-store');
-          return res.json(loaded.value.rows);
+          return res.json(cachedRows);
         }
 
-        const loaded = await loadRows();
-        res.set('X-NSF-DB-Query-Ms', loaded.queryMs.toFixed(1));
+        // Summary mode removes top-level inline base64 fields in PostgreSQL,
+        // reducing Supabase -> backend transfer before Node serializes the response.
+        const sql = summaryOnly
+          ? `SELECT id, created_at,
+               COALESCE((
+                 SELECT jsonb_object_agg(k, v)
+                 FROM jsonb_each(data) AS e(k, v)
+                 WHERE NOT (
+                   jsonb_typeof(v) = 'string'
+                   AND (v #>> '{}') LIKE 'data:%;base64,%'
+                 )
+               ), '{}'::jsonb) AS data
+             FROM ${table}
+             ORDER BY created_at DESC`
+          : `SELECT id, data, created_at FROM ${table} ORDER BY created_at DESC`;
+        const queryStarted = process.hrtime.bigint();
+        const result = await pool.query(sql);
+        const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
+        res.set('X-NSF-DB-Query-Ms', queryMs.toFixed(1));
+
+        const rows = result.rows.map(row => ({
+          id: row.id,
+          submittedAt: row.created_at,
+          ...(summaryOnly ? nsfStripInlinePayload(row.data || {}) : (row.data || {}))
+        }));
+        if (summaryOnly) nsfSetCachedList(cacheKey, rows);
+        res.set('X-NSF-Cache', 'MISS');
         res.set('Cache-Control', 'private, no-store');
-        return res.json(loaded.rows);
+        return res.json(rows);
 
 
       } catch (error) {
@@ -1878,42 +1836,6 @@ function submissionRoutes(
   submissionRoutes
 );
 
-
-// Return only the selected student's photo field. This keeps summary list responses
-// lightweight while allowing Admin cards, ID cards and certificates to load the image.
-function nsfGetStudentPhoto(data) {
-  const d = data && typeof data === 'object' ? data : {};
-  let value = d.studentPhoto || d.studentPhotoUrl || d.photoUrl || d.photoDataUrl ||
-    d.passportPhoto || d.profilePhoto || d.profileImage || d.uploadedPhoto ||
-    d.photo || d.imageUrl || d.image || d.picture || d.studentImage ||
-    d.student_photo || d.student_photo_url || d.profile_picture || null;
-  if (value && typeof value === 'object') {
-    value = value.dataUrl || value.dataURL || value.url || value.src ||
-      value.preview || value.publicUrl || value.public_url || value.downloadUrl ||
-      value.fileUrl || value.file_url || value.path || null;
-  }
-  if (typeof value !== 'string') return null;
-  value = value.trim();
-  if (/^data:image\/(?:png|jpeg|jpg|webp);base64,/i.test(value) || /^https:\/\//i.test(value)) return value;
-  return null;
-}
-
-app.get('/api/internships/:id/photo', requireAdmin, async (req, res) => {
-  try {
-    await internshipTableReady;
-    const id = Number(req.params.id);
-    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid application ID.' });
-    const result = await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1', [id]);
-    if (!result.rows.length) return res.status(404).json({ error: 'Application not found.' });
-    const photo = nsfGetStudentPhoto(result.rows[0].data || {});
-    res.set('Cache-Control', 'private, no-store');
-    return res.json({ ok: true, photo });
-  } catch (error) {
-    console.error('GET /api/internships/:id/photo:', error);
-    return res.status(500).json({ error: 'Student photo could not be loaded.' });
-  }
-});
-
 // Public QR verification for every submitted internship application.
 // Only deliberately selected basic fields are returned; no contact details or documents.
 app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => {
@@ -1928,7 +1850,9 @@ app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => 
     const row=result.rows[0], d=row.data||{};
     // Accept the photo field aliases already used by the Admin Panel and forms.
     // Only image data URLs or HTTPS URLs are exposed on this public verification profile.
-    let photoValue = nsfGetStudentPhoto(d);
+    let photoValue = d.studentPhoto || d.studentPhotoUrl || d.photoUrl || d.photoDataUrl ||
+      d.photo || d.imageUrl || d.image || d.profilePhoto || d.passportPhoto ||
+      d.profileImage || d.uploadedPhoto || d.picture || d.studentImage || null;
     if (photoValue && typeof photoValue === 'object') {
       photoValue = photoValue.dataUrl || photoValue.url || photoValue.src ||
         photoValue.preview || photoValue.publicUrl || photoValue.downloadUrl || null;
@@ -3775,7 +3699,6 @@ app.post('/api/projectSubmissions', publicFormLimiter, async (req, res) => {
       'INSERT INTO project_submissions (data) VALUES ($1::jsonb) RETURNING id',
       [JSON.stringify(submission)]
     );
-    nsfClearAdminListCache();
     return res.status(201).json({ ok: true, id: result.rows[0].id, message: 'Project submitted successfully.' });
   } catch (error) {
     console.error('POST /api/projectSubmissions:', error);
@@ -3790,64 +3713,48 @@ app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
   try {
     await projectSubmissionTableReady;
     const summaryOnly = req.query.summary === '1';
-    const limit = Math.min(500, Math.max(1, Number.parseInt(req.query.limit || '100', 10) || 100));
+    const limit = Math.min(1000, Math.max(1, Number.parseInt(req.query.limit || '500', 10) || 500));
     const projectCacheKey = `project-summary:${limit}`;
-    const loadProjectRows = async () => {
-      const sql = summaryOnly
-        ? `SELECT id, created_at,
-             jsonb_strip_nulls(jsonb_build_object(
-               'title', data->'title',
-               'status', data->'status',
-               'studentName', data->'studentName',
-               'internshipId', data->'internshipId',
-               'email', data->'email',
-               'phone', data->'phone',
-               'college', data->'college',
-               'category', data->'category',
-               'description', data->'description',
-               'projectLink', data->'projectLink',
-               'applicationId', data->'applicationId',
-               'referenceNo', data->'referenceNo',
-               'studentAccountId', data->'studentAccountId',
-               'projectFile', CASE
-                 WHEN jsonb_typeof(data->'projectFile') = 'object' THEN
-                   jsonb_strip_nulls(jsonb_build_object(
-                     'name', data->'projectFile'->'name',
-                     'type', data->'projectFile'->'type',
-                     'size', data->'projectFile'->'size'
-                   ))
-                 ELSE NULL
-               END
-             )) AS data
-           FROM project_submissions
-           ORDER BY created_at DESC LIMIT $1`
-        : 'SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC';
-      const queryStarted = process.hrtime.bigint();
-      const result = await pool.query(sql, summaryOnly ? [limit] : []);
-      const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
-      const rows = result.rows.map(row => ({
-        id: row.id,
-        submittedAt: row.created_at,
-        ...(summaryOnly ? (row.data || {}) : (row.data || {}))
-      }));
-      return { rows, queryMs };
-    };
-
-    if (summaryOnly) {
-      const loaded = await nsfLoadCachedList(projectCacheKey, loadProjectRows);
-      res.set('X-NSF-Cache', loaded.cache);
-      res.set('X-NSF-DB-Query-Ms', loaded.cache === 'MISS' ? 'measured' : 'cached');
+    const cachedProjectRows = summaryOnly ? nsfGetCachedList(projectCacheKey) : null;
+    if (cachedProjectRows) {
+      res.set('X-NSF-Cache', 'HIT');
       res.set('Cache-Control', 'private, no-store');
-      return res.json(loaded.value.rows);
+      return res.json(cachedProjectRows);
     }
-
-    const loaded = await loadProjectRows();
-    res.set('X-NSF-DB-Query-Ms', loaded.queryMs.toFixed(1));
+    const sql = summaryOnly
+      ? `SELECT id, created_at,
+           jsonb_set(
+             data,
+             '{projectFile}',
+             COALESCE((data->'projectFile') - 'data', 'null'::jsonb),
+             true
+           ) AS data
+         FROM project_submissions
+         ORDER BY created_at DESC LIMIT $1`
+      : 'SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC';
+    const queryStarted = process.hrtime.bigint();
+    const result = await pool.query(sql, summaryOnly ? [limit] : []);
+    const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
+    res.set('X-NSF-DB-Query-Ms', queryMs.toFixed(1));
+    const rows = result.rows.map(row => ({
+      id: row.id,
+      submittedAt: row.created_at,
+      ...(summaryOnly ? nsfStripInlinePayload(row.data || {}) : (row.data || {}))
+    }));
+    if (summaryOnly) nsfSetCachedList(projectCacheKey, rows);
+    res.set('X-NSF-Cache', 'MISS');
     res.set('Cache-Control', 'private, no-store');
-    return res.json(loaded.rows);
+    return res.json(rows);
   } catch (error) {
     console.error('GET /api/projectSubmissions:', error);
-    return res.status(500).json({ error: 'Could not load project submissions.' });
+    const message = String(error && (error.code || error.message) || '');
+    const poolBusy = /timeout exceeded when trying to connect|53300|too many clients|connection terminated/i.test(message);
+    res.set('Retry-After', '3');
+    return res.status(poolBusy ? 503 : 500).json({
+      error: poolBusy
+        ? 'Database is busy. Please retry in a few seconds.'
+        : 'Could not load project submissions.'
+    });
   }
 });
 
@@ -3916,7 +3823,6 @@ app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) =>
         await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify({...appData,projectApproved,completionEligible}),applicationId]);
       }
     }
-    nsfClearAdminListCache();
     return res.json({ ok:true, id, status });
   } catch (error) {
     console.error('POST /api/projectSubmissions/:id/review:', error);
@@ -3931,7 +3837,6 @@ app.delete('/api/projectSubmissions/:id', requireAdmin, async (req, res) => {
     if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid project submission ID.' });
     const result = await pool.query('DELETE FROM project_submissions WHERE id = $1 RETURNING id', [id]);
     if (!result.rowCount) return res.status(404).json({ error: 'Project submission not found.' });
-    nsfClearAdminListCache();
     return res.json({ ok: true });
   } catch (error) {
     console.error('DELETE /api/projectSubmissions:', error);
@@ -4040,18 +3945,9 @@ app.get('/api/student/projects', studentAuth, async (req, res) => {
     const account = await getStudentAccount(req.studentAccountId);
     if (!account) return res.status(404).json({ error: 'Student account नहीं मिला।' });
     const result = await pool.query(
-      `SELECT id,
-              jsonb_set(
-                data,
-                '{projectFile}',
-                COALESCE((data->'projectFile') - 'data', 'null'::jsonb),
-                true
-              ) AS data,
-              created_at
-         FROM project_submissions
+      `SELECT id, data, created_at FROM project_submissions
         WHERE (data->>'studentAccountId') = $1
-        ORDER BY created_at DESC
-        LIMIT 100`,
+        ORDER BY created_at DESC`,
       [String(account.id)]
     );
     return res.json({ projects: result.rows.map(r => ({ id:r.id, ...(r.data || {}), submittedAt:r.created_at })) });
@@ -5015,37 +4911,52 @@ app.get('/api/finance/audit', financeSession, async (req,res) => {
    START SERVER
    ========================================================= */
 
-// Hostinger expects the HTTP listener to start immediately. Do not wait for
-// Supabase/PostgreSQL DDL or schema initialization before calling listen().
-const server = app.listen(PORT, () => {
-  console.log('======================================');
-  console.log('Nisha Seva backend running');
-  console.log(`Port: ${PORT}`);
-  console.log('Admin panel: /admin');
-  console.log(`Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`);
-  console.log('Student internship API: /api/internships');
-  console.log('======================================');
-});
+Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, passwordResetTableReady, donationsTableReady, communityRequestsTableReady, financeTablesReady])
+  .then(() => {
 
-// Database schema initialization continues in the background. Routes that
-// depend on a schema already await their corresponding *Ready promise.
-Promise.all([
-  secretaryTableReady,
-  internshipTableReady,
-  projectSubmissionTableReady,
-  studentAccountsTableReady,
-  passwordResetTableReady,
-  donationsTableReady,
-  communityRequestsTableReady,
-  financeTablesReady
-]).then(() => {
-  console.log('[STARTUP] Database schema initialization completed.');
-}).catch((error) => {
-  // Keep the HTTP process alive so Hostinger does not restart-loop the app.
-  // The affected database-backed routes will report their own errors.
-  console.error('[STARTUP] Database schema initialization failed:', error.message || error);
-});
+    app.listen(
+      PORT,
+      () => {
 
-server.on('error', (error) => {
-  console.error('[SERVER LISTEN ERROR]:', error);
-});
+        console.log(
+          '======================================'
+        );
+
+    console.log(
+      'Nisha Seva backend running'
+    );
+
+    console.log(
+      `Port: ${PORT}`
+    );
+
+    console.log(
+      'Admin panel: /admin'
+    );
+
+        console.log(
+          `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
+        );
+
+        console.log(
+          'Student internship API: /api/internships'
+        );
+
+        console.log(
+          '======================================'
+        );
+
+      }
+    );
+
+  })
+  .catch(error => {
+
+    console.error(
+      'SERVER STARTUP FAILED:',
+      error
+    );
+
+    process.exit(1);
+
+  });
