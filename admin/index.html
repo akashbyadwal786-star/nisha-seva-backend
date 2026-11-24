@@ -2175,7 +2175,7 @@ async function del(id){
 async function renderProjectSubmissions(){
   content.innerHTML = '<h2>📤 Student Project Submissions</h2><p>Loading submitted student projects...</p>';
   try{
-    const data = await api('/api/projectSubmissions');
+    const data = await api('/api/projectSubmissions?summary=1&limit=500');
     const rows = Array.isArray(data) ? data : [];
     let html = `${addRecordSearch('Student Projects',rows.length)}<div class="row">
       <div><h2>📤 Student Project Submissions</h2><span class="small">${rows.length} submission(s) received</span></div>
@@ -2194,7 +2194,8 @@ async function renderProjectSubmissions(){
 
 function projectSubmissionCard(x){
   const file = x.projectFile && typeof x.projectFile === 'object' ? x.projectFile : null;
-  const fileData = file && typeof file.data === 'string' ? file.data : '';
+  // Project list is loaded in summary mode (file bytes stay in PostgreSQL).
+  const hasProjectFile = !!(file && (file.name || file.type || file.size));
   const fileName = file && file.name ? file.name : 'project-file';
   const fileType = file && file.type ? file.type : 'application/octet-stream';
   const status = String(x.status || 'pending').toLowerCase();
@@ -2202,8 +2203,8 @@ function projectSubmissionCard(x){
   const submitted = x.submittedAt || x.created_at || x.createdAt || '';
   const projectLink = String(x.projectLink || '').trim();
   const safeLink = /^https?:\/\//i.test(projectLink) ? projectLink : '';
-  const downloadMarkup = fileData
-    ? `<a class="primary" style="display:inline-block;text-decoration:none;border-radius:8px;padding:9px 13px;color:#fff;font-weight:600" href="${esc(fileData)}" download="${esc(fileName)}">⬇ Download ${esc(fileName)}</a>`
+  const downloadMarkup = hasProjectFile
+    ? `<button class="primary" onclick="downloadProjectFile(${Number(x.id)})">⬇ Download ${esc(fileName)}</button>`
     : '<span class="small">No project file attached</span>';
   return `<div class="item">
     <div class="row">
@@ -2577,8 +2578,8 @@ async function downloadInternshipIdCard(id){
     }catch(_){}
    };
    const resolveStudentPhoto=async(record)=>{
-    let photo=record.studentPhoto||record.studentPhotoUrl||record.photoUrl||record.photoDataUrl||record.photo||record.imageUrl||record.image||record.profilePhoto||record.passportPhoto||record.profileImage||record.uploadedPhoto||'';
-    if(photo&&typeof photo==='object')photo=photo.dataUrl||photo.url||photo.src||'';
+    let photo=record.studentPhoto||record.studentPhotoUrl||record.photoUrl||record.photoDataUrl||record.photo||record.imageUrl||record.image||record.profilePhoto||record.passportPhoto||record.profileImage||record.uploadedPhoto||record.picture||record.studentImage||'';
+    if(photo&&typeof photo==='object')photo=photo.dataUrl||photo.url||photo.src||photo.preview||photo.publicUrl||photo.downloadUrl||'';
     if(!photo)return '';
     if(typeof photo==='string'&&photo.startsWith('data:image/'))return photo;
     if(typeof photo!=='string'||!/^https?:\/\//i.test(photo))return '';
@@ -2722,6 +2723,19 @@ function internshipProjectPanel(x){
  }
  return `<section class="internship-project-review"><h4>📁 STUDENT PROJECT REVIEW · ${projects.length} submission(s) · ${approved.length} approved · ${pending.length} pending · ${rejected.length} rejected</h4>${body}</section>`;
 }
+function internshipPhotoValue(record){
+ let photo=record.studentPhoto||record.studentPhotoUrl||record.photoUrl||record.photoDataUrl||record.passportPhoto||record.profilePhoto||record.profileImage||record.uploadedPhoto||record.photo||record.imageUrl||record.image||record.picture||record.studentImage||'';
+ if(photo&&typeof photo==='object')photo=photo.dataUrl||photo.url||photo.src||photo.preview||photo.publicUrl||photo.downloadUrl||'';
+ return typeof photo==='string'?photo.trim():'';
+}
+function refreshInternshipCard(id){
+ const old=document.querySelector('.internship-workflow-card[data-internship-id="'+String(id)+'"]');
+ const record=internshipCache[id];
+ if(!old||!record)return false;
+ const holder=document.createElement('div');holder.innerHTML=internshipCard(record).trim();
+ const fresh=holder.firstElementChild;if(!fresh)return false;
+ old.replaceWith(fresh);return true;
+}
 function internshipCard(x){
  const status=String(x.status||'pending').toLowerCase(),cls=['pending','active','rejected','revoked'].includes(status)?status:'pending';
  const revisionPending=Boolean(x.pendingFormRevision && x.formRevisionStatus==='pending_approval');
@@ -2745,8 +2759,11 @@ function internshipCard(x){
   <div class="action-group"><div class="action-group-label">03 · Completion & Certificate</div>${attendanceButton}${certificateButton}</div>
  </div>`;
  const interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'-');
- return `<div class="item internship-workflow-card">
+ const studentPhoto=internshipPhotoValue(x);
+ const photoMarkup=studentPhoto?`<div style="display:flex;align-items:center;gap:14px;margin:10px 0 14px"><img src="${esc(studentPhoto)}" alt="Student Photo" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.textContent='Photo load नहीं हुई — uploaded photo URL जाँचें';" style="width:92px;height:112px;object-fit:cover;border-radius:12px;border:2px solid #d9a441;background:#f4f7fb"><span class="small">Student Photo</span></div>`:`<div class="small" style="margin:10px 0">Student Photo: form record में photo URL/data उपलब्ध नहीं है।</div>`;
+ return `<div class="item internship-workflow-card" data-internship-id="${Number(x.id)}">
   <div class="row"><div><h3 style="margin:0 0 6px">${esc(x.studentName||x.name||'Student')}</h3><span class="status ${cls}">${esc(status.toUpperCase())}</span></div><span class="status ${hasApprovedProject?'active':'pending'}">PROJECT ${hasApprovedProject?'APPROVED':'PENDING'}</span></div>
+  ${photoMarkup}
   <div class="internship-admin-grid">
    <div class="info-box"><strong>Student ID</strong>${esc(x.studentId||'Will be generated on ID Card action')}</div><div class="info-box"><strong>Internship ID</strong>${esc(x.internshipId||'Not issued')}</div><div class="info-box"><strong>Application ID</strong>${esc(x.id)}</div><div class="info-box"><strong>Reference Number</strong>${esc(x.referenceNo||x.applicationReference||('NSF-INT-'+x.id))}</div><div class="info-box"><strong>Father / Mother</strong>${esc(x.parentName||'-')}</div><div class="info-box"><strong>Mobile</strong>${esc(x.mobile||x.phone||'-')}</div><div class="info-box"><strong>Email</strong>${esc(x.email||'-')}</div><div class="info-box"><strong>College</strong>${esc(x.collegeName||x.educationCollege||'-')}</div><div class="info-box"><strong>University</strong>${esc(x.university||'-')}</div><div class="info-box"><strong>Class / Year</strong>${esc((x.className||'BA')+' / '+(x.yearSemester||'-'))}</div><div class="info-box"><strong>Enrollment / Roll</strong>${esc(x.enrollmentRoll||'-')}</div><div class="info-box"><strong>Previous %</strong>${esc(x.previousPercentage||'-')}%</div><div class="info-box"><strong>Duration</strong>${esc(x.duration||'-')}</div><div class="info-box"><strong>Availability</strong>${esc(x.availability||'-')}</div><div class="info-box"><strong>Preferred Area</strong>${esc(x.preferredPlace||'-')}</div><div class="info-box"><strong>Application Date</strong>${esc(x.applicationDate||'-')}</div></div>
   <div style="margin-top:12px"><b>Internship Interest:</b> ${esc(interests)}</div>${x.otherInterest?`<div style="margin-top:7px"><b>Other:</b> ${esc(x.otherInterest)}</div>`:''}${x.address?`<div style="margin-top:7px"><b>Address:</b> ${esc(x.address)}</div>`:''}${x.studentNote?`<div style="margin-top:7px"><b>Student Note:</b> ${esc(x.studentNote)}</div>`:''}${x.recommendation?`<div style="margin-top:7px"><b>College Recommendation:</b> ${esc(x.recommendation)}</div>`:''}
@@ -3058,9 +3075,31 @@ async function deleteAdminRecord(section,id,label){
  catch(e){alert('Delete नहीं हो सका: '+e.message);}
 }
 
-async function approveInternship(id){if(!confirm('क्या आप इस BA Internship application को Approve करके Official Internship ID और Offer Letter जारी करना चाहते हैं?'))return;try{const result=await api('/api/internships/'+id+'/approve',{method:'POST'});let list=await api('/api/internships');list=Array.isArray(list)?list:[];let item=list.find(x=>Number(x.id)===Number(id));if(!item&&result&&result.id)item=result;if(!item)throw new Error('Approved internship record backend से नहीं मिला।');if(!item.internshipId)item.internshipId=result?.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(id).padStart(4,'0'));if(!item.status||item.status==='pending')item.status='active';internshipCache[id]=item;alert('Internship application approved. अब Premium Offer Letter तैयार है।');showOfferLetter(item);renderInternships();}catch(e){alert('Approval नहीं हो सकी:\n\n'+e.message);}}
-async function rejectInternship(id){if(!confirm('क्या आप इस Internship application को Reject करना चाहते हैं?'))return;try{await api('/api/internships/'+id+'/reject',{method:'POST'});alert('Internship application rejected.');renderInternships();}catch(e){alert(e.message);}}
-async function revokeInternship(id){if(!confirm('क्या आप इस Internship approval को Revoke करना चाहते हैं?'))return;try{await api('/api/internships/'+id+'/revoke',{method:'POST'});alert('Internship approval revoked.');renderInternships();}catch(e){alert(e.message);}}
+async function approveInternship(id){
+ if(!confirm('क्या आप इस BA Internship application को Approve करके Official Internship ID और Offer Letter जारी करना चाहते हैं?'))return;
+ const button=document.querySelector('.internship-workflow-card[data-internship-id="'+Number(id)+'"] .wf-approve');
+ if(button){button.disabled=true;button.textContent='Approving…';}
+ try{
+  const result=await api('/api/internships/'+id+'/approve',{method:'POST'});
+  const prior=internshipCache[id]||{};
+  const item={...prior,...(result&&typeof result==='object'?result:{})};
+  if(!item.id)item.id=Number(id);
+  if(!item.internshipId)item.internshipId=result?.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(id).padStart(4,'0'));
+  if(!item.status||item.status==='pending')item.status='active';
+  internshipCache[id]=item;
+  if(!refreshInternshipCard(id))console.warn('Could not patch approved internship card in place.');
+  alert('Internship application approved. Offer Letter तैयार है।');
+  showOfferLetter(item);
+ }catch(e){if(button){button.disabled=false;button.textContent='✓ Approve Internship';}alert('Approval नहीं हो सकी:\n\n'+e.message);}
+}
+async function rejectInternship(id){
+ if(!confirm('क्या आप इस Internship application को Reject करना चाहते हैं?'))return;
+ try{const result=await api('/api/internships/'+id+'/reject',{method:'POST'});internshipCache[id]={...(internshipCache[id]||{}),...(result||{}),status:'rejected'};refreshInternshipCard(id);alert('Internship application rejected.');}catch(e){alert(e.message);}
+}
+async function revokeInternship(id){
+ if(!confirm('क्या आप इस Internship approval को Revoke करना चाहते हैं?'))return;
+ try{const result=await api('/api/internships/'+id+'/revoke',{method:'POST'});internshipCache[id]={...(internshipCache[id]||{}),...(result||{}),status:'revoked'};refreshInternshipCard(id);alert('Internship approval revoked.');}catch(e){alert(e.message);}
+}
 function showOfferLetterById(id){const x=internshipCache[id];if(!x){alert('Internship record नहीं मिला। कृपया list refresh करें।');return;}showOfferLetter(x);}
 function offerLetterHtml(x){const iid=x.internshipId||('NSF-INT-'+new Date().getFullYear()+'-'+String(x.id||0).padStart(4,'0')),student=x.studentName||x.name||'Student',college=x.collegeName||x.educationCollege||'College',date=x.approvedAt?new Date(x.approvedAt).toLocaleDateString('en-IN'):(x.applicationDate||new Date().toLocaleDateString('en-IN')),interests=Array.isArray(x.interests)?x.interests.join(', '):(x.interests||'Social service and educational activities');return `<div class="offer-preview" id="offerPrintable"><div class="offer-top"><h1>NISHA SEVA FOUNDATION</h1><h2>Student Internship Programme</h2><div style="font-size:12px;color:#555">Internship ID: <b>${esc(iid)}</b> &nbsp; | &nbsp; Date: <b>${esc(date)}</b></div></div><div class="offer-title">INTERNSHIP OFFER LETTER</div><p>Dear <b>${esc(student)}</b>,</p><p>We are pleased to offer you an internship opportunity with <b>Nisha Seva Foundation</b> under the <b>BA Internship Program</b>, subject to the terms and guidelines of the Foundation.</p><p><b>College:</b> ${esc(college)}<br><b>University:</b> ${esc(x.university||'-')}<br><b>Programme:</b> ${esc(x.className||'BA')} · ${esc(x.yearSemester||'-')}<br><b>Internship Duration:</b> ${esc(x.duration||'-')}<br><b>Preferred Area:</b> ${esc(x.preferredPlace||'-')}<br><b>Focus Areas:</b> ${esc(interests)}</p><p>During the internship, you are expected to maintain discipline, confidentiality, punctuality and professional conduct, and to responsibly complete the activities assigned by the Foundation or its coordinator.</p><p>This offer letter is issued on the basis of the information submitted in your Internship Registration Form and the approval recorded by the Foundation.</p><p>We welcome your participation and wish you a meaningful and productive internship experience.</p><div class="offer-sign"><div><b>Authorized Signatory</b><br>Nisha Seva Foundation<br><span style="font-size:12px">Official Internship Programme</span></div><div><b>Student</b><br>${esc(student)}<br><span style="font-size:12px">Internship ID: ${esc(iid)}</span></div></div></div>`;}
 function showOfferLetter(x){const old=document.getElementById('offerModal');if(old)old.remove();document.body.insertAdjacentHTML('beforeend',`<div class="modal" id="offerModal"><div class="modalbox" style="max-width:920px"><div class="row"><div><h2>🎓 Premium Internship Offer Letter</h2><div class="small">${esc(x.studentName||x.name||'Student')} · ${esc(x.internshipId||'')}</div></div><button class="muted" onclick="offerModal.remove()">✕ Close</button></div>${offerLetterHtml(x)}<div class="row"><button class="primary" onclick="downloadOfferLetterPDF()">📄 Download Exact Format Premium PDF</button><button class="muted" onclick="window.print()">🖨 Print</button></div></div></div>`);window.currentInternshipOffer=x;}
