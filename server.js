@@ -4911,52 +4911,38 @@ app.get('/api/finance/audit', financeSession, async (req,res) => {
    START SERVER
    ========================================================= */
 
-Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, passwordResetTableReady, donationsTableReady, communityRequestsTableReady, financeTablesReady])
+// Start the HTTP listener immediately. Database schema initialization continues
+// in the background so Hostinger can detect the application within its startup
+// window. Routes that depend on these schemas must continue awaiting their
+// respective *TableReady promise before querying those tables.
+const server = app.listen(PORT, () => {
+  console.log('======================================');
+  console.log('Nisha Seva backend running');
+  console.log(`Port: ${PORT}`);
+  console.log('Admin panel: /admin');
+  console.log(`Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`);
+  console.log('Student internship API: /api/internships');
+  console.log('======================================');
+});
+
+Promise.all([
+  internshipTableReady,
+  projectSubmissionTableReady,
+  studentAccountsTableReady,
+  passwordResetTableReady,
+  donationsTableReady,
+  communityRequestsTableReady,
+  financeTablesReady
+])
   .then(() => {
-
-    app.listen(
-      PORT,
-      () => {
-
-        console.log(
-          '======================================'
-        );
-
-    console.log(
-      'Nisha Seva backend running'
-    );
-
-    console.log(
-      `Port: ${PORT}`
-    );
-
-    console.log(
-      'Admin panel: /admin'
-    );
-
-        console.log(
-          `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
-        );
-
-        console.log(
-          'Student internship API: /api/internships'
-        );
-
-        console.log(
-          '======================================'
-        );
-
-      }
-    );
-
+    console.log('[STARTUP] Database initialization completed');
   })
   .catch(error => {
-
-    console.error(
-      'SERVER STARTUP FAILED:',
-      error
-    );
-
-    process.exit(1);
-
+    // Keep the HTTP process alive for health checks and diagnostics. Individual
+    // routes should return controlled errors when their table is unavailable.
+    console.error('[STARTUP] Database initialization failed:', error);
   });
+
+server.on('error', error => {
+  console.error('[SERVER LISTEN ERROR]:', error);
+});
