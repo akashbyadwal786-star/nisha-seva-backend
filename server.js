@@ -1364,9 +1364,13 @@ function nsfStripInlinePayload(value) {
 }
 
 const nsfAdminListCache = new Map();
+const nsfAdminListInflight = new Map();
+let nsfAdminListGeneration = 0;
+const NSF_ADMIN_LIST_CACHE_TTL_MS = 15000;
+
 function nsfGetCachedList(key) {
   const entry = nsfAdminListCache.get(key);
-  if (!entry || Date.now() - entry.at > 5000) {
+  if (!entry || Date.now() - entry.at > NSF_ADMIN_LIST_CACHE_TTL_MS) {
     nsfAdminListCache.delete(key);
     return null;
   }
@@ -1374,9 +1378,29 @@ function nsfGetCachedList(key) {
 }
 function nsfSetCachedList(key, value) {
   nsfAdminListCache.set(key, { at: Date.now(), value });
-  if (nsfAdminListCache.size > 20) nsfAdminListCache.delete(nsfAdminListCache.keys().next().value);
+  if (nsfAdminListCache.size > 30) nsfAdminListCache.delete(nsfAdminListCache.keys().next().value);
 }
-function nsfClearAdminListCache() { nsfAdminListCache.clear(); }
+async function nsfLoadCachedList(key, loader) {
+  const cached = nsfGetCachedList(key);
+  if (cached !== null) return { value: cached, cache: 'HIT' };
+  const pending = nsfAdminListInflight.get(key);
+  if (pending) return { value: await pending, cache: 'WAIT' };
+  const generation = nsfAdminListGeneration;
+  const request = Promise.resolve().then(loader);
+  nsfAdminListInflight.set(key, request);
+  try {
+    const value = await request;
+    if (generation === nsfAdminListGeneration) nsfSetCachedList(key, value);
+    return { value, cache: 'MISS' };
+  } finally {
+    if (nsfAdminListInflight.get(key) === request) nsfAdminListInflight.delete(key);
+  }
+}
+function nsfClearAdminListCache() {
+  nsfAdminListGeneration++;
+  nsfAdminListCache.clear();
+  nsfAdminListInflight.clear();
+}
 
 /* =========================================================
    SUBMISSION ROUTES
@@ -1516,19 +1540,19 @@ function submissionRoutes(
               `SELECT id,
                       lower(trim(coalesce(data->>'email', data->>'gmail', ''))) AS email,
                       CASE
-                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')) = 12
-                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 2) = '91'
-                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 10)
-                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')
+                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g')) = 12
+                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 2) = '91'
+                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 10)
+                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g')
                       END AS phone
                  FROM internships
                 WHERE lower(trim(coalesce(data->>'email', data->>'gmail', ''))) = $1
                    OR (
                       CASE
-                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')) = 12
-                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 2) = '91'
-                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g'), 10)
-                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '\\D', '', 'g')
+                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g')) = 12
+                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 2) = '91'
+                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 10)
+                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g')
                       END
                    ) = $2
                 LIMIT 1`,
@@ -1596,10 +1620,10 @@ function submissionRoutes(
                 WHERE lower(trim(coalesce(data->>'email', data->>'gmail', ''))) = $1
                    OR (
                      CASE
-                       WHEN length(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g')) = 12
-                        AND left(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g'), 2) = '91'
-                       THEN right(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g'), 10)
-                       ELSE regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '\D', '', 'g')
+                       WHEN length(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '[^0-9]', '', 'g')) = 12
+                        AND left(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 2) = '91'
+                       THEN right(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 10)
+                       ELSE regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '[^0-9]', '', 'g')
                      END
                    ) = $2
                 LIMIT 1`,
@@ -1699,42 +1723,52 @@ function submissionRoutes(
 
         const summaryOnly = req.query.summary === '1';
         const cacheKey = `admin-list:${name}:${summaryOnly ? 'summary' : 'full'}`;
-        const cachedRows = summaryOnly ? nsfGetCachedList(cacheKey) : null;
-        if (cachedRows) {
-          res.set('X-NSF-Cache', 'HIT');
+
+        const loadRows = async () => {
+          // For the internship workflow list, exclude large inline photo/signature
+          // payloads at SQL level. The dedicated photo endpoint loads one photo
+          // only when the admin card becomes visible or an ID card is generated.
+          const sql = summaryOnly && name === 'internships'
+            ? `SELECT id, created_at,
+                 (data - ARRAY['studentPhoto','studentSignature','parentSignature']::text[]) AS data
+               FROM ${table}
+               ORDER BY created_at DESC`
+            : summaryOnly
+              ? `SELECT id, created_at,
+                   COALESCE((
+                     SELECT jsonb_object_agg(k, v)
+                     FROM jsonb_each(data) AS e(k, v)
+                     WHERE NOT (
+                       jsonb_typeof(v) = 'string'
+                       AND (v #>> '{}') LIKE 'data:%;base64,%'
+                     )
+                   ), '{}'::jsonb) AS data
+                 FROM ${table}
+                 ORDER BY created_at DESC`
+              : `SELECT id, data, created_at FROM ${table} ORDER BY created_at DESC`;
+          const queryStarted = process.hrtime.bigint();
+          const result = await pool.query(sql);
+          const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
+          const rows = result.rows.map(row => ({
+            id: row.id,
+            submittedAt: row.created_at,
+            ...(summaryOnly ? nsfStripInlinePayload(row.data || {}) : (row.data || {}))
+          }));
+          return { rows, queryMs };
+        };
+
+        if (summaryOnly) {
+          const loaded = await nsfLoadCachedList(cacheKey, loadRows);
+          res.set('X-NSF-Cache', loaded.cache);
+          res.set('X-NSF-DB-Query-Ms', loaded.cache === 'MISS' ? 'measured' : 'cached');
           res.set('Cache-Control', 'private, no-store');
-          return res.json(cachedRows);
+          return res.json(loaded.value.rows);
         }
 
-        // Summary mode removes top-level inline base64 fields in PostgreSQL,
-        // reducing Supabase -> backend transfer before Node serializes the response.
-        const sql = summaryOnly
-          ? `SELECT id, created_at,
-               COALESCE((
-                 SELECT jsonb_object_agg(k, v)
-                 FROM jsonb_each(data) AS e(k, v)
-                 WHERE NOT (
-                   jsonb_typeof(v) = 'string'
-                   AND (v #>> '{}') LIKE 'data:%;base64,%'
-                 )
-               ), '{}'::jsonb) AS data
-             FROM ${table}
-             ORDER BY created_at DESC`
-          : `SELECT id, data, created_at FROM ${table} ORDER BY created_at DESC`;
-        const queryStarted = process.hrtime.bigint();
-        const result = await pool.query(sql);
-        const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
-        res.set('X-NSF-DB-Query-Ms', queryMs.toFixed(1));
-
-        const rows = result.rows.map(row => ({
-          id: row.id,
-          submittedAt: row.created_at,
-          ...(summaryOnly ? nsfStripInlinePayload(row.data || {}) : (row.data || {}))
-        }));
-        if (summaryOnly) nsfSetCachedList(cacheKey, rows);
-        res.set('X-NSF-Cache', 'MISS');
+        const loaded = await loadRows();
+        res.set('X-NSF-DB-Query-Ms', loaded.queryMs.toFixed(1));
         res.set('Cache-Control', 'private, no-store');
-        return res.json(rows);
+        return res.json(loaded.rows);
 
 
       } catch (error) {
@@ -3741,6 +3775,7 @@ app.post('/api/projectSubmissions', publicFormLimiter, async (req, res) => {
       'INSERT INTO project_submissions (data) VALUES ($1::jsonb) RETURNING id',
       [JSON.stringify(submission)]
     );
+    nsfClearAdminListCache();
     return res.status(201).json({ ok: true, id: result.rows[0].id, message: 'Project submitted successfully.' });
   } catch (error) {
     console.error('POST /api/projectSubmissions:', error);
@@ -3755,38 +3790,61 @@ app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
   try {
     await projectSubmissionTableReady;
     const summaryOnly = req.query.summary === '1';
-    const limit = Math.min(1000, Math.max(1, Number.parseInt(req.query.limit || '500', 10) || 500));
+    const limit = Math.min(500, Math.max(1, Number.parseInt(req.query.limit || '100', 10) || 100));
     const projectCacheKey = `project-summary:${limit}`;
-    const cachedProjectRows = summaryOnly ? nsfGetCachedList(projectCacheKey) : null;
-    if (cachedProjectRows) {
-      res.set('X-NSF-Cache', 'HIT');
+    const loadProjectRows = async () => {
+      const sql = summaryOnly
+        ? `SELECT id, created_at,
+             jsonb_strip_nulls(jsonb_build_object(
+               'title', data->'title',
+               'status', data->'status',
+               'studentName', data->'studentName',
+               'internshipId', data->'internshipId',
+               'email', data->'email',
+               'phone', data->'phone',
+               'college', data->'college',
+               'category', data->'category',
+               'description', data->'description',
+               'projectLink', data->'projectLink',
+               'applicationId', data->'applicationId',
+               'referenceNo', data->'referenceNo',
+               'studentAccountId', data->'studentAccountId',
+               'projectFile', CASE
+                 WHEN jsonb_typeof(data->'projectFile') = 'object' THEN
+                   jsonb_strip_nulls(jsonb_build_object(
+                     'name', data->'projectFile'->'name',
+                     'type', data->'projectFile'->'type',
+                     'size', data->'projectFile'->'size'
+                   ))
+                 ELSE NULL
+               END
+             )) AS data
+           FROM project_submissions
+           ORDER BY created_at DESC LIMIT $1`
+        : 'SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC';
+      const queryStarted = process.hrtime.bigint();
+      const result = await pool.query(sql, summaryOnly ? [limit] : []);
+      const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
+      const rows = result.rows.map(row => ({
+        id: row.id,
+        submittedAt: row.created_at,
+        ...(summaryOnly ? (row.data || {}) : (row.data || {}))
+      }));
+      return { rows, queryMs };
+    };
+
+    if (summaryOnly) {
+      const loaded = await nsfLoadCachedList(projectCacheKey, loadProjectRows);
+      res.set('X-NSF-Cache', loaded.cache);
+      res.set('X-NSF-DB-Query-Ms', loaded.cache === 'MISS' ? 'measured' : 'cached');
       res.set('Cache-Control', 'private, no-store');
-      return res.json(cachedProjectRows);
+      return res.json(loaded.value.rows);
     }
-    const sql = summaryOnly
-      ? `SELECT id, created_at,
-           jsonb_set(
-             data,
-             '{projectFile}',
-             COALESCE((data->'projectFile') - 'data', 'null'::jsonb),
-             true
-           ) AS data
-         FROM project_submissions
-         ORDER BY created_at DESC LIMIT $1`
-      : 'SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC';
-    const queryStarted = process.hrtime.bigint();
-    const result = await pool.query(sql, summaryOnly ? [limit] : []);
-    const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
-    res.set('X-NSF-DB-Query-Ms', queryMs.toFixed(1));
-    const rows = result.rows.map(row => ({
-      id: row.id,
-      submittedAt: row.created_at,
-      ...(summaryOnly ? nsfStripInlinePayload(row.data || {}) : (row.data || {}))
-    }));
-    if (summaryOnly) nsfSetCachedList(projectCacheKey, rows);
-    res.set('X-NSF-Cache', 'MISS');
+
+    const loaded = await loadProjectRows();
+    res.set('X-NSF-DB-Query-Ms', loaded.queryMs.toFixed(1));
     res.set('Cache-Control', 'private, no-store');
-    return res.json(rows);
+    return res.json(loaded.rows);
   } catch (error) {
     console.error('GET /api/projectSubmissions:', error);
     return res.status(500).json({ error: 'Could not load project submissions.' });
@@ -3858,6 +3916,7 @@ app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) =>
         await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify({...appData,projectApproved,completionEligible}),applicationId]);
       }
     }
+    nsfClearAdminListCache();
     return res.json({ ok:true, id, status });
   } catch (error) {
     console.error('POST /api/projectSubmissions/:id/review:', error);
@@ -3872,6 +3931,7 @@ app.delete('/api/projectSubmissions/:id', requireAdmin, async (req, res) => {
     if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid project submission ID.' });
     const result = await pool.query('DELETE FROM project_submissions WHERE id = $1 RETURNING id', [id]);
     if (!result.rowCount) return res.status(404).json({ error: 'Project submission not found.' });
+    nsfClearAdminListCache();
     return res.json({ ok: true });
   } catch (error) {
     console.error('DELETE /api/projectSubmissions:', error);
