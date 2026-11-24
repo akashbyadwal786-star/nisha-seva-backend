@@ -1536,25 +1536,22 @@ function submissionRoutes(
           try {
             await client.query('BEGIN');
             await client.query('SELECT pg_advisory_xact_lock($1)', [847261904]);
+            // The predicates below intentionally match the existing expression
+            // indexes: idx_internships_email_normalized and idx_internships_mobile.
+            // Compare both 10-digit and legacy +91-prefixed phone forms.
             const duplicate = await client.query(
               `SELECT id,
                       lower(trim(coalesce(data->>'email', data->>'gmail', ''))) AS email,
-                      CASE
-                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g')) = 12
-                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 2) = '91'
-                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 10)
-                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g')
-                      END AS phone
+                      regexp_replace(
+                        coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''),
+                        '[^0-9]', '', 'g'
+                      ) AS phone_digits
                  FROM internships
                 WHERE lower(trim(coalesce(data->>'email', data->>'gmail', ''))) = $1
-                   OR (
-                      CASE
-                        WHEN length(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g')) = 12
-                         AND left(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 2) = '91'
-                        THEN right(regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 10)
-                        ELSE regexp_replace(coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''), '[^0-9]', '', 'g')
-                      END
-                   ) = $2
+                   OR regexp_replace(
+                        coalesce(data->>'mobile', data->>'phone', data->>'mobileNumber', ''),
+                        '[^0-9]', '', 'g'
+                      ) IN ($2, '91' || $2)
                 LIMIT 1`,
               [email, phone]
             );
@@ -1564,7 +1561,7 @@ function submissionRoutes(
               if (String(old.email || '').toLowerCase() === email) {
                 return res.status(409).json({ error: 'इस Email से Internship Form पहले ही जमा हो चुका है। एक Email से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_EMAIL' });
               }
-              if (String(old.phone || '') === phone) {
+              if (String(old.phone_digits || '').replace(/^91(?=\d{10}$)/, '') === phone) {
                 return res.status(409).json({ error: 'इस मोबाइल नंबर से Internship Form पहले ही जमा हो चुका है। एक मोबाइल नंबर से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_PHONE' });
               }
               return res.status(409).json({ error: 'इस Email या मोबाइल नंबर से आवेदन पहले ही जमा हो चुका है।', code: 'DUPLICATE_INTERNSHIP' });
@@ -1614,25 +1611,28 @@ function submissionRoutes(
             await client.query('BEGIN');
             await client.query('SELECT pg_advisory_xact_lock($1)', [847261903]);
 
+            // Keep the SQL expressions identical to the matching expression indexes.
+            // Legacy +91-prefixed values are checked alongside normalized 10-digit values.
             const duplicate = await client.query(
-              `SELECT id, data->>'email' AS email, data->>'phone' AS phone
+              `SELECT id,
+                      lower(trim(coalesce(data->>'email', data->>'gmail', ''))) AS email,
+                      regexp_replace(
+                        coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''),
+                        '[^0-9]', '', 'g'
+                      ) AS phone_digits
                  FROM volunteers
                 WHERE lower(trim(coalesce(data->>'email', data->>'gmail', ''))) = $1
-                   OR (
-                     CASE
-                       WHEN length(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '[^0-9]', '', 'g')) = 12
-                        AND left(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 2) = '91'
-                       THEN right(regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '[^0-9]', '', 'g'), 10)
-                       ELSE regexp_replace(coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''), '[^0-9]', '', 'g')
-                     END
-                   ) = $2
+                   OR regexp_replace(
+                        coalesce(data->>'phone', data->>'mobile', data->>'mobileNumber', ''),
+                        '[^0-9]', '', 'g'
+                      ) IN ($2, '91' || $2)
                 LIMIT 1`,
               [email, phone]
             );
 
             if (duplicate.rows.length) {
               const oldEmail = String(duplicate.rows[0].email || '').trim().toLowerCase();
-              const oldPhone = String(duplicate.rows[0].phone || '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+              const oldPhone = String(duplicate.rows[0].phone_digits || '').replace(/^91(?=\d{10}$)/, '');
               await client.query('ROLLBACK');
               if (oldEmail === email) {
                 return res.status(409).json({ error: 'इस Email/Gmail से Volunteer Form पहले ही जमा हो चुका है। एक Email से केवल एक आवेदन स्वीकार होगा।', code: 'DUPLICATE_EMAIL' });
