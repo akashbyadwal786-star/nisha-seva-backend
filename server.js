@@ -1848,11 +1848,23 @@ app.get('/api/student/verify/:publicId', publicFormLimiter, async (req, res) => 
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Student profile not found.' });
     const row=result.rows[0], d=row.data||{};
+    // Accept the photo field aliases already used by the Admin Panel and forms.
+    // Only image data URLs or HTTPS URLs are exposed on this public verification profile.
+    let photoValue = d.studentPhoto || d.studentPhotoUrl || d.photoUrl || d.photoDataUrl ||
+      d.photo || d.imageUrl || d.image || d.profilePhoto || d.passportPhoto ||
+      d.profileImage || d.uploadedPhoto || d.picture || d.studentImage || null;
+    if (photoValue && typeof photoValue === 'object') {
+      photoValue = photoValue.dataUrl || photoValue.url || photoValue.src ||
+        photoValue.preview || photoValue.publicUrl || photoValue.downloadUrl || null;
+    }
+    const safePhoto = typeof photoValue === 'string' &&
+      (/^data:image\/(?:png|jpeg|jpg|webp);base64,/i.test(photoValue) || /^https:\/\//i.test(photoValue))
+      ? photoValue : null;
     const safe = {
       studentId: d.studentId || `NSF-STU-${String(row.id).padStart(6,'0')}`,
       applicationId: row.id,
       studentName: d.studentName || d.name || 'Student',
-      photo: typeof d.studentPhoto === 'string' && /^data:image\/(png|jpeg|webp);base64,/i.test(d.studentPhoto) ? d.studentPhoto : null,
+      photo: safePhoto,
       college: d.collegeName || d.educationCollege || null,
       university: d.university || null,
       course: d.className || d.program || 'Student Internship',
