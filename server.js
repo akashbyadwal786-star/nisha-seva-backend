@@ -1722,17 +1722,29 @@ function submissionRoutes(
         }
 
         const summaryOnly = req.query.summary === '1';
-        const cacheKey = `admin-list:${name}:${summaryOnly ? 'summary' : 'full'}`;
+        // Keep the existing array response for Admin Panel compatibility, while
+        // bounding the two high-volume internship list modes. offset is optional
+        // and can be used by a future UI pager without changing this response shape.
+        const boundedInternshipList = name === 'internships';
+        const requestedLimit = Number.parseInt(req.query.limit || '1000', 10);
+        const listLimit = boundedInternshipList
+          ? Math.min(2000, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 1000))
+          : null;
+        const requestedOffset = Number.parseInt(req.query.offset || '0', 10);
+        const listOffset = boundedInternshipList
+          ? Math.min(1000000, Math.max(0, Number.isFinite(requestedOffset) ? requestedOffset : 0))
+          : 0;
+        const cacheKey = `admin-list:${name}:${summaryOnly ? 'summary' : 'full'}:${listLimit || 'all'}:${listOffset}`;
 
         const loadRows = async () => {
-          // For the internship workflow list, exclude large inline photo/signature
-          // payloads at SQL level. The dedicated photo endpoint loads one photo
-          // only when the admin card becomes visible or an ID card is generated.
+          // Exclude large inline photo/signature payloads from internship summaries.
+          // Full mode is also bounded to prevent an accidental unbounded JSONB download.
+          const pagingSql = boundedInternshipList ? ' LIMIT $1 OFFSET $2' : '';
           const sql = summaryOnly && name === 'internships'
             ? `SELECT id, created_at,
                  (data - ARRAY['studentPhoto','studentSignature','parentSignature']::text[]) AS data
                FROM ${table}
-               ORDER BY created_at DESC`
+               ORDER BY created_at DESC${pagingSql}`
             : summaryOnly
               ? `SELECT id, created_at,
                    COALESCE((
@@ -1744,10 +1756,10 @@ function submissionRoutes(
                      )
                    ), '{}'::jsonb) AS data
                  FROM ${table}
-                 ORDER BY created_at DESC`
-              : `SELECT id, data, created_at FROM ${table} ORDER BY created_at DESC`;
+                 ORDER BY created_at DESC${pagingSql}`
+              : `SELECT id, data, created_at FROM ${table} ORDER BY created_at DESC${pagingSql}`;
           const queryStarted = process.hrtime.bigint();
-          const result = await pool.query(sql);
+          const result = await pool.query(sql, boundedInternshipList ? [listLimit, listOffset] : []);
           const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
           const rows = result.rows.map(row => ({
             id: row.id,
@@ -1761,12 +1773,14 @@ function submissionRoutes(
           const loaded = await nsfLoadCachedList(cacheKey, loadRows);
           res.set('X-NSF-Cache', loaded.cache);
           res.set('X-NSF-DB-Query-Ms', loaded.cache === 'MISS' ? 'measured' : 'cached');
+          if (boundedInternshipList) { res.set('X-NSF-Page-Limit', String(listLimit)); res.set('X-NSF-Page-Offset', String(listOffset)); }
           res.set('Cache-Control', 'private, no-store');
           return res.json(loaded.value.rows);
         }
 
         const loaded = await loadRows();
         res.set('X-NSF-DB-Query-Ms', loaded.queryMs.toFixed(1));
+        if (boundedInternshipList) { res.set('X-NSF-Page-Limit', String(listLimit)); res.set('X-NSF-Page-Offset', String(listOffset)); }
         res.set('Cache-Control', 'private, no-store');
         return res.json(loaded.rows);
 
@@ -3790,8 +3804,11 @@ app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
   try {
     await projectSubmissionTableReady;
     const summaryOnly = req.query.summary === '1';
-    const limit = Math.min(500, Math.max(1, Number.parseInt(req.query.limit || '100', 10) || 100));
-    const projectCacheKey = `project-summary:${limit}`;
+    const parsedLimit = Number.parseInt(req.query.limit || '100', 10);
+    const limit = Math.min(500, Math.max(1, Number.isFinite(parsedLimit) ? parsedLimit : 100));
+    const parsedOffset = Number.parseInt(req.query.offset || '0', 10);
+    const offset = Math.min(1000000, Math.max(0, Number.isFinite(parsedOffset) ? parsedOffset : 0));
+    const projectCacheKey = `project-summary:${limit}:${offset}`;
     const loadProjectRows = async () => {
       const sql = summaryOnly
         ? `SELECT id, created_at,
@@ -3820,10 +3837,10 @@ app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
                END
              )) AS data
            FROM project_submissions
-           ORDER BY created_at DESC LIMIT $1`
-        : 'SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC';
+           ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+        : 'SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC LIMIT $1 OFFSET $2';
       const queryStarted = process.hrtime.bigint();
-      const result = await pool.query(sql, summaryOnly ? [limit] : []);
+      const result = await pool.query(sql, [limit, offset]);
       const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
       const rows = result.rows.map(row => ({
         id: row.id,
@@ -3837,12 +3854,16 @@ app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
       const loaded = await nsfLoadCachedList(projectCacheKey, loadProjectRows);
       res.set('X-NSF-Cache', loaded.cache);
       res.set('X-NSF-DB-Query-Ms', loaded.cache === 'MISS' ? 'measured' : 'cached');
+      res.set('X-NSF-Page-Limit', String(limit));
+      res.set('X-NSF-Page-Offset', String(offset));
       res.set('Cache-Control', 'private, no-store');
       return res.json(loaded.value.rows);
     }
 
     const loaded = await loadProjectRows();
     res.set('X-NSF-DB-Query-Ms', loaded.queryMs.toFixed(1));
+    res.set('X-NSF-Page-Limit', String(limit));
+    res.set('X-NSF-Page-Offset', String(offset));
     res.set('Cache-Control', 'private, no-store');
     return res.json(loaded.rows);
   } catch (error) {
