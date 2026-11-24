@@ -3980,9 +3980,18 @@ app.get('/api/student/projects', studentAuth, async (req, res) => {
     const account = await getStudentAccount(req.studentAccountId);
     if (!account) return res.status(404).json({ error: 'Student account नहीं मिला।' });
     const result = await pool.query(
-      `SELECT id, data, created_at FROM project_submissions
+      `SELECT id,
+              jsonb_set(
+                data,
+                '{projectFile}',
+                COALESCE((data->'projectFile') - 'data', 'null'::jsonb),
+                true
+              ) AS data,
+              created_at
+         FROM project_submissions
         WHERE (data->>'studentAccountId') = $1
-        ORDER BY created_at DESC`,
+        ORDER BY created_at DESC
+        LIMIT 100`,
       [String(account.id)]
     );
     return res.json({ projects: result.rows.map(r => ({ id:r.id, ...(r.data || {}), submittedAt:r.created_at })) });
