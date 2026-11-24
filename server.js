@@ -5015,52 +5015,37 @@ app.get('/api/finance/audit', financeSession, async (req,res) => {
    START SERVER
    ========================================================= */
 
-Promise.all([internshipTableReady, projectSubmissionTableReady, studentAccountsTableReady, passwordResetTableReady, donationsTableReady, communityRequestsTableReady, financeTablesReady])
-  .then(() => {
+// Hostinger expects the HTTP listener to start immediately. Do not wait for
+// Supabase/PostgreSQL DDL or schema initialization before calling listen().
+const server = app.listen(PORT, () => {
+  console.log('======================================');
+  console.log('Nisha Seva backend running');
+  console.log(`Port: ${PORT}`);
+  console.log('Admin panel: /admin');
+  console.log(`Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`);
+  console.log('Student internship API: /api/internships');
+  console.log('======================================');
+});
 
-    app.listen(
-      PORT,
-      () => {
+// Database schema initialization continues in the background. Routes that
+// depend on a schema already await their corresponding *Ready promise.
+Promise.all([
+  secretaryTableReady,
+  internshipTableReady,
+  projectSubmissionTableReady,
+  studentAccountsTableReady,
+  passwordResetTableReady,
+  donationsTableReady,
+  communityRequestsTableReady,
+  financeTablesReady
+]).then(() => {
+  console.log('[STARTUP] Database schema initialization completed.');
+}).catch((error) => {
+  // Keep the HTTP process alive so Hostinger does not restart-loop the app.
+  // The affected database-backed routes will report their own errors.
+  console.error('[STARTUP] Database schema initialization failed:', error.message || error);
+});
 
-        console.log(
-          '======================================'
-        );
-
-    console.log(
-      'Nisha Seva backend running'
-    );
-
-    console.log(
-      `Port: ${PORT}`
-    );
-
-    console.log(
-      'Admin panel: /admin'
-    );
-
-        console.log(
-          `Volunteer verification: ${PUBLIC_BASE_URL}/verify/volunteer/<code>`
-        );
-
-        console.log(
-          'Student internship API: /api/internships'
-        );
-
-        console.log(
-          '======================================'
-        );
-
-      }
-    );
-
-  })
-  .catch(error => {
-
-    console.error(
-      'SERVER STARTUP FAILED:',
-      error
-    );
-
-    process.exit(1);
-
-  });
+server.on('error', (error) => {
+  console.error('[SERVER LISTEN ERROR]:', error);
+});
