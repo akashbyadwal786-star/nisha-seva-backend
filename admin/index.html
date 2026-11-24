@@ -626,7 +626,9 @@ async function api(path,opt={}){
     ...(isFormData ? {} : {"Content-Type":"application/json"}),
     ...(opt.headers || {})
   };
-  if(token) headers.Authorization = "Bearer " + token;
+  // Login requests must not carry a stale token from a previous session.
+  const isRoleLogin = /^\/api\/(?:admin|secretary|coordinator|treasurer)\/login(?:\?|$)/.test(path);
+  if(token && !isRoleLogin) headers.Authorization = "Bearer " + token;
 
   // If multiple UI handlers request the same GET at once, share one network call.
   // Mutations are never deduplicated or cached.
@@ -648,6 +650,19 @@ async function api(path,opt={}){
     try { data = text ? JSON.parse(text) : {}; }
     catch { data = {error:text}; }
     if(!response.ok) {
+      // Backend sessions are held in process memory and expire after 12 hours.
+      // If a restart/expiry invalidates this token, return to the login screen
+      // instead of leaving the Admin UI stuck on repeated 401 responses.
+      if(response.status === 401 && token && !isRoleLogin) {
+        const expiredRole = currentRole || localStorage.getItem("nisha_role") || "admin";
+        token = "";
+        localStorage.removeItem("nisha_token");
+        localStorage.removeItem("nisha_role");
+        currentRole = expiredRole;
+        current = expiredRole === "secretary" ? "secretaryPanel" : (expiredRole === "coordinator" ? "internships" : (expiredRole === "treasurer" ? "financeDashboard" : "dashboard"));
+        login(expiredRole);
+        throw new Error("आपका Admin session समाप्त हो गया है। कृपया दोबारा Login करें।");
+      }
       if(response.status === 502 || response.status === 503 || response.status === 504) {
         const label = response.status === 504 ? "504 Gateway Timeout" : ("HTTP " + response.status);
         throw new Error(label + ": Backend/Database ने समय पर जवाब नहीं दिया। भारी project list request को हल्का किया गया है; Hostinger backend logs और Supabase connection/pool भी जाँचें।");
