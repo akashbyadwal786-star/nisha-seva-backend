@@ -8,9 +8,9 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: Math.min(5, Math.max(1, Number.parseInt(process.env.PGPOOL_MAX || '3', 10) || 3)),
+  max: Math.min(5, Math.max(1, Number.parseInt(process.env.PGPOOL_MAX || '5', 10) || 5)),
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 20000,
   ...(process.env.PGSSLMODE === 'require'
     ? { ssl: { rejectUnauthorized: process.env.PGSSL_REJECT_UNAUTHORIZED !== 'false' } }
     : {})
