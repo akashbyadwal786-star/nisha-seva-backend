@@ -1225,17 +1225,30 @@ app.get('/api/certificates', requireAdmin, async (req, res) => {
   catch (e) { console.error('GET /api/certificates', e); res.status(500).json({error:'Database error'}); }
 });
 app.post('/api/certificates', requireAdmin, async (req, res) => {
-  try { const db = await readDB(); db.certificates = Array.isArray(db.certificates) ? db.certificates : [];
+  let certificatePhase = 'startup';
+  try {
+    // Wait for both certificate dependencies' table initialization before querying.
+    certificatePhase = 'table initialization';
+    await internshipTableReady;
+    await projectSubmissionTableReady;
+    certificatePhase = 'read application state';
+    const db = await readDB(); db.certificates = Array.isArray(db.certificates) ? db.certificates : [];
     const body = req.body || {}; const applicationId = Number(body.applicationId);
     if (!Number.isSafeInteger(applicationId) || applicationId < 1) return res.status(400).json({error:'Valid applicationId required.'});
+    certificatePhase = 'read internship row';
     const appRow = await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]);
     const appData = appRow.rows[0]?.data || {}; const attendance = appData.attendance || {};
     const presentDays = Array.isArray(attendance.days) ? attendance.days.filter(d => String(d.status||'').toLowerCase()==='present').length : Number(attendance.presentDays||0);
+    certificatePhase = 'check approved project';
     const approvedProjects = await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId')=$1 AND lower(COALESCE(data->>'status','submitted'))='approved'`,[String(applicationId)]);
     const projectApproved = Number(approvedProjects.rows[0]?.total||0)>0;
     if (presentDays !== 21 || attendance.approved !== true || !projectApproved) return res.status(409).json({error:`Certificate locked: attendance ${presentDays}/21, attendance approval ${attendance.approved===true?'approved':'pending'}, approved project ${projectApproved?'yes':'no'}.`});
-    const item = {...body, id: nextId(db.certificates)}; db.certificates.push(item); await writeDB(db); res.status(201).json(item);
-  } catch(e) { console.error('POST /api/certificates',e); res.status(500).json({error:'Database error'}); }
+    certificatePhase = 'save certificate state';
+    const item = {...body, id: nextId(db.certificates)}; db.certificates.push(item); await writeDB(db); certificatePhase = 'respond'; res.status(201).json(item);
+  } catch(e) {
+    console.error('POST /api/certificates DATABASE/PROCESS ERROR phase=' + certificatePhase + ':', e?.code || '', e?.message || e, e?.detail || '', e?.hint || '');
+    res.status(500).json({error:'Certificate database operation failed. Check backend logs for POST /api/certificates.'});
+  }
 });
 app.put('/api/certificates/:id', requireAdmin, async (req, res) => {
   try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const i=db.certificates.findIndex(x=>Number(x.id)===id); if(i<0)return res.status(404).json({error:'Not found'}); const body=req.body||{}; const applicationId=Number(body.applicationId||db.certificates[i].applicationId); const appRow=await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]); const appData=appRow.rows[0]?.data||{}; const attendance=appData.attendance||{}; const presentDays=Array.isArray(attendance.days)?attendance.days.filter(d=>String(d.status||'').toLowerCase()==='present').length:Number(attendance.presentDays||0); const approvedProjects=await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId')=$1 AND lower(COALESCE(data->>'status','submitted'))='approved'`,[String(applicationId)]); const projectApproved=Number(approvedProjects.rows[0]?.total||0)>0; if(presentDays!==21||attendance.approved!==true||!projectApproved)return res.status(409).json({error:`Certificate locked: attendance ${presentDays}/21, attendance approval ${attendance.approved===true?'approved':'pending'}, approved project ${projectApproved?'yes':'no'}.`}); db.certificates[i]={...db.certificates[i],...body,id}; await writeDB(db); res.json(db.certificates[i]);
