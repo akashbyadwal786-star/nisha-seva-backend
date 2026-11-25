@@ -11,11 +11,11 @@ const pool = new Pool({
   // Keep the pool deliberately small for Supabase Session Pooler.
   max: Math.min(5, Math.max(1, Number.parseInt(process.env.PGPOOL_MAX || '3', 10) || 3)),
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 15000,
+  connectionTimeoutMillis: 30000,
   // Bound slow statements and abandoned transactions so a stalled request
   // cannot occupy one of the few available pool connections indefinitely.
-  statement_timeout: 30000,
-  query_timeout: 35000,
+  statement_timeout: 60000,
+  query_timeout: 75000,
   idle_in_transaction_session_timeout: 15000,
   keepAlive: true,
   keepAliveInitialDelayMillis: 10000,
