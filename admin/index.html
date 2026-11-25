@@ -2490,7 +2490,8 @@ async function downloadPremiumInternshipCertificate(c){
  cornerOrnament(39,39,1,1);cornerOrnament(W-39,39,-1,1);
  cornerOrnament(39,H-39,1,-1);cornerOrnament(W-39,H-39,-1,-1);
  ctx.restore();
- // Centre watermark/shadow removed as requested.\n const student=String(c.studentName||c.name||'Student').trim();
+ // Centre watermark/shadow removed as requested.
+ const student=String(c.studentName||c.name||'Student').trim();
  const father=String(c.fatherName||c.parentName||'').trim();
  const college=String(c.college||'').trim(),university=String(c.university||'').trim();
  const course=String(c.course||c.program||'').trim(),semester=String(c.semester||'').trim();
