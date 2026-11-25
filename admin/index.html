@@ -2246,6 +2246,7 @@ function projectSubmissionCard(x){
     <div style="margin-top:12px"><b>Project Description</b><p style="white-space:pre-wrap">${esc(x.description || '-')}</p></div>
     <div class="actions" style="margin-top:12px;align-items:center">
       ${safeLink ? `<a class="muted" style="display:inline-block;text-decoration:none;border-radius:8px;padding:9px 13px;color:#172033;font-weight:600" href="${esc(safeLink)}" target="_blank" rel="noopener noreferrer">🔗 Open Project Link</a>` : (projectLink ? `<span class="small">Project link saved but is not a valid http/https URL.</span>` : '<span class="small">No external project link provided</span>')}
+      ${hasProjectFile ? `<button class="muted" onclick="viewProjectFile(${Number(x.id)})">👁 View Submitted Project</button>` : ''}
       ${downloadMarkup}
     </div>
   </div>`;
@@ -2392,8 +2393,7 @@ async function generateApprovedInternshipCertificate(id){
   const projects=rows.filter(p=>Number(p.applicationId||p.internshipId||p.studentApplicationId||0)===Number(id)&&String(p.status||'').toLowerCase()==='approved');
   const a=x.attendance||{};
   const actualPresentDays=Array.isArray(a.days)?a.days.filter(d=>String(d.status||'').toLowerCase()==='present').length:Number(a.presentDays||0);
-  const attendanceApproved=(a.approved===true||String(a.approvalStatus||'').toLowerCase()==='approved');
-  if(actualPresentDays!==21 || !attendanceApproved || projects.length===0){alert('Certificate Eligibility:\nAttendance: '+actualPresentDays+'/21\nAttendance Approval: '+(attendanceApproved?'Approved':'Pending')+'\nProject: '+(projects.length?'Approved':'Pending')+'. कृपया refreshed record जाँचें।');refreshInternshipCard(id);return;}
+  if(actualPresentDays!==21 || projects.length===0){alert('Certificate Eligibility:\nAttendance: '+actualPresentDays+'/21\nProject: '+(projects.length?'Approved':'Pending')+'. कृपया refreshed record जाँचें।');refreshInternshipCard(id);return;}
   x.projectApproved=true;internshipCache[id]=x;
   if(!projects.length)throw new Error('Approved project record नहीं मिला।');
   const existingCertificates=await api('/api/certificates');
@@ -2737,6 +2737,23 @@ async function renderInternships(force=false){
  })();
  try{return await internshipListLoading;}finally{internshipListLoading=null;}
 }
+async function viewProjectFile(id){
+ const tab=window.open('about:blank','_blank');
+ if(tab){tab.document.write('<p style="font-family:Arial;padding:20px">Loading submitted project…</p>');}
+ try{
+  const payload=await api('/api/projectSubmissions/'+encodeURIComponent(id)+'/file');
+  const file=payload.projectFile||{};
+  const match=/^data:([^;,]+);base64,([\s\S]+)$/.exec(String(file.data||''));
+  if(!match) throw new Error('Project file data is unavailable or cannot be previewed.');
+  const binary=atob(match[2]),bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  const blob=new Blob([bytes],{type:match[1]}),url=URL.createObjectURL(blob);
+  if(tab){tab.location.href=url;tab.document.title=file.name||'Submitted Project';}
+  else{const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener';link.click();}
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+ }catch(error){if(tab)tab.close();alert(error.message||'Could not preview project file.');}
+}
+
 async function downloadProjectFile(id){
  try{
   const payload=await api('/api/projectSubmissions/'+encodeURIComponent(id)+'/file');
@@ -2779,7 +2796,7 @@ function internshipProjectPanel(x){
    const file=p.projectFile&&typeof p.projectFile==='object'?p.projectFile:null;
    const safeLink=/^https?:\/\//i.test(String(p.projectLink||''))?String(p.projectLink):'';
    const fileMarkup=file&&file.name
-     ? `<a href="#" onclick="downloadProjectFile(${Number(p.id)});return false;">⬇ Download ${esc(file.name)}</a>`
+     ? `<button class="muted" onclick="viewProjectFile(${Number(p.id)})">👁 View Submitted Project</button> <button class="wf-download" onclick="downloadProjectFile(${Number(p.id)})">⬇ Download ${esc(file.name)}</button>`
      : '<span class="project-meta">No attached file</span>';
    return `<div class="internship-project-row">
     <div class="row"><b>${esc(p.title||'Student Project')}</b><span class="status ${st==='approved'?'active':st==='rejected'?'rejected':'pending'}">${esc(st.toUpperCase())}</span></div>
@@ -2839,7 +2856,7 @@ function internshipCard(x){
  const hasApprovedProject=projects.some(p=>String(p.status||'').toLowerCase()==='approved') || x.projectApproved===true;
  const attendanceData=x.attendance||{};
  const presentDays=Array.isArray(attendanceData.days)?attendanceData.days.filter(d=>String(d.status||'').toLowerCase()==='present').length:Number(attendanceData.presentDays||0);
- const certificateReady=presentDays===21&&hasApprovedProject&&(attendanceData.approved===true||String(attendanceData.approvalStatus||'').toLowerCase()==='approved');
+ const certificateReady=presentDays===21&&hasApprovedProject;
  let adminButtons='';
  if(status==='pending')adminButtons+=`<button class="wf-approve" onclick="approveInternship(${x.id})">✓ Approve Internship</button><button class="wf-reject" onclick="rejectInternship(${x.id})">✕ Reject</button>`;
  else if(status==='active')adminButtons+=`<button class="wf-download" onclick="showOfferLetterById(${x.id})">📄 Offer Letter</button><button class="wf-reject" onclick="revokeInternship(${x.id})">↶ Revoke Internship</button>`;
