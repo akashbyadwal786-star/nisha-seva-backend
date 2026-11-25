@@ -1230,12 +1230,12 @@ app.post('/api/certificates', requireAdmin, async (req, res) => {
     if (!Number.isSafeInteger(applicationId) || applicationId < 1) return res.status(400).json({error:'Valid applicationId required.'});
     const appRow = await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]);
     const appData = appRow.rows[0]?.data || {}; const attendance = appData.attendance || {};
-    if (Number(attendance.presentDays || 0) !== 21 || appData.projectApproved !== true) return res.status(409).json({error:'Certificate locked: 21/21 attendance and approved project are required.'});
+    if (Number(attendance.presentDays || 0) !== 21 || attendance.approved !== true || appData.projectApproved !== true) return res.status(409).json({error:'Certificate locked: approved 21/21 attendance and approved project are required.'});
     const item = {...body, id: nextId(db.certificates)}; db.certificates.push(item); await writeDB(db); res.status(201).json(item);
   } catch(e) { console.error('POST /api/certificates',e); res.status(500).json({error:'Database error'}); }
 });
 app.put('/api/certificates/:id', requireAdmin, async (req, res) => {
-  try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const i=db.certificates.findIndex(x=>Number(x.id)===id); if(i<0)return res.status(404).json({error:'Not found'}); const body=req.body||{}; const applicationId=Number(body.applicationId||db.certificates[i].applicationId); const appRow=await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]); const appData=appRow.rows[0]?.data||{}; if(Number(appData.attendance?.presentDays||0)!==21||appData.projectApproved!==true)return res.status(409).json({error:'Certificate locked: 21/21 attendance and approved project are required.'}); db.certificates[i]={...db.certificates[i],...body,id}; await writeDB(db); res.json(db.certificates[i]);
+  try { const db=await readDB(); db.certificates=Array.isArray(db.certificates)?db.certificates:[]; const id=Number(req.params.id); const i=db.certificates.findIndex(x=>Number(x.id)===id); if(i<0)return res.status(404).json({error:'Not found'}); const body=req.body||{}; const applicationId=Number(body.applicationId||db.certificates[i].applicationId); const appRow=await pool.query('SELECT data FROM internships WHERE id=$1 LIMIT 1',[applicationId]); const appData=appRow.rows[0]?.data||{}; if(Number(appData.attendance?.presentDays||0)!==21||appData.attendance?.approved!==true||appData.projectApproved!==true)return res.status(409).json({error:'Certificate locked: approved 21/21 attendance and approved project are required.'}); db.certificates[i]={...db.certificates[i],...body,id}; await writeDB(db); res.json(db.certificates[i]);
   } catch(e) { console.error('PUT /api/certificates',e); res.status(500).json({error:'Database error'}); }
 });
 app.delete('/api/certificates/:id', requireAdmin, async (req, res) => {
@@ -2286,6 +2286,31 @@ app.put('/api/internships/:id/attendance', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('PUT /api/internships/:id/attendance:', error);
     return res.status(500).json({ error: 'Attendance save नहीं हो सकी।' });
+  }
+});
+
+/* ---------------------------------------------------------
+   ADMIN APPROVE ATTENDANCE — persisted in internship JSONB
+   --------------------------------------------------------- */
+app.post('/api/internships/:id/attendance/approve', requireAdmin, async (req, res) => {
+  try {
+    await internshipTableReady;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid internship application ID.' });
+    const found = await pool.query('SELECT id,data,created_at FROM internships WHERE id=$1 LIMIT 1', [id]);
+    if (!found.rows.length) return res.status(404).json({ error: 'Internship application not found.' });
+    const current = found.rows[0].data || {}, attendance = current.attendance || {};
+    if (!Array.isArray(attendance.days) || attendance.days.length !== 21 || Number(attendance.totalDays) !== 21) {
+      return res.status(409).json({ error: 'पहले 21-day attendance रिकॉर्ड सेव करें।' });
+    }
+    const approvedAttendance = { ...attendance, approved: true, approvalStatus: 'approved', approvedAt: new Date().toISOString(), approvedByRole: req.userRole || 'admin' };
+    const updated = { ...current, attendance: approvedAttendance };
+    const saved = await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2 RETURNING id,data,created_at', [JSON.stringify(updated), id]);
+    nsfClearAdminListCache();
+    return res.json({ id, ...(saved.rows[0].data || {}), submittedAt: saved.rows[0].created_at });
+  } catch (error) {
+    console.error('POST /api/internships/:id/attendance/approve:', error);
+    return res.status(500).json({ error: 'Attendance approval नहीं हो सकी।' });
   }
 });
 
