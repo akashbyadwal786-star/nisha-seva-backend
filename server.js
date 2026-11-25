@@ -3699,6 +3699,7 @@ app.post('/api/projectSubmissions', publicFormLimiter, async (req, res) => {
       'INSERT INTO project_submissions (data) VALUES ($1::jsonb) RETURNING id',
       [JSON.stringify(submission)]
     );
+    nsfClearAdminListCache();
     return res.status(201).json({ ok: true, id: result.rows[0].id, message: 'Project submitted successfully.' });
   } catch (error) {
     console.error('POST /api/projectSubmissions:', error);
@@ -3712,48 +3713,46 @@ app.post('/api/projectSubmissions', publicFormLimiter, async (req, res) => {
 app.get('/api/projectSubmissions', requireAdmin, async (req, res) => {
   try {
     await projectSubmissionTableReady;
-    const summaryOnly = req.query.summary === '1';
-    const limit = Math.min(1000, Math.max(1, Number.parseInt(req.query.limit || '500', 10) || 500));
-    const projectCacheKey = `project-summary:${limit}`;
-    const cachedProjectRows = summaryOnly ? nsfGetCachedList(projectCacheKey) : null;
-    if (cachedProjectRows) {
+    // List views never return inline file bytes; use the authenticated file endpoint.
+    const parsedLimit = Number.parseInt(req.query.limit || '100', 10);
+    const limit = Math.min(200, Math.max(1, Number.isFinite(parsedLimit) ? parsedLimit : 100));
+    const cacheKey = `project-summary:v2:${limit}`;
+    const cachedRows = nsfGetCachedList(cacheKey);
+    if (cachedRows) {
       res.set('X-NSF-Cache', 'HIT');
       res.set('Cache-Control', 'private, no-store');
-      return res.json(cachedProjectRows);
+      return res.json(cachedRows);
     }
-    const sql = summaryOnly
-      ? `SELECT id, created_at,
-           jsonb_set(
-             data,
-             '{projectFile}',
-             COALESCE((data->'projectFile') - 'data', 'null'::jsonb),
-             true
-           ) AS data
-         FROM project_submissions
-         ORDER BY created_at DESC LIMIT $1`
-      : 'SELECT id, data, created_at FROM project_submissions ORDER BY created_at DESC';
     const queryStarted = process.hrtime.bigint();
-    const result = await pool.query(sql, summaryOnly ? [limit] : []);
+    const result = await pool.query(
+      `SELECT id, created_at,
+         CASE WHEN jsonb_typeof(data->'projectFile') = 'object'
+           THEN jsonb_set(data, '{projectFile}', (data->'projectFile') - 'data', true)
+           ELSE data END AS data
+       FROM project_submissions
+       ORDER BY created_at DESC, id DESC
+       LIMIT $1`,
+      [limit]
+    );
     const queryMs = Number(process.hrtime.bigint() - queryStarted) / 1e6;
     res.set('X-NSF-DB-Query-Ms', queryMs.toFixed(1));
     const rows = result.rows.map(row => ({
       id: row.id,
       submittedAt: row.created_at,
-      ...(summaryOnly ? nsfStripInlinePayload(row.data || {}) : (row.data || {}))
+      ...nsfStripInlinePayload(row.data || {})
     }));
-    if (summaryOnly) nsfSetCachedList(projectCacheKey, rows);
+    nsfSetCachedList(cacheKey, rows);
     res.set('X-NSF-Cache', 'MISS');
     res.set('Cache-Control', 'private, no-store');
+    res.set('X-NSF-Result-Limit', String(limit));
     return res.json(rows);
   } catch (error) {
     console.error('GET /api/projectSubmissions:', error);
     const message = String(error && (error.code || error.message) || '');
-    const poolBusy = /timeout exceeded when trying to connect|53300|too many clients|connection terminated/i.test(message);
+    const poolBusy = /timeout exceeded when trying to connect|53300|too many clients|connection terminated|statement timeout|57014/i.test(message);
     res.set('Retry-After', '3');
     return res.status(poolBusy ? 503 : 500).json({
-      error: poolBusy
-        ? 'Database is busy. Please retry in a few seconds.'
-        : 'Could not load project submissions.'
+      error: poolBusy ? 'Database is busy. Please retry in a few seconds.' : 'Could not load project submissions.'
     });
   }
 });
@@ -3777,56 +3776,95 @@ app.get('/api/projectSubmissions/:id/file', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) => {
+  let client;
   try {
-    await projectSubmissionTableReady;
+    await Promise.all([projectSubmissionTableReady, internshipTableReady]);
     const id = Number(req.params.id);
-    const status = String(req.body?.status || '').toLowerCase();
-    if (!Number.isSafeInteger(id) || id < 1 || !['approved','rejected'].includes(status)) {
+    const status = String(req.body?.status || '').trim().toLowerCase();
+    if (!Number.isSafeInteger(id) || id < 1 || !['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ error: 'Invalid project review request.' });
     }
-    const found = await pool.query('SELECT id,data FROM project_submissions WHERE id=$1 LIMIT 1', [id]);
-    if (!found.rows.length) return res.status(404).json({ error: 'Project submission not found.' });
-    const data = { ...(found.rows[0].data || {}), status, reviewedAt: new Date().toISOString(), reviewedByRole: req.userRole || 'admin' };
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const found = await client.query(
+      'SELECT id, data FROM project_submissions WHERE id=$1 FOR UPDATE', [id]
+    );
+    if (!found.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Project submission not found.' });
+    }
+    const data = {
+      ...(found.rows[0].data || {}),
+      status,
+      reviewedAt: new Date().toISOString(),
+      reviewedByRole: req.userRole || 'admin'
+    };
     let applicationId = Number(data.applicationId || 0);
 
-    // Student dashboard submissions should carry applicationId. For older submissions,
-    // safely link only when email or internship/reference ID identifies exactly one application.
+    // Legacy records are linked only when exactly one application matches.
     if (!Number.isSafeInteger(applicationId) || applicationId < 1) {
       const email = String(data.email || '').trim().toLowerCase();
       const internshipId = String(data.internshipId || data.referenceNo || '').trim().toLowerCase();
       let candidates = [];
       if (email) {
-        const matchByEmail = await pool.query(
-          `SELECT id FROM internships WHERE lower(COALESCE(data->>'email',''))=$1`,
-          [email]
+        const byEmail = await client.query(
+          `SELECT id FROM internships WHERE lower(COALESCE(data->>'email',''))=$1 LIMIT 2`, [email]
         );
-        candidates = matchByEmail.rows;
+        candidates = byEmail.rows;
       }
       if (candidates.length !== 1 && internshipId) {
-        const matchByInternship = await pool.query(
-          `SELECT id FROM internships WHERE lower(COALESCE(data->>'internshipId', data->>'referenceNo', data->>'applicationReference',''))=$1`,
-          [internshipId]
+        const byReference = await client.query(
+          `SELECT id FROM internships
+           WHERE lower(COALESCE(data->>'internshipId', data->>'referenceNo', data->>'applicationReference',''))=$1
+           LIMIT 2`, [internshipId]
         );
-        candidates = matchByInternship.rows;
+        candidates = byReference.rows;
       }
       if (candidates.length === 1) applicationId = Number(candidates[0].id);
     }
+    if (Number.isSafeInteger(applicationId) && applicationId > 0) data.applicationId = applicationId;
+
+    // Persist status before recalculating approval count (the previous route omitted this UPDATE).
+    await client.query(
+      'UPDATE project_submissions SET data=$1::jsonb WHERE id=$2', [JSON.stringify(data), id]
+    );
+
     if (Number.isSafeInteger(applicationId) && applicationId > 0) {
-      data.applicationId = applicationId;
-      const appRow = await pool.query('SELECT id,data FROM internships WHERE id=$1 LIMIT 1', [applicationId]);
+      const appRow = await client.query(
+        'SELECT id, data FROM internships WHERE id=$1 FOR UPDATE', [applicationId]
+      );
       if (appRow.rows.length) {
-        const appData = appRow.rows[0].data || {};
-        const approvedCount = await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId')=$1 AND lower(COALESCE(data->>'status','submitted'))='approved'`, [String(applicationId)]);
+        const approvedCount = await client.query(
+          `SELECT COUNT(*)::int AS total FROM project_submissions
+           WHERE (data->>'applicationId')=$1
+             AND lower(COALESCE(data->>'status','submitted'))='approved'`,
+          [String(applicationId)]
+        );
         const projectApproved = Number(approvedCount.rows[0]?.total || 0) > 0;
+        const appData = appRow.rows[0].data || {};
         const attendance = appData.attendance || {};
         const completionEligible = Number(attendance.presentDays || 0) === 21 && projectApproved;
-        await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify({...appData,projectApproved,completionEligible}),applicationId]);
+        await client.query(
+          'UPDATE internships SET data=$1::jsonb WHERE id=$2',
+          [JSON.stringify({ ...appData, projectApproved, completionEligible }), applicationId]
+        );
       }
     }
-    return res.json({ ok:true, id, status });
+    await client.query('COMMIT');
+    nsfClearAdminListCache();
+    return res.json({ ok: true, id, status });
   } catch (error) {
+    if (client) { try { await client.query('ROLLBACK'); } catch (_) {} }
     console.error('POST /api/projectSubmissions/:id/review:', error);
-    return res.status(500).json({ error: 'Project review could not be saved.' });
+    const code = String(error?.code || '');
+    const busy = ['53300', '57014', '55P03'].includes(code) ||
+      /timeout exceeded when trying to connect|statement timeout|connection terminated/i.test(String(error?.message || ''));
+    if (busy) res.set('Retry-After', '3');
+    return res.status(busy ? 503 : 500).json({
+      error: busy ? 'Database is busy. Please retry the review.' : 'Project review could not be saved.'
+    });
+  } finally {
+    if (client) client.release();
   }
 });
 
@@ -3837,6 +3875,7 @@ app.delete('/api/projectSubmissions/:id', requireAdmin, async (req, res) => {
     if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: 'Invalid project submission ID.' });
     const result = await pool.query('DELETE FROM project_submissions WHERE id = $1 RETURNING id', [id]);
     if (!result.rowCount) return res.status(404).json({ error: 'Project submission not found.' });
+    nsfClearAdminListCache();
     return res.json({ ok: true });
   } catch (error) {
     console.error('DELETE /api/projectSubmissions:', error);
@@ -3872,12 +3911,11 @@ app.use(
     }
 
 
-    res.status(500).json({
-
-      error:
-        err.message ||
-        'Internal server error'
-
+    const status = Number(err.status || err.statusCode) === 413 || err.type === 'entity.too.large' ? 413 : 500;
+    res.status(status).json({
+      error: status === 413
+        ? 'Request too large. Please reduce the uploaded file size and try again.'
+        : 'Internal server error'
     });
 
   }
@@ -3945,56 +3983,154 @@ app.get('/api/student/projects', studentAuth, async (req, res) => {
     const account = await getStudentAccount(req.studentAccountId);
     if (!account) return res.status(404).json({ error: 'Student account नहीं मिला।' });
     const result = await pool.query(
-      `SELECT id, data, created_at FROM project_submissions
-        WHERE (data->>'studentAccountId') = $1
-        ORDER BY created_at DESC`,
+      `SELECT id, created_at,
+         CASE WHEN jsonb_typeof(data->'projectFile') = 'object'
+           THEN jsonb_set(data, '{projectFile}', (data->'projectFile') - 'data', true)
+           ELSE data END AS data
+       FROM project_submissions
+       WHERE (data->>'studentAccountId') = $1
+       ORDER BY created_at DESC, id DESC
+       LIMIT 100`,
       [String(account.id)]
     );
-    return res.json({ projects: result.rows.map(r => ({ id:r.id, ...(r.data || {}), submittedAt:r.created_at })) });
+    return res.json({
+      projects: result.rows.map(r => ({
+        id: r.id, ...nsfStripInlinePayload(r.data || {}), submittedAt: r.created_at
+      }))
+    });
   } catch (error) {
     console.error('GET /api/student/projects:', error);
-    return res.status(500).json({ error: 'Projects load नहीं हो सके।' });
+    const busy = ['53300', '57014', '55P03'].includes(String(error?.code || '')) ||
+      /timeout exceeded when trying to connect|statement timeout|connection terminated/i.test(String(error?.message || ''));
+    if (busy) res.set('Retry-After', '3');
+    return res.status(busy ? 503 : 500).json({
+      error: busy ? 'Database busy है। कृपया कुछ सेकंड बाद दोबारा प्रयास करें।' : 'Projects load नहीं हो सके।'
+    });
   }
 });
+
+app.get('/api/student/projects/:id/file', studentAuth, async (req, res) => {
+  try {
+    await studentProjectSubmissionTableReady;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) {
+      return res.status(400).json({ error: 'Invalid project ID.' });
+    }
+    const account = await getStudentAccount(req.studentAccountId);
+    if (!account) return res.status(404).json({ error: 'Student account नहीं मिला।' });
+    const result = await pool.query(
+      `SELECT data->'projectFile' AS file
+       FROM project_submissions
+       WHERE id=$1 AND data->>'studentAccountId'=$2
+       LIMIT 1`,
+      [id, String(account.id)]
+    );
+    if (!result.rows.length || !result.rows[0].file?.data) {
+      return res.status(404).json({ error: 'Project file नहीं मिली।' });
+    }
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ projectFile: result.rows[0].file });
+  } catch (error) {
+    console.error('GET student project file error:', error);
+    const busy = ['53300', '57014', '55P03'].includes(String(error?.code || '')) ||
+      /timeout exceeded when trying to connect|statement timeout|connection terminated/i.test(String(error?.message || ''));
+    if (busy) res.set('Retry-After', '3');
+    return res.status(busy ? 503 : 500).json({
+      error: busy ? 'Database busy है। कृपया दोबारा प्रयास करें।' : 'Project file load नहीं हो सकी।'
+    });
+  }
+});
+
 app.post('/api/student/projects', studentAuth, publicFormLimiter, async (req, res) => {
+  let client;
   try {
     await Promise.all([studentAccountsTableReady, internshipTableReady, studentProjectSubmissionTableReady]);
     const account = await getStudentAccount(req.studentAccountId);
     if (!account) return res.status(404).json({ error: 'Student account नहीं मिला।' });
-    const appResult = await pool.query('SELECT id,data FROM internships WHERE id=$1 LIMIT 1', [account.internship_id]);
-    if (!appResult.rows.length) return res.status(404).json({ error: 'Internship application नहीं मिला।' });
+    if (!account.internship_id) return res.status(404).json({ error: 'Internship application नहीं मिला।' });
+
     const body = req.body || {};
     const title = String(body.title || '').trim().slice(0, 160);
     const description = String(body.description || '').trim().slice(0, 5000);
     const file = body.projectFile || {};
-    const match = /^data:(application\/pdf|image\/(?:jpeg|jpg));base64,([A-Za-z0-9+/=\s]+)$/i.exec(String(file.data || ''));
-    if (!title || !description || !match) return res.status(400).json({ error: 'Project title, description और PDF/JPG/JPEG file जरूरी हैं।' });
+    const fileData = String(file.data || '');
+    const match = /^data:(application\/pdf|image\/(?:jpeg|jpg));base64,([A-Za-z0-9+/=\s]+)$/i.exec(fileData);
+    if (!title || !description || !match) {
+      return res.status(400).json({ error: 'Project title, description और PDF/JPG/JPEG file जरूरी हैं।' });
+    }
     const base64 = match[2].replace(/\s/g, '');
-    const bytes = Math.floor(base64.length * 3 / 4) - (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
-    if (bytes > 20 * 1024 * 1024) return res.status(413).json({ error: 'Project file अधिकतम 20 MB हो सकती है।' });
+    const bytes = Math.floor(base64.length * 3 / 4) -
+      (base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0);
+    if (!Number.isFinite(bytes) || bytes <= 0 || bytes > 20 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Project file अधिकतम 20 MB हो सकती है।' });
+    }
+
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const appResult = await client.query(
+      'SELECT id, data FROM internships WHERE id=$1 FOR UPDATE', [account.internship_id]
+    );
+    if (!appResult.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Internship application नहीं मिला।' });
+    }
     const appData = appResult.rows[0].data || {};
     const submission = {
-      studentAccountId: String(account.id), applicationId: account.internship_id,
+      studentAccountId: String(account.id),
+      applicationId: account.internship_id,
       studentName: appData.studentName || appData.name || account.username,
-      email: account.email, phone: appData.mobile || appData.phone || '',
+      email: account.email,
+      phone: appData.mobile || appData.phone || '',
       college: appData.collegeName || appData.educationCollege || '',
       internshipId: appData.internshipId || `NSF-INT-${account.internship_id}`,
-      title, description, projectFile: {
+      title,
+      description,
+      projectFile: {
         name: String(file.name || 'project-file').replace(/[^a-z0-9._ -]/gi, '_').slice(0, 180),
-        type: match[1].toLowerCase(), data: String(file.data)
+        type: match[1].toLowerCase(),
+        data: fileData
       },
-      status: 'submitted', submittedAt: new Date().toISOString()
+      status: 'submitted',
+      submittedAt: new Date().toISOString()
     };
-    const saved = await pool.query('INSERT INTO project_submissions (data) VALUES ($1::jsonb) RETURNING id,created_at', [JSON.stringify(submission)]);
+    const saved = await client.query(
+      'INSERT INTO project_submissions (data) VALUES ($1::jsonb) RETURNING id, created_at',
+      [JSON.stringify(submission)]
+    );
     const attendance = appData.attendance || {};
-    const eligible = Number(attendance.presentDays || 0) >= 21;
-    const updatedApp = { ...appData, projectSubmitted: true, projectSubmittedAt: saved.rows[0].created_at, completionEligible: eligible };
-    await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify(updatedApp), account.internship_id]);
-    return res.status(201).json({ ok:true, id:saved.rows[0].id, completionEligible:eligible, message:'Project successfully submit हो गया।' });
+    const eligibleByAttendance = Number(attendance.presentDays || 0) >= 21;
+    const updatedApp = {
+      ...appData,
+      projectSubmitted: true,
+      projectSubmittedAt: saved.rows[0].created_at,
+      completionEligible: eligibleByAttendance
+    };
+    await client.query(
+      'UPDATE internships SET data=$1::jsonb WHERE id=$2',
+      [JSON.stringify(updatedApp), account.internship_id]
+    );
+    await client.query('COMMIT');
+    nsfClearAdminListCache();
+    return res.status(201).json({
+      ok: true,
+      id: saved.rows[0].id,
+      completionEligible: updatedApp.completionEligible,
+      message: 'Project successfully submit हो गया।'
+    });
   } catch (error) {
+    if (client) { try { await client.query('ROLLBACK'); } catch (_) {} }
     console.error('POST /api/student/projects:', error);
-    if (error?.type === 'entity.too.large') return res.status(413).json({ error:'Project file अधिकतम 20 MB हो सकती है।' });
-    return res.status(500).json({ error:'Project submit नहीं हो सका।' });
+    if (error?.type === 'entity.too.large') {
+      return res.status(413).json({ error: 'Project file अधिकतम 20 MB हो सकती है।' });
+    }
+    const busy = ['53300', '57014', '55P03'].includes(String(error?.code || '')) ||
+      /timeout exceeded when trying to connect|statement timeout|connection terminated/i.test(String(error?.message || ''));
+    if (busy) res.set('Retry-After', '3');
+    return res.status(busy ? 503 : 500).json({
+      error: busy ? 'Database busy है। कृपया कुछ सेकंड बाद दोबारा प्रयास करें।' : 'Project submit नहीं हो सका।'
+    });
+  } finally {
+    if (client) client.release();
   }
 });
 
