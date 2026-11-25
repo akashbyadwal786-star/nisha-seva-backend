@@ -11,6 +11,9 @@ const pool = new Pool({
   max: Math.min(5, Math.max(1, Number.parseInt(process.env.PGPOOL_MAX || '5', 10) || 5)),
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 20000,
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
+  application_name: 'nisha-seva-api',
   ...(process.env.PGSSLMODE === 'require'
     ? { ssl: { rejectUnauthorized: process.env.PGSSL_REJECT_UNAUTHORIZED !== 'false' } }
     : {})
