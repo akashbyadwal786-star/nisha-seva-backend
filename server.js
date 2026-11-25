@@ -3869,7 +3869,6 @@ app.get('/api/projectSubmissions/:id/file', requireAdmin, async (req, res) => {
 });
 
 app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) => {
-  let client;
   try {
     await projectSubmissionTableReady;
     const id = Number(req.params.id);
@@ -3877,27 +3876,24 @@ app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) =>
     if (!Number.isSafeInteger(id) || id < 1 || !['approved','rejected'].includes(status)) {
       return res.status(400).json({ error: 'Invalid project review request.' });
     }
-    client = await pool.connect();
-    await client.query('BEGIN');
-    const found = await client.query('SELECT id,data FROM project_submissions WHERE id=$1 LIMIT 1 FOR UPDATE', [id]);
-    if (!found.rows.length) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Project submission not found.' });
-    }
+
+    // Persist the review independently so an internship-linking failure cannot undo approval.
+    const found = await pool.query('SELECT id,data FROM project_submissions WHERE id=$1 LIMIT 1', [id]);
+    if (!found.rows.length) return res.status(404).json({ error: 'Project submission not found.' });
     const data = { ...(found.rows[0].data || {}), status, reviewedAt: new Date().toISOString(), reviewedByRole: req.userRole || 'admin' };
     let applicationId = Number(data.applicationId || 0);
 
-    // Safely link legacy submissions only if email/reference resolves to exactly one application.
+    // Safely link legacy submissions only when email/reference resolves to exactly one application.
     if (!Number.isSafeInteger(applicationId) || applicationId < 1) {
       const email = String(data.email || data.studentEmail || '').trim().toLowerCase();
       const internshipRef = String(data.internshipId || data.referenceNo || data.applicationReference || '').trim().toLowerCase();
       let candidates = [];
       if (email) {
-        const matchByEmail = await client.query(`SELECT id FROM internships WHERE lower(COALESCE(data->>'email',data->>'studentEmail',''))=$1`, [email]);
+        const matchByEmail = await pool.query(`SELECT id FROM internships WHERE lower(COALESCE(data->>'email',data->>'studentEmail',''))=$1`, [email]);
         candidates = matchByEmail.rows;
       }
       if (candidates.length !== 1 && internshipRef) {
-        const matchByRef = await client.query(`SELECT id FROM internships WHERE lower(COALESCE(data->>'internshipId',data->>'referenceNo',data->>'applicationReference',''))=$1`, [internshipRef]);
+        const matchByRef = await pool.query(`SELECT id FROM internships WHERE lower(COALESCE(data->>'internshipId',data->>'referenceNo',data->>'applicationReference',''))=$1`, [internshipRef]);
         candidates = matchByRef.rows;
       }
       if (candidates.length === 1) applicationId = Number(candidates[0].id);
@@ -3905,28 +3901,33 @@ app.post('/api/projectSubmissions/:id/review', requireAdmin, async (req, res) =>
     }
     if (applicationId > 0) data.applicationId = applicationId;
 
-    // Save review and linked eligibility flags atomically to avoid partial state.
-    await client.query('UPDATE project_submissions SET data=$1::jsonb WHERE id=$2', [JSON.stringify(data), id]);
+    const saved = await pool.query('UPDATE project_submissions SET data=$1::jsonb WHERE id=$2 RETURNING id', [JSON.stringify(data), id]);
+    if (!saved.rowCount) return res.status(404).json({ error: 'Project submission not found.' });
+
+    // Internship linking/eligibility is secondary: report/log its failure, but keep the review saved.
+    let internshipUpdate = 'not-linked';
     if (applicationId > 0) {
-      const appRow = await client.query('SELECT id,data FROM internships WHERE id=$1 LIMIT 1 FOR UPDATE', [applicationId]);
-      if (appRow.rows.length) {
-        const appData = appRow.rows[0].data || {};
-        const approvedCount = await client.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId')=$1 AND lower(COALESCE(data->>'status','submitted'))='approved'`, [String(applicationId)]);
-        const projectApproved = Number(approvedCount.rows[0]?.total || 0) > 0;
-        const attendance = appData.attendance || {};
-        const completionEligible = Number(attendance.presentDays || 0) === 21 && projectApproved;
-        await client.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify({...appData,projectSubmitted:true,projectApproved,completionEligible}),applicationId]);
+      try {
+        const appRow = await pool.query('SELECT id,data FROM internships WHERE id=$1 LIMIT 1', [applicationId]);
+        if (appRow.rows.length) {
+          const appData = appRow.rows[0].data || {};
+          const approvedCount = await pool.query(`SELECT COUNT(*)::int AS total FROM project_submissions WHERE (data->>'applicationId')=$1 AND lower(COALESCE(data->>'status','submitted'))='approved'`, [String(applicationId)]);
+          const projectApproved = Number(approvedCount.rows[0]?.total || 0) > 0;
+          const attendance = appData.attendance || {};
+          const completionEligible = Number(attendance.presentDays || 0) === 21 && projectApproved;
+          await pool.query('UPDATE internships SET data=$1::jsonb WHERE id=$2', [JSON.stringify({...appData, projectSubmitted:true, projectApproved, completionEligible}), applicationId]);
+          internshipUpdate = 'updated';
+        } else internshipUpdate = 'application-not-found';
+      } catch (linkError) {
+        internshipUpdate = 'failed';
+        console.error('Project review saved, but internship linkage update failed:', linkError);
       }
     }
-    await client.query('COMMIT');
     nsfClearAdminListCache();
-    return res.json({ ok:true, id, status, applicationId: applicationId || null });
+    return res.json({ ok:true, id, status, applicationId: applicationId || null, internshipUpdate });
   } catch (error) {
-    if (client) { try { await client.query('ROLLBACK'); } catch (_) {} }
-    console.error('POST /api/projectSubmissions/:id/review:', error);
-    return res.status(500).json({ error: 'Project review could not be saved.' });
-  } finally {
-    if (client) client.release();
+    console.error('POST /api/projectSubmissions/:id/review failed:', error?.code || '', error?.message || error, error?.detail || '', error?.constraint || '');
+    return res.status(500).json({ error: 'Project review could not be saved.', code: error?.code || null });
   }
 });
 
