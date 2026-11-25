@@ -2378,13 +2378,23 @@ async function manageInternshipAttendance(id){
 
 
 async function generateApprovedInternshipCertificate(id){
- const x=internshipCache[id];if(!x){alert('Student record नहीं मिला।');return;}
- const a=x.attendance||{};
- if(Number(a.presentDays)!==21 || a.approved!==true || !x.projectApproved){alert('Certificate के लिए 21/21 Attendance और approved Project दोनों जरूरी हैं।');return;}
+ let x=internshipCache[id];if(!x){alert('Student record नहीं मिला।');return;}
  try{
-  const all=await api('/api/projectSubmissions?summary=1&limit=500');
+  // Always re-read both sources before deciding certificate eligibility; avoid stale card/cache flags.
+  const [freshData,all]=await Promise.all([
+   api('/api/internships?summary=1'),
+   api('/api/projectSubmissions?summary=1&limit=500')
+  ]);
+  const freshRows=Array.isArray(freshData)?freshData:[];
+  const freshRecord=freshRows.find(r=>Number(r.id)===Number(id));
+  if(freshRecord){x=freshRecord;internshipCache[id]=x;}
   const rows=Array.isArray(all)?all:[];
-  const projects=rows.filter(p=>Number(p.applicationId||0)===Number(id)&&String(p.status).toLowerCase()==='approved');
+  const projects=rows.filter(p=>Number(p.applicationId||p.internshipId||p.studentApplicationId||0)===Number(id)&&String(p.status||'').toLowerCase()==='approved');
+  const a=x.attendance||{};
+  const actualPresentDays=Array.isArray(a.days)?a.days.filter(d=>String(d.status||'').toLowerCase()==='present').length:Number(a.presentDays||0);
+  const attendanceApproved=(a.approved===true||String(a.approvalStatus||'').toLowerCase()==='approved');
+  if(actualPresentDays!==21 || !attendanceApproved || projects.length===0){alert('Certificate Eligibility:\nAttendance: '+actualPresentDays+'/21\nAttendance Approval: '+(attendanceApproved?'Approved':'Pending')+'\nProject: '+(projects.length?'Approved':'Pending')+'. कृपया refreshed record जाँचें।');refreshInternshipCard(id);return;}
+  x.projectApproved=true;internshipCache[id]=x;
   if(!projects.length)throw new Error('Approved project record नहीं मिला।');
   const existingCertificates=await api('/api/certificates');
   const existing=Array.isArray(existingCertificates)?existingCertificates.find(c=>Number(c.applicationId)===Number(id)):null;
@@ -2827,8 +2837,9 @@ function internshipCard(x){
  const revisionPending=Boolean(x.pendingFormRevision && x.formRevisionStatus==='pending_approval');
  const projects=getProjectsForInternship(x);
  const hasApprovedProject=projects.some(p=>String(p.status||'').toLowerCase()==='approved') || x.projectApproved===true;
- const presentDays=Number((x.attendance||{}).presentDays||0);
- const certificateReady=presentDays===21&&hasApprovedProject&&((x.attendance||{}).approved===true);
+ const attendanceData=x.attendance||{};
+ const presentDays=Array.isArray(attendanceData.days)?attendanceData.days.filter(d=>String(d.status||'').toLowerCase()==='present').length:Number(attendanceData.presentDays||0);
+ const certificateReady=presentDays===21&&hasApprovedProject&&(attendanceData.approved===true||String(attendanceData.approvalStatus||'').toLowerCase()==='approved');
  let adminButtons='';
  if(status==='pending')adminButtons+=`<button class="wf-approve" onclick="approveInternship(${x.id})">✓ Approve Internship</button><button class="wf-reject" onclick="rejectInternship(${x.id})">✕ Reject</button>`;
  else if(status==='active')adminButtons+=`<button class="wf-download" onclick="showOfferLetterById(${x.id})">📄 Offer Letter</button><button class="wf-reject" onclick="revokeInternship(${x.id})">↶ Revoke Internship</button>`;
