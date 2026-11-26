@@ -2246,6 +2246,7 @@ function projectSubmissionCard(x){
     <div style="margin-top:12px"><b>Project Description</b><p style="white-space:pre-wrap">${esc(x.description || '-')}</p></div>
     <div class="actions" style="margin-top:12px;align-items:center">
       ${safeLink ? `<a class="muted" style="display:inline-block;text-decoration:none;border-radius:8px;padding:9px 13px;color:#172033;font-weight:600" href="${esc(safeLink)}" target="_blank" rel="noopener noreferrer">🔗 Open Project Link</a>` : (projectLink ? `<span class="small">Project link saved but is not a valid http/https URL.</span>` : '<span class="small">No external project link provided</span>')}
+      ${hasProjectFile ? `<button class="muted" onclick="viewProjectFile(${Number(x.id)})">👁 View Submitted Project</button>` : ''}
       ${downloadMarkup}
     </div>
   </div>`;
@@ -2380,20 +2381,20 @@ async function manageInternshipAttendance(id){
 async function generateApprovedInternshipCertificate(id){
  let x=internshipCache[id];if(!x){alert('Student record नहीं मिला।');return;}
  try{
-  // Always read uncached full records before certificate eligibility; summary sidecar caches may lag approval changes.
+  // Always re-read both sources before deciding certificate eligibility; avoid stale card/cache flags.
   const [freshData,all]=await Promise.all([
-   api('/api/internships?limit=2000'),
-   api('/api/projectSubmissions?limit=500')
+   api('/api/internships?summary=1'),
+   api('/api/projectSubmissions?summary=1&limit=500')
   ]);
   const freshRows=Array.isArray(freshData)?freshData:[];
   const freshRecord=freshRows.find(r=>Number(r.id)===Number(id));
   if(freshRecord){x=freshRecord;internshipCache[id]=x;}
   const rows=Array.isArray(all)?all:[];
-  const projects=rows.filter(p=>Number(p.applicationId||0)===Number(id)&&String(p.status||'').toLowerCase()==='approved');
+  const projects=rows.filter(p=>Number(p.applicationId||p.internshipId||p.studentApplicationId||0)===Number(id)&&String(p.status||'').toLowerCase()==='approved');
   const a=x.attendance||{};
-  if(Number(a.presentDays)!==21 || a.approved!==true || projects.length===0){alert('Certificate Locked: Attendance '+Number(a.presentDays||0)+'/21, Attendance Approval '+(a.approved===true?'Approved':'Pending')+', Project '+(projects.length?'Approved':'Pending')+'. कृपया refreshed record जाँचें।');refreshInternshipCard(id);return;}
-  x.projectApproved=true;internshipCache[id]=x;
-  if(!projects.length)throw new Error('Approved project record नहीं मिला।');
+  const actualPresentDays=Array.isArray(a.days)?a.days.filter(d=>String(d.status||'').toLowerCase()==='present').length:Number(a.presentDays||0);
+  // Certificate generation no longer requires 21 attendance days or an approved project.
+  x.projectApproved=projects.length>0;internshipCache[id]=x;
   const existingCertificates=await api('/api/certificates');
   const existing=Array.isArray(existingCertificates)?existingCertificates.find(c=>Number(c.applicationId)===Number(id)):null;
   const certificateId=existing?.certificateId||'NSF-INT-'+new Date().getFullYear()+'-'+(crypto.randomUUID?crypto.randomUUID().replace(/-/g,'').slice(0,12).toUpperCase():Math.random().toString(36).slice(2,14).toUpperCase());
@@ -2500,7 +2501,9 @@ async function downloadPremiumInternshipCertificate(c){
  cornerOrnament(39,39,1,1);cornerOrnament(W-39,39,-1,1);
  cornerOrnament(39,H-39,1,-1);cornerOrnament(W-39,H-39,-1,-1);
  ctx.restore();
- // Centre watermark/shadow removed as requested.
+ // Soft NSF logo watermark centered behind certificate content.
+ const watermarkLogo=await loadLogo();
+ if(watermarkLogo){ctx.save();ctx.globalAlpha=0.075;const wmSize=Math.min(W*0.42,H*0.42);ctx.drawImage(watermarkLogo,(W-wmSize)/2,(H-wmSize)/2,wmSize,wmSize);ctx.restore();}
  const student=String(c.studentName||c.name||'Student').trim();
  const father=String(c.fatherName||c.parentName||'').trim();
  const college=String(c.college||'').trim(),university=String(c.university||'').trim();
@@ -2735,6 +2738,23 @@ async function renderInternships(force=false){
  })();
  try{return await internshipListLoading;}finally{internshipListLoading=null;}
 }
+async function viewProjectFile(id){
+ const tab=window.open('about:blank','_blank');
+ if(tab){tab.document.write('<p style="font-family:Arial;padding:20px">Loading submitted project…</p>');}
+ try{
+  const payload=await api('/api/projectSubmissions/'+encodeURIComponent(id)+'/file');
+  const file=payload.projectFile||{};
+  const match=/^data:([^;,]+);base64,([\s\S]+)$/.exec(String(file.data||''));
+  if(!match) throw new Error('Project file data is unavailable or cannot be previewed.');
+  const binary=atob(match[2]),bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  const blob=new Blob([bytes],{type:match[1]}),url=URL.createObjectURL(blob);
+  if(tab){tab.location.href=url;tab.document.title=file.name||'Submitted Project';}
+  else{const link=document.createElement('a');link.href=url;link.target='_blank';link.rel='noopener';link.click();}
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+ }catch(error){if(tab)tab.close();alert(error.message||'Could not preview project file.');}
+}
+
 async function downloadProjectFile(id){
  try{
   const payload=await api('/api/projectSubmissions/'+encodeURIComponent(id)+'/file');
@@ -2777,7 +2797,7 @@ function internshipProjectPanel(x){
    const file=p.projectFile&&typeof p.projectFile==='object'?p.projectFile:null;
    const safeLink=/^https?:\/\//i.test(String(p.projectLink||''))?String(p.projectLink):'';
    const fileMarkup=file&&file.name
-     ? `<a href="#" onclick="downloadProjectFile(${Number(p.id)});return false;">⬇ Download ${esc(file.name)}</a>`
+     ? `<button class="muted" onclick="viewProjectFile(${Number(p.id)})">👁 View Submitted Project</button> <button class="wf-download" onclick="downloadProjectFile(${Number(p.id)})">⬇ Download ${esc(file.name)}</button>`
      : '<span class="project-meta">No attached file</span>';
    return `<div class="internship-project-row">
     <div class="row"><b>${esc(p.title||'Student Project')}</b><span class="status ${st==='approved'?'active':st==='rejected'?'rejected':'pending'}">${esc(st.toUpperCase())}</span></div>
@@ -2835,8 +2855,9 @@ function internshipCard(x){
  const revisionPending=Boolean(x.pendingFormRevision && x.formRevisionStatus==='pending_approval');
  const projects=getProjectsForInternship(x);
  const hasApprovedProject=projects.some(p=>String(p.status||'').toLowerCase()==='approved') || x.projectApproved===true;
- const presentDays=Number((x.attendance||{}).presentDays||0);
- const certificateReady=presentDays===21&&hasApprovedProject&&((x.attendance||{}).approved===true);
+ const attendanceData=x.attendance||{};
+ const presentDays=Array.isArray(attendanceData.days)?attendanceData.days.filter(d=>String(d.status||'').toLowerCase()==='present').length:Number(attendanceData.presentDays||0);
+ const certificateReady=true;
  let adminButtons='';
  if(status==='pending')adminButtons+=`<button class="wf-approve" onclick="approveInternship(${x.id})">✓ Approve Internship</button><button class="wf-reject" onclick="rejectInternship(${x.id})">✕ Reject</button>`;
  else if(status==='active')adminButtons+=`<button class="wf-download" onclick="showOfferLetterById(${x.id})">📄 Offer Letter</button><button class="wf-reject" onclick="revokeInternship(${x.id})">↶ Revoke Internship</button>`;
@@ -2846,7 +2867,7 @@ function internshipCard(x){
  const attendanceButton=`<button class="wf-attendance" onclick="manageInternshipAttendance(${Number(x.id)})">📊 Manage 21-Day Attendance · ${presentDays}/21</button>`;
  const certificateButton=certificateReady
   ?`<button class="wf-certificate" onclick="generateApprovedInternshipCertificate(${Number(x.id)})">🏅 Generate & Download Certificate + QR</button>`
-  :`<span class="workflow-lock">🔒 Certificate Locked · Attendance ${presentDays}/21 · Project ${hasApprovedProject?'Approved':'Pending'}</span>`;
+  :`<span class="workflow-lock">Certificate generation is available</span>`;
  const actionMarkup=`<div class="internship-action-zone">
   <div class="action-group"><div class="action-group-label">01 · Internship Approval</div>${adminButtons||'<span class="small" style="color:#c5d4e1">No internship action available</span>'}</div>
   <div class="action-group"><div class="action-group-label">02 · Student Documents</div>${documentButtons}</div>
