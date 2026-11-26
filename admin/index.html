@@ -600,6 +600,7 @@ const tabs = [
   ["members","Members"],
   ["contactMessages","Messages"],
   ["communityRequests","Community Help Desk"],
+  ["jansamadhan","🧭 JanSamadhan Cases"],
   ["impactLocations","Impact Map"],
   ["missions","Volunteer Missions"],
   ["certificates","Certificate Records"],
@@ -619,7 +620,7 @@ const tabs = [
   ["financeReports","Financial Reports"],
   ["financeAudit","Finance Audit Trail"]
 ];
-const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳",aksa:"✨",communityRequests:"🤝"};
+const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳",aksa:"✨",communityRequests:"🤝",jansamadhan:"🧭"};
 
 
 /* =========================================================
@@ -1325,6 +1326,24 @@ async function aksaLoadStudents(q=''){const c=document.getElementById('aksaConte
 async function aksaReset(id,username,phone){if(!confirm('Reset this student password and create a temporary password? The previous password will stop working.'))return;try{const r=await aksaAuthFetch('/api/aksa/students/'+id+'/reset-password',{method:'POST',headers:{'Content-Type':'application/json'}});const d=await r.json();if(!r.ok)throw Error(d.error||'Reset failed');const msg=`Dear Student,\\n\\nGreetings from Nisha Seva Foundation (NSF).\\n\\nYour Student Portal password has been reset successfully. Please use the temporary credentials below to sign in.\\n\\nStudent Username: ${username}\\nTemporary Password: ${d.temporaryPassword}\\nPortal: https://nishasevafoundation.org\\n\\nFor your account security, please sign in and change this temporary password immediately. Do not share your login credentials with anyone.\\n\\nIf you need assistance, please contact Nisha Seva Foundation.\\n\\nRegards,\\nStudent Support Team\\nNisha Seva Foundation`;if(phone){let digits=phone.replace(/[^0-9]/g,'');if(digits.length===10)digits='91'+digits;window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(msg),'_blank');}else{alert('No mobile number found for this student. Please copy the credentials/message manually.');}alert('Temporary password (shown once):\\n'+d.temporaryPassword+'\\n\\nWhatsApp message prepared if a valid mobile number is available. Please verify the recipient before sending.');}catch(e){alert(e.message);}}
 async function aksaLogout(){try{await aksaAuthFetch('/api/aksa/logout',{method:'POST'});}catch{}aksaToken='';aksaLoginDone=false;renderAKSAModule();}
 
+
+async function renderJanSamadhanAdmin(){
+ const c=document.getElementById('content'); if(!c)return;
+ c.innerHTML='<h2>🧭 JanSamadhan — Case Management</h2><p>Loading cases...</p>';
+ try{
+  const data=await api('/api/admin/jansamadhan');const cases=data.cases||[];
+  const statuses=['Submitted','Verification Pending','Verified','Under NSF Review','Assistance in Progress','Government Portal Referral','Follow-up Required','Resolved','Closed','Rejected'];
+  const escJ=x=>esc(x);
+  c.innerHTML=`<style>.js-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}.js-case{border:1px solid #dce5ec;border-radius:14px;padding:16px;margin:12px 0;background:#fff}.js-tag{display:inline-block;background:#e9f1ff;color:#174c91;padding:4px 8px;border-radius:20px;font-size:12px;font-weight:700}.js-controls{display:grid;grid-template-columns:1fr 2fr auto;gap:8px;margin-top:10px}@media(max-width:700px){.js-controls{grid-template-columns:1fr}}.js-stat{padding:16px;background:#edf7f2;border-radius:12px}.js-detail{background:#f6f8fa;border-radius:10px;padding:10px;margin-top:8px;white-space:pre-wrap}</style>
+  <div class="js-grid"><div class="js-stat"><b>Total cases</b><h2>${cases.length}</h2></div><div class="js-stat"><b>Open cases</b><h2>${cases.filter(x=>!['Resolved','Closed','Rejected'].includes(x.status)).length}</h2></div><div class="js-stat"><b>Resolved/Closed</b><h2>${cases.filter(x=>['Resolved','Closed'].includes(x.status)).length}</h2></div></div>
+  <div class="row"><input id="jsFilter" placeholder="Search tracking ID, name, district, mobile..." oninput="jsFilterCases()" style="max-width:500px"><button class="primary" onclick="renderJanSamadhanAdmin()">↻ Refresh</button></div>
+  <div id="jsCases">${cases.length?cases.map(x=>`<article class="js-case" data-search="${escJ([x.tracking_id,x.applicant_name,x.mobile,x.district,x.category,x.title].join(' ')).toLowerCase()}"><div class="row"><div><span class="js-tag">${escJ(x.tracking_id)}</span> <b>${escJ(x.applicant_name)}</b></div><span class="js-tag">${escJ(x.status)}</span></div><p><b>${escJ(x.title)}</b></p><div class="small">${escJ(x.category)} · ${escJ(x.district)}, ${escJ(x.state)} · ${escJ(x.mobile)} ${x.email?('· '+escJ(x.email)):''}</div><div class="js-detail">${escJ(x.description)}${x.department?'\\nDepartment: '+escJ(x.department):''}${x.location?'\\nLocation: '+escJ(x.location):''}</div><div class="js-controls"><select id="js-status-${x.id}">${statuses.map(st=>`<option ${st===x.status?'selected':''}>${st}</option>`).join('')}</select><textarea id="js-note-${x.id}" rows="2" placeholder="Admin note / update">${escJ(x.admin_note||'')}</textarea><button class="success" onclick="jsUpdateCase(${x.id})">Save status</button></div><button class="muted" style="margin-top:8px" onclick="jsShowTimeline(${x.id})">Timeline</button><div id="js-timeline-${x.id}"></div></article>`).join(''):'<p>No JanSamadhan requests found yet.</p>'}</div>`;
+  window.__jsCaseCache=cases;
+ }catch(e){c.innerHTML=`<h2>JanSamadhan</h2><div class="err">${esc(e.message)}</div><button class="primary" onclick="renderJanSamadhanAdmin()">Retry</button>`}
+}
+function jsFilterCases(){const q=(document.getElementById('jsFilter')?.value||'').toLowerCase();document.querySelectorAll('#jsCases .js-case').forEach(x=>x.style.display=x.dataset.search.includes(q)?'block':'none');}
+async function jsUpdateCase(id){try{const status=document.getElementById('js-status-'+id).value,note=document.getElementById('js-note-'+id).value;await api('/api/admin/jansamadhan/'+id+'/status',{method:'POST',body:JSON.stringify({status,note})});alert('Status updated');await renderJanSamadhanAdmin();}catch(e){alert('Update failed: '+e.message)}}
+async function jsShowTimeline(id){const box=document.getElementById('js-timeline-'+id);try{const d=await api('/api/admin/jansamadhan/'+id+'/timeline');box.innerHTML=(d.timeline||[]).map(t=>`<div class="js-detail"><b>${esc(t.status)}</b> · ${esc(new Date(t.created_at).toLocaleString())}<br>${esc(t.note||'')}</div>`).join('')||'No timeline entries';}catch(e){box.innerHTML='<div class="err">'+esc(e.message)+'</div>'}}
 async function render(){
 
   if(!token){
@@ -1454,6 +1473,8 @@ async function render(){
       return;
 
     }
+
+    if(current === "jansamadhan"){ await renderJanSamadhanAdmin(); return; }
 
     if(current === "communityRequests"){
       await renderCommunityRequests();
