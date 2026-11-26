@@ -595,6 +595,7 @@ const tabs = [
   ["internships","Student Internships"],
   ["internshipDocuments","Internship Documents"],
   ["studentPortal","Student Portal QR"],
+  ["aksa","✨ AK-SA Student Accounts"],
   ["projectSubmissions","Student Projects"],
   ["members","Members"],
   ["contactMessages","Messages"],
@@ -618,7 +619,7 @@ const tabs = [
   ["financeReports","Financial Reports"],
   ["financeAudit","Finance Audit Trail"]
 ];
-const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳",communityRequests:"🤝"};
+const tabIcons={programs:"▦",events:"▣",gallery:"▧",documents:"▤",donors:"♡",volunteers:"♟",internships:"🎓",projectSubmissions:"▣",members:"♧",contactMessages:"✉",newsletter:"✉",internshipDocuments:"📎",studentPortal:"🔳",aksa:"✨",communityRequests:"🤝"};
 
 
 /* =========================================================
@@ -1310,6 +1311,20 @@ function renderDashboard(){
    MAIN RENDER
    ========================================================= */
 
+/* AK-SA colourful animated Student Account Manager */
+let aksaToken='', aksaLoginDone=false;
+function aksaAuthFetch(url,opts={}){opts.headers={...(opts.headers||{}),Authorization:'Bearer '+aksaToken};return fetch(API+url,opts);}
+async function renderAKSAModule(){
+ const c=document.getElementById('content'); if(!c)return;
+ c.innerHTML=`<style>.aksa-shell{background:linear-gradient(135deg,#111827,#312e81,#065f46);color:#fff;border-radius:22px;padding:22px;box-shadow:0 14px 40px #11182744}.aksa-title{font-size:clamp(22px,4vw,34px);font-weight:900;background:linear-gradient(90deg,#fde68a,#f0abfc,#a7f3d0);background-clip:text;color:transparent}.aksa-btn{border:0!important;border-radius:14px!important;padding:12px 16px!important;color:#fff!important;font-weight:800!important;cursor:pointer!important;background:linear-gradient(135deg,#7c3aed,#db2777)!important;box-shadow:0 7px 18px #0003!important;transition:.25s!important}.aksa-btn:hover{transform:translateY(-3px) scale(1.02)!important;filter:brightness(1.1)}.aksa-btn.green{background:linear-gradient(135deg,#059669,#14b8a6)!important}.aksa-btn.gold{background:linear-gradient(135deg,#d97706,#f59e0b)!important}.aksa-card{background:#ffffff12;border:1px solid #ffffff2b;border-radius:18px;padding:16px;margin:12px 0;backdrop-filter:blur(8px)}.aksa-table{width:100%;border-collapse:collapse;color:#fff}.aksa-table td,.aksa-table th{padding:10px;text-align:left;border-bottom:1px solid #ffffff25}.aksa-search{padding:13px;border-radius:12px;width:100%;font-size:16px}.aksa-anim{animation:aksaFloat 4s ease-in-out infinite}@keyframes aksaFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}@media(max-width:650px){.aksa-table-wrap{overflow:auto}.aksa-table{min-width:680px}}</style>
+ <div class="aksa-shell"><div class="aksa-title aksa-anim">✨ AK-SA · Student Credentials</div><p>Protected account lookup · secure password reset · WhatsApp handoff</p><div id="aksaGate" class="aksa-card"><h3>🔐 AK-SA Separate Security Login</h3><input id="aksaUser" placeholder="AK-SA username" autocomplete="username" class="aksa-search"><br><br><input id="aksaPass" type="password" placeholder="AK-SA password" autocomplete="current-password" class="aksa-search"><br><br><button class="aksa-btn" onclick="aksaLogin()">Unlock AK-SA ✨</button><div id="aksaError"></div></div><div id="aksaContent"></div></div>`;
+ if(aksaLoginDone&&aksaToken){document.getElementById('aksaGate').style.display='none';await aksaLoadStudents();}
+}
+async function aksaLogin(){try{const r=await fetch(API+'/api/aksa/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('aksaUser').value,password:document.getElementById('aksaPass').value})});const d=await r.json();if(!r.ok)throw Error(d.error||'Login failed');aksaToken=d.token;aksaLoginDone=true;document.getElementById('aksaGate').style.display='none';await aksaLoadStudents();}catch(e){document.getElementById('aksaError').textContent=e.message;}}
+async function aksaLoadStudents(q=''){const c=document.getElementById('aksaContent');c.innerHTML='<div class="aksa-card">Loading students…</div>';try{const r=await aksaAuthFetch('/api/aksa/students?q='+encodeURIComponent(q));const d=await r.json();if(!r.ok)throw Error(d.error||'Load failed');c.innerHTML=`<div class="aksa-card"><input id="aksaSearch" class="aksa-search" placeholder="🔎 Search name, username, email, mobile, ID" value="${esc(q)}"><br><br><button class="aksa-btn green" onclick="aksaLoadStudents(document.getElementById('aksaSearch').value)">Search Students</button> <button class="aksa-btn gold" onclick="aksaLogout()">Lock Module</button><p>${d.students.length} records (max 200 shown)</p><div class="aksa-table-wrap"><table class="aksa-table"><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Mobile</th><th>Account</th><th>Actions</th></tr></thead><tbody>${d.students.map(x=>`<tr><td>${esc(x.student_name||'')}</td><td>${esc(x.username)}</td><td>${esc(x.email)}</td><td>${esc(x.phone||'')}</td><td>${esc(x.id)}</td><td><button class="aksa-btn" onclick="aksaReset(${x.id},'${esc(x.username)}','${esc(x.phone||'')}')">🔑 Reset & WhatsApp</button></td></tr>`).join('')}</tbody></table></div></div>`;}catch(e){c.innerHTML='<div class="aksa-card">'+esc(e.message)+'</div>';}}
+async function aksaReset(id,username,phone){if(!confirm('Is student ka password reset karke temporary password create karein?'))return;try{const r=await aksaAuthFetch('/api/aksa/students/'+id+'/reset-password',{method:'POST',headers:{'Content-Type':'application/json'}});const d=await r.json();if(!r.ok)throw Error(d.error||'Reset failed');const msg=`Nisha Seva Foundation Student Portal\\nUsername: ${username}\\nTemporary password: ${d.temporaryPassword}\\nPlease login and change your password immediately.`;if(phone){const digits=phone.replace(/[^0-9]/g,'');window.open('https://wa.me/'+digits+'?text='+encodeURIComponent(msg),'_blank');}alert('Temporary password (shown once):\\n'+d.temporaryPassword+'\\nWhatsApp window opened if mobile number was available.');}catch(e){alert(e.message);}}
+async function aksaLogout(){try{await aksaAuthFetch('/api/aksa/logout',{method:'POST'});}catch{}aksaToken='';aksaLoginDone=false;renderAKSAModule();}
+
 async function render(){
 
   if(!token){
@@ -1419,6 +1434,11 @@ async function render(){
 
     if(current === "studentPortal"){
       await renderStudentPortal();
+      return;
+    }
+
+    if(current === "aksa"){
+      await renderAKSAModule();
       return;
     }
 
