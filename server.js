@@ -5086,6 +5086,72 @@ app.post('/api/aksa/students/:id/reset-password',requireAKSA,async(req,res)=>{
  return res.json({ok:true,student:upd.rows[0],temporaryPassword:generated});}catch(e){console.error('AK-SA reset error',e);return res.status(500).json({error:'Password reset failed'});}
 });
 
+
+/* JAN-SAMADHAN module: safe additive schema + routes */
+const janSamadhanReady = (async () => {
+  await pool.query(`CREATE TABLE IF NOT EXISTS nsf_jansamadhan_cases (
+    id BIGSERIAL PRIMARY KEY,
+    tracking_id VARCHAR(40) UNIQUE NOT NULL,
+    applicant_name VARCHAR(100) NOT NULL,
+    mobile VARCHAR(10) NOT NULL,
+    email VARCHAR(150),
+    state VARCHAR(80) NOT NULL,
+    district VARCHAR(80) NOT NULL,
+    block VARCHAR(80),
+    village VARCHAR(100),
+    category VARCHAR(100) NOT NULL,
+    title VARCHAR(180) NOT NULL,
+    description TEXT NOT NULL,
+    department VARCHAR(120),
+    location VARCHAR(250),
+    status VARCHAR(40) NOT NULL DEFAULT 'Submitted',
+    admin_note TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS nsf_jansamadhan_mobile_idx ON nsf_jansamadhan_cases(mobile)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS nsf_jansamadhan_status_idx ON nsf_jansamadhan_cases(status)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS nsf_jansamadhan_timeline (
+    id BIGSERIAL PRIMARY KEY, case_id BIGINT REFERENCES nsf_jansamadhan_cases(id) ON DELETE CASCADE,
+    status VARCHAR(40) NOT NULL, note TEXT, actor VARCHAR(40) NOT NULL DEFAULT 'admin',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+})();
+function jsClean(v,n=100){return String(v||'').trim().slice(0,n);}
+app.get('/jansamadhan',(req,res)=>res.sendFile(path.join(__dirname,'jansamadhan.html')));
+app.post('/api/jansamadhan',publicFormLimiter,async(req,res)=>{
+ try{await janSamadhanReady;const b=req.body||{};
+ const name=jsClean(b.name,100),mobile=jsClean(b.mobile,10),email=jsClean(b.email,150),state=jsClean(b.state,80),district=jsClean(b.district,80),category=jsClean(b.category,100),title=jsClean(b.title,180),description=jsClean(b.description,5000);
+ if(!b.consent||!name||!/^[0-9]{10}$/.test(mobile)||!state||!district||!category||!title||description.length<10)return res.status(400).json({error:'Required fields, valid mobile and consent are required.'});
+ const year=new Date().getFullYear();let trackingId;let inserted;
+ for(let attempt=0;attempt<5;attempt++){trackingId=`NSF-JS-${year}-${String(Math.floor(Math.random()*900000)+100000).padStart(6,'0')}`;
+ inserted=await pool.query(`INSERT INTO nsf_jansamadhan_cases(tracking_id,applicant_name,mobile,email,state,district,block,village,category,title,description,department,location) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(tracking_id) DO NOTHING RETURNING id,tracking_id,status,created_at`,[trackingId,name,mobile,email||null,state,district,jsClean(b.block,80)||null,jsClean(b.village,100)||null,category,title,description,jsClean(b.department,120)||null,jsClean(b.location,250)||null]);if(inserted.rowCount)break;}
+ if(!inserted?.rowCount)return res.status(500).json({error:'Tracking ID could not be created. Please retry.'});
+ await pool.query('INSERT INTO nsf_jansamadhan_timeline(case_id,status,note,actor) VALUES($1,$2,$3,$4)',[inserted.rows[0].id,'Submitted','Request submitted','public']);
+ res.status(201).json({trackingId:inserted.rows[0].tracking_id,status:inserted.rows[0].status});
+ }catch(e){console.error('JanSamadhan submit error:',e.message);res.status(500).json({error:'Request could not be saved. Please try again later.'});}
+});
+app.post('/api/jansamadhan/track',publicFormLimiter,async(req,res)=>{
+ try{await janSamadhanReady;const id=jsClean(req.body?.trackingId,40),mobile=jsClean(req.body?.mobile,10);
+ const q=await pool.query(`SELECT tracking_id,status,category,title,created_at FROM nsf_jansamadhan_cases WHERE tracking_id=$1 AND mobile=$2`,[id,mobile]);
+ if(!q.rowCount)return res.status(404).json({error:'Tracking ID or mobile number not matched.'});const r=q.rows[0];res.json({trackingId:r.tracking_id,status:r.status,category:r.category,title:r.title,createdAt:r.created_at});
+ }catch(e){console.error('JanSamadhan tracking error:',e.message);res.status(500).json({error:'Tracking lookup unavailable.'});}
+});
+app.get('/api/admin/jansamadhan',requireAdmin,async(req,res)=>{
+ try{await janSamadhanReady;const q=await pool.query(`SELECT id,tracking_id,applicant_name,mobile,email,state,district,block,village,category,title,description,department,location,status,admin_note,created_at,updated_at FROM nsf_jansamadhan_cases ORDER BY created_at DESC LIMIT 500`);res.json({cases:q.rows});}
+ catch(e){console.error('JanSamadhan admin list error:',e.message);res.status(500).json({error:'Cases unavailable.'});}
+});
+app.post('/api/admin/jansamadhan/:id/status',requireAdmin,async(req,res)=>{
+ try{await janSamadhanReady;const allowed=['Submitted','Verification Pending','Verified','Under NSF Review','Assistance in Progress','Government Portal Referral','Follow-up Required','Resolved','Closed','Rejected'];const status=jsClean(req.body?.status,40),note=jsClean(req.body?.note,2000);if(!allowed.includes(status))return res.status(400).json({error:'Invalid status'});
+ const q=await pool.query('UPDATE nsf_jansamadhan_cases SET status=$2,admin_note=$3,updated_at=NOW() WHERE id=$1 RETURNING id,tracking_id,status',[req.params.id,status,note||null]);if(!q.rowCount)return res.status(404).json({error:'Case not found'});
+ await pool.query('INSERT INTO nsf_jansamadhan_timeline(case_id,status,note,actor) VALUES($1,$2,$3,$4)',[q.rows[0].id,status,note||null,req.userRole||'admin']);res.json({case:q.rows[0]});
+ }catch(e){console.error('JanSamadhan status error:',e.message);res.status(500).json({error:'Status update failed.'});}
+});
+app.get('/api/admin/jansamadhan/:id/timeline',requireAdmin,async(req,res)=>{
+ try{await janSamadhanReady;const q=await pool.query('SELECT status,note,actor,created_at FROM nsf_jansamadhan_timeline WHERE case_id=$1 ORDER BY created_at',[req.params.id]);res.json({timeline:q.rows});}
+ catch(e){console.error('JanSamadhan timeline error:',e.message);res.status(500).json({error:'Timeline unavailable.'});}
+});
+
 const server = app.listen(PORT, () => {
   console.log('======================================');
   console.log('Nisha Seva backend running');
