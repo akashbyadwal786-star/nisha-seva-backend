@@ -5057,6 +5057,35 @@ app.get('/api/finance/audit', financeSession, async (req,res) => {
 
 // Hostinger expects the HTTP listener to start immediately. Do not wait for
 // Supabase/PostgreSQL DDL or schema initialization before calling listen().
+/* AK-SA Student Credentials: separately protected admin-only feature */
+const aksSessions = new Map();
+const AKSA_TTL = 30 * 60 * 1000;
+function requireAKSA(req,res,next){
+  const h=req.headers.authorization||''; const t=h.startsWith('Bearer ')?h.slice(7):'';
+  const exp=t&&aksSessions.get(t);
+  if(!exp||exp<Date.now()){if(t)aksSessions.delete(t);return res.status(401).json({error:'AK-SA session expired. Login again.'});}
+  next();
+}
+app.post('/api/aksa/login', authLimiter, (req,res)=>{
+  const u=String((req.body||{}).username||''), p=String((req.body||{}).password||'');
+  if(!process.env.AKSA_USERNAME||!process.env.AKSA_PASSWORD){return res.status(503).json({error:'AK-SA credentials are not configured in backend environment.'});}
+  if(u!==process.env.AKSA_USERNAME||p!==process.env.AKSA_PASSWORD)return res.status(401).json({error:'Invalid AK-SA credentials'});
+  const t=crypto.randomBytes(32).toString('hex');aksSessions.set(t,Date.now()+AKSA_TTL);return res.json({token:t,expiresIn:AKSA_TTL});
+});
+app.post('/api/aksa/logout',requireAKSA,(req,res)=>{const h=req.headers.authorization||'';aksSessions.delete(h.startsWith('Bearer ')?h.slice(7):'');res.json({ok:true});});
+app.get('/api/aksa/students',requireAKSA,async(req,res)=>{
+ try{await Promise.all([studentAccountsTableReady,internshipTableReady]);
+ const q=String(req.query.q||'').trim().slice(0,100);const like='%'+q.replace(/[\\%_]/g,'\\$&')+'%';
+ const result=await pool.query(`SELECT a.id,a.username,a.email,a.public_id,a.internship_id,a.created_at,COALESCE(i.data->>'studentName',i.data->>'name',a.username) AS student_name,COALESCE(i.data->>'mobile',i.data->>'phone','') AS phone,COALESCE(i.data->>'collegeName',i.data->>'educationCollege','') AS college FROM internship_student_accounts a LEFT JOIN internships i ON i.id=a.internship_id WHERE ($1='' OR a.username ILIKE $2 OR a.email ILIKE $2 OR COALESCE(i.data->>'studentName',i.data->>'name',a.username) ILIKE $2 OR COALESCE(i.data->>'mobile',i.data->>'phone','') ILIKE $2 OR CAST(a.id AS TEXT) ILIKE $2) ORDER BY a.created_at DESC LIMIT 200`,[q,like]);
+ return res.json({students:result.rows});}catch(e){console.error('AK-SA list error',e);return res.status(500).json({error:'Student accounts could not be loaded.'});}
+});
+app.post('/api/aksa/students/:id/reset-password',requireAKSA,async(req,res)=>{
+ try{await studentAccountsTableReady;const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Invalid student ID'});
+ const generated='NSF-'+crypto.randomBytes(9).toString('base64url')+'!';const salt=crypto.randomBytes(16).toString('hex');const hash=await hashStudentPassword(generated,salt);
+ const upd=await pool.query('UPDATE internship_student_accounts SET password_salt=$1,password_hash=$2,updated_at=NOW() WHERE id=$3 RETURNING id,username,email',[salt,hash,id]);if(!upd.rowCount)return res.status(404).json({error:'Student account not found'});
+ return res.json({ok:true,student:upd.rows[0],temporaryPassword:generated});}catch(e){console.error('AK-SA reset error',e);return res.status(500).json({error:'Password reset failed'});}
+});
+
 const server = app.listen(PORT, () => {
   console.log('======================================');
   console.log('Nisha Seva backend running');
