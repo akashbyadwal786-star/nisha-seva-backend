@@ -2125,6 +2125,19 @@ app.post('/api/secretary/member-requests/:id/approve', requireAdmin, async (req,
   } catch(error) { console.error('SECRETARY MEMBER APPROVAL ERROR:',error); return res.status(500).json({error:'Membership request could not be approved.'}); }
 });
 
+
+// Secretary-issued membership document metadata persistence (protected by existing admin authentication).
+app.post('/api/secretary/membership-documents', requireAdmin, async (req,res)=>{
+ try{
+  await secretaryTableReady; const b=req.body||{};
+  const name=String(b.name||'').trim().slice(0,140), memberId=String(b.memberId||'').trim().slice(0,100), documentType=String(b.documentType||'').trim().slice(0,80);
+  if(!name||!memberId||!documentType)return res.status(400).json({error:'Name, member ID and document type are required.'});
+  const data={documentType,theme:String(b.theme||'').slice(0,120),name,memberId,designation:String(b.designation||'').slice(0,160),validity:String(b.validity||'').slice(0,120),mobile:String(b.mobile||'').slice(0,30),email:String(b.email||'').slice(0,180),amountPaymentMode:String(b.amountPaymentMode||'').slice(0,120),extraDetails:String(b.extraDetails||'').slice(0,1500),photoUrl:String(b.photoUrl||'').slice(0,1000),createdAt:new Date().toISOString()};
+  const result=await pool.query(`INSERT INTO nsf_secretary_records(category,data,status,created_by) VALUES('membership_document',$1::jsonb,'issued',$2) RETURNING id,created_at`,[JSON.stringify(data),req.userRole||'secretary']);
+  res.status(201).json({ok:true,id:result.rows[0].id,createdAt:result.rows[0].created_at});
+ }catch(e){console.error('SECRETARY MEMBERSHIP DOCUMENT SAVE ERROR',e);res.status(500).json({error:'Membership document record could not be saved.'});}
+});
+
 app.post('/api/secretary/documents', requireAdmin, secretaryDocumentUpload.single('file'), async (req,res) => {
   try {
     await secretaryTableReady;
