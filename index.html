@@ -2691,6 +2691,14 @@ html,body{background:#f8faf7!important;color:#17211b!important}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',setupForms,{once:true});else setupForms();
 })();
 </script>
+
+<script id="nsf-independent-menu-navigation">
+(function(){
+// Ensure top-level Volunteer, Membership and Contact navigation scroll to their standalone sections rather than opening application modal dialogs.
+const targets={'#volunteer':'volunteer','#apply':'apply','#contactform':'contactform'};
+document.addEventListener('click',function(ev){const a=ev.target.closest('nav.links a, #mobilemenu a, a[data-nav-section]');if(!a)return;const href=a.getAttribute('href')||a.getAttribute('data-nav-section');if(!targets[href])return;const section=document.getElementById(targets[href]);if(!section)return;ev.preventDefault();ev.stopImmediatePropagation();section.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'',href);},true);
+})();
+</script>
 </body></html>
 
 <style id="nsf-mobile-forms-payment-v3">
