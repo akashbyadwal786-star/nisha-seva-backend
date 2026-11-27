@@ -822,7 +822,12 @@ const secretaryFeatures = [
   ["annual_report","Annual Report","Prepare the foundation's annual activity report","📚"],
   ["documents","Upload Documents","Securely upload foundation documents","📎"],
   ["pending_task","Pending Task Tracking","Track task owners and due dates","⏳"],
-  ["president_report","Send Report to President","Prepare and submit reports or updates for the President","📨"]
+  ["president_report","Send Report to President","Prepare and submit reports or updates for the President","📨"],
+  ["template_management","Template Management","Manage document types, themes and previews","🎨"],
+  ["member_id_cards","Members ID Cards","Generate member ID cards","🪪"],
+  ["membership_certificates","Membership Certificates","Generate membership certificates","🏅"],
+  ["appointment_letters","Appointment Letters","Prepare appointment letters","📜"],
+  ["membership_receipts","Membership Receipts","Generate membership receipts","🧾"]
 ];
 let secretaryActiveFeature = "";
 
@@ -979,6 +984,7 @@ async function secretaryOpenFeature(key){
   const feature=secretaryFeatures.find(f=>f[0]===key);
   if(!content||!feature)return;
   content.innerHTML=`<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2></div><button class="muted" onclick="renderSecretaryPanel()">← All Functions</button></div><div class="small">Loading…</div>`;
+  if(["template_management","member_id_cards","membership_certificates","appointment_letters","membership_receipts"].includes(key)){ secretaryRenderDocumentStudio(key); return; }
   try{
     if(key==="member_applications" || key==="volunteers"){
       const rows=await api(key==="member_applications"?"/api/members":"/api/volunteers");
@@ -1035,6 +1041,61 @@ async function secretaryOpenFeature(key){
     document.getElementById("secretaryRecordForm").addEventListener("submit",secretarySaveRecord);
   }catch(e){content.innerHTML=secretaryFeatureHeader(feature)+`<div class="err">${esc(e.message||"Unable to load data.")}</div>`;}
 }
+const secretaryDocThemes={
+ "Royal Blue & Red — Red Above / Blue Down":{"a":"#e51b23","b":"#080c75","accent":"#d7b43d"},
+ "Royal Blue & Red — Blue Above / Red Down":{"a":"#080c75","b":"#e51b23","accent":"#d7b43d"},
+ "Classic Navy & Orange":{"a":"#102b50","b":"#f08a24","accent":"#f3c34d"},
+ "Eco Green & Orange (Srijan)":{"a":"#08744c","b":"#f28b22","accent":"#f5d35d"},
+ "Forest Green & Gold":{"a":"#064b38","b":"#c69b3c","accent":"#e5cf80"},
+ "Royal Purple & Amber":{"a":"#502579","b":"#e7a32c","accent":"#f1d06a"},
+ "Deep Teal & Coral":{"a":"#086b70","b":"#f07865","accent":"#e9bd75"},
+ "Patriotic Tricolor (Tricolor)":{"a":"#e87520","b":"#087c48","accent":"#ffffff"},
+ "Institutional Navy & Gold":{"a":"#11284b","b":"#b18b3b","accent":"#e6c86c"},
+ "Custom Website Colors":{"a":"#142338","b":"#16836a","accent":"#d8aa55"}
+};
+let secretaryDocMembers=[];
+function secretaryRenderDocumentStudio(key){
+ const content=document.getElementById('content'); if(!content)return;
+ const typeMap={template_management:'Template Management',member_id_cards:'Member ID Card',membership_certificates:'Membership Certificate',appointment_letters:'Appointment Letter',membership_receipts:'Membership Receipt'};
+ const docType=typeMap[key]||'Member Document';
+ content.innerHTML=secretaryFeatureHeader(secretaryFeatures.find(f=>f[0]===key))+`<div class="nsf-doc-studio item">
+ <div class="nsf-doc-toolbar"><label class="secretary-field">Document Type<select id="nsfDocType">${Object.values(typeMap).filter(v=>v!=='Template Management').map(v=>`<option ${v===docType?'selected':''}>${v}</option>`).join('')}</select></label>
+ <label class="secretary-field">Theme<select id="nsfDocTheme">${Object.keys(secretaryDocThemes).map(v=>`<option>${v}</option>`).join('')}</select></label></div>
+ <div class="nsf-doc-toolbar"><label class="secretary-field">Member record<select id="nsfDocMember"><option value="">Load member records…</option></select></label><button class="muted" onclick="secretaryDocLoadMembers()">↻ Load Members</button></div>
+ <div class="nsf-doc-toolbar"><label class="secretary-field">Name<input id="nsfDocName" placeholder="Member name"></label><label class="secretary-field">Member ID<input id="nsfDocId" placeholder="Member ID"></label></div>
+ <div class="nsf-doc-toolbar"><label class="secretary-field">Designation / Membership<input id="nsfDocRole" placeholder="Designation or membership plan"></label><label class="secretary-field">Validity<input id="nsfDocValidity" placeholder="Validity / issue date"></label></div>
+ <div class="nsf-doc-toolbar"><label class="secretary-field">Mobile<input id="nsfDocMobile"></label><label class="secretary-field">Email<input id="nsfDocEmail"></label></div>
+ <div class="nsf-doc-toolbar"><label class="secretary-field">Amount / Payment Mode (Receipt only)<input id="nsfDocAmount" placeholder="Amount and payment mode"></label><label class="secretary-field">Letter subject / extra details<input id="nsfDocExtra" placeholder="Optional details"></label></div>
+ <label class="secretary-field">Photo URL<input id="nsfDocPhoto" placeholder="Optional photo URL"></label><label class="secretary-field">Upload photo<input id="nsfDocPhotoFile" type="file" accept="image/*"></label>
+ <div class="nsf-doc-actions"><button class="primary" onclick="secretaryDocPreview()">Preview / Refresh</button><button class="primary" onclick="secretaryDocDownloadPNG()">Download PNG</button><button class="muted" onclick="secretaryDocPrint()">Print / Save PDF</button><button class="success" onclick="secretaryDocSaveRecord()">Save Record to Database</button></div><div id="nsfDocSaveMsg"></div>
+ <div class="nsf-doc-preview"><canvas id="nsfDocCanvas" width="1200" height="800" aria-label="Document preview"></canvas></div><div id="nsfDocQr" class="nsf-doc-qr" aria-hidden="true"></div><div class="small">QR contains document type, name, member ID, designation, validity and contact fields. Save Record to Database stores the document metadata and selected member fields in the Secretary records database.</div></div>`;
+ secretaryDocLoadMembers(); secretaryDocPreview();
+}
+async function secretaryDocLoadMembers(){
+ const sel=document.getElementById('nsfDocMember'); if(!sel)return;
+ try{const data=await api('/api/members'); secretaryDocMembers=Array.isArray(data)?data:(data.members||data.rows||[]);sel.innerHTML='<option value="">Select member…</option>'+secretaryDocMembers.map((m,i)=>`<option value="${i}">${esc(m.name||m.fullName||m.memberName||'Member')} — ${esc(m.memberId||m.id||m.registrationId||'')}</option>`).join('');
+ sel.onchange=()=>{const m=secretaryDocMembers[Number(sel.value)];if(!m)return;document.getElementById('nsfDocName').value=m.name||m.fullName||m.memberName||'';document.getElementById('nsfDocId').value=m.memberId||m.membershipId||m.registrationId||m.id||'';document.getElementById('nsfDocRole').value=m.designation||m.membershipType||m.role||'';document.getElementById('nsfDocMobile').value=m.phone||m.mobile||'';document.getElementById('nsfDocEmail').value=m.email||'';document.getElementById('nsfDocValidity').value=m.validUntil||m.validity||'';document.getElementById('nsfDocPhoto').value=m.photoUrl||m.photo||m.imageUrl||'';secretaryDocPreview();};
+ }catch(e){sel.innerHTML='<option value="">Member API unavailable — enter details manually</option>';}
+}
+function secretaryDocPayload(){const ids=['nsfDocType','nsfDocTheme','nsfDocName','nsfDocId','nsfDocRole','nsfDocValidity','nsfDocMobile','nsfDocEmail','nsfDocAmount','nsfDocExtra','nsfDocPhoto'];return Object.fromEntries(ids.map(id=>[id,document.getElementById(id)?.value||'' ]));}
+function secretaryDocPreview(){
+ const p=secretaryDocPayload(),c=document.getElementById('nsfDocCanvas');if(!c)return;const ctx=c.getContext('2d'),theme=secretaryDocThemes[p.nsfDocTheme]||secretaryDocThemes[Object.keys(secretaryDocThemes)[0]];
+ ctx.clearRect(0,0,c.width,c.height);ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.strokeStyle=theme.a;ctx.lineWidth=18;ctx.strokeRect(18,18,c.width-36,c.height-36);
+ ctx.fillStyle=theme.a;ctx.fillRect(30,30,c.width-60,175);ctx.fillStyle=theme.b;ctx.fillRect(30,145,c.width-60,60);ctx.fillStyle='#fff';ctx.font='bold 54px Arial';ctx.textAlign='center';ctx.fillText('NISHA SEVA FOUNDATION',600,100);ctx.font='24px Arial';ctx.fillText('Membership & Official Documents',600,145);
+ ctx.fillStyle='#16233b';ctx.textAlign='left';ctx.font='bold 36px Arial';ctx.fillText(p.nsfDocType||'MEMBER DOCUMENT',90,270);ctx.font='bold 34px Arial';ctx.fillText(p.nsfDocName||'Member Name',90,355);ctx.font='28px Arial';
+ const lines=[['Member ID',p.nsfDocId],['Designation / Plan',p.nsfDocRole],['Validity',p.nsfDocValidity],['Mobile',p.nsfDocMobile],['Email',p.nsfDocEmail],['Amount / Mode',p.nsfDocAmount],['Details',p.nsfDocExtra]];let y=420;for(const [lab,val] of lines){if(val){ctx.fillStyle=theme.a;ctx.fillText(lab+':',90,y);ctx.fillStyle='#17233a';ctx.fillText(String(val).slice(0,60),370,y);y+=52;}}
+ ctx.fillStyle=theme.b;ctx.fillRect(30,c.height-100,c.width-60,60);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.font='bold 24px Arial';ctx.fillText('Official document preview • Verify details before issuing',600,c.height-60);
+ const photo=document.getElementById('nsfDocPhotoFile')?.files?.[0];const url=photo?URL.createObjectURL(photo):p.nsfDocPhoto;if(url){const im=new Image();im.onload=()=>{ctx.save();ctx.beginPath();ctx.arc(940,390,110,0,Math.PI*2);ctx.clip();ctx.drawImage(im,830,280,220,220);ctx.restore();};im.src=url;}
+ const q=document.getElementById('nsfDocQr');if(q&&window.QRCode){q.innerHTML='';const qrText=JSON.stringify({organization:'Nisha Seva Foundation',type:p.nsfDocType,name:p.nsfDocName,id:p.nsfDocId,designation:p.nsfDocRole,validity:p.nsfDocValidity,mobile:p.nsfDocMobile,email:p.nsfDocEmail});new QRCode(q,{text:qrText,width:180,height:180,colorDark:theme.a,colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});setTimeout(()=>{const qrImg=q.querySelector('img')||q.querySelector('canvas');if(qrImg){try{ctx.drawImage(qrImg,950,570,180,180);}catch(_){}}},250);}
+}
+async function secretaryDocSaveRecord(){
+ const p=secretaryDocPayload(),msg=document.getElementById('nsfDocSaveMsg');
+ if(!p.nsfDocName||!p.nsfDocId){if(msg)msg.innerHTML='<div class="err">Name and Member ID are required.</div>';return;}
+ const data={documentType:p.nsfDocType,theme:p.nsfDocTheme,name:p.nsfDocName,memberId:p.nsfDocId,designation:p.nsfDocRole,validity:p.nsfDocValidity,mobile:p.nsfDocMobile,email:p.nsfDocEmail,amountPaymentMode:p.nsfDocAmount,extraDetails:p.nsfDocExtra,photoUrl:p.nsfDocPhoto,createdAt:new Date().toISOString()};
+ try{const result=await api('/api/secretary/membership-documents',{method:'POST',body:JSON.stringify(data)});if(msg)msg.innerHTML='<div class="ok">Document record saved. Record #'+esc(result.id||'')+'</div>'; }catch(e){if(msg)msg.innerHTML='<div class="err">Save failed: '+esc(e.message||'API error')+'</div>'; }
+}
+function secretaryDocDownloadPNG(){secretaryDocPreview();setTimeout(()=>{const c=document.getElementById('nsfDocCanvas');if(!c)return;const a=document.createElement('a');a.download=(document.getElementById('nsfDocType')?.value||'NSF-document').replace(/[^a-z0-9]+/gi,'-')+'.png';a.href=c.toDataURL('image/png');a.click();},350);}
+function secretaryDocPrint(){secretaryDocPreview();setTimeout(()=>{const c=document.getElementById('nsfDocCanvas');if(!c)return;const w=window.open('','_blank');if(!w){alert('Please allow pop-ups to print or save PDF.');return;}w.document.write('<html><head><title>NSF Document</title><style>body{margin:0;text-align:center}img{max-width:100%;height:auto}@media print{img{width:100%}}</style></head><body><img src="'+c.toDataURL('image/png')+'" onload="window.print()"></body></html>');w.document.close();},350);}
 function secretaryFeatureHeader(feature){
   return `<div class="row"><div><h2>${feature[3]} ${feature[1]}</h2></div><button class="muted" onclick="renderSecretaryPanel()">← All Functions</button></div>`;
 }
@@ -4757,4 +4818,8 @@ render();
 .nsf-dynamic-admin-card{overflow-wrap:anywhere}
 .nsf-dynamic-admin-card img{flex:none}
 @media(max-width:650px){.nsf-community-editor-grid{grid-template-columns:1fr}.nsf-editor-wide{grid-column:auto}.nsf-community-editor-modal{padding:16px!important}}
+
+.nsf-doc-studio{display:flex;flex-direction:column;gap:14px;padding:18px;border-radius:20px;background:linear-gradient(135deg,#f4f7fb,#e8f8f1);color:#172338}
+.nsf-doc-toolbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.nsf-doc-actions{display:flex;flex-wrap:wrap;gap:10px}.nsf-doc-preview{width:100%;overflow:auto;background:#fff;padding:10px;border-radius:14px}.nsf-doc-preview canvas{display:block;width:100%;height:auto;max-width:1200px;margin:auto;border-radius:8px}.nsf-doc-qr{position:absolute;left:-10000px;top:-10000px}
+@media(max-width:650px){.nsf-doc-toolbar{grid-template-columns:1fr}.nsf-doc-studio{padding:12px}.nsf-doc-actions button{flex:1 1 100%;min-height:46px}}
 </style>
