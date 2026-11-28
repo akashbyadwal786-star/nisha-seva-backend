@@ -2127,15 +2127,53 @@ app.post('/api/secretary/member-requests/:id/approve', requireAdmin, async (req,
 
 
 // Secretary-issued membership document metadata persistence (protected by existing admin authentication).
+
+// Membership Document Studio: additive protected routes (migration required for themes/versions/audit).
+app.get('/api/secretary/document-themes', requireAdmin, async(req,res)=>{
+ try{const r=await pool.query('SELECT id,theme_name,theme_config,document_type,is_active,created_at,updated_at FROM nsf_membership_document_themes ORDER BY theme_name');res.json(r.rows);}
+ catch(e){console.error('SECRETARY THEME LIST ERROR',e);res.status(500).json({error:'Themes could not be loaded'});}
+});
+app.post('/api/secretary/document-themes', requireAdmin, async(req,res)=>{
+ try{const n=String(req.body?.theme_name||'').trim();if(!n||n.length>100)return res.status(400).json({error:'Theme name is required (max 100 characters).'});
+ const r=await pool.query('INSERT INTO nsf_membership_document_themes(theme_name,theme_config,document_type,is_active) VALUES($1,$2::jsonb,$3,$4) ON CONFLICT(theme_name) DO UPDATE SET theme_config=EXCLUDED.theme_config,document_type=EXCLUDED.document_type,is_active=EXCLUDED.is_active,updated_at=NOW() RETURNING *',[n,JSON.stringify(req.body.theme_config||{}),String(req.body.document_type||'all'),req.body.is_active!==false]);res.json(r.rows[0]);}
+ catch(e){console.error('SECRETARY THEME SAVE ERROR',e);res.status(500).json({error:'Theme could not be saved'});}
+});
+app.get('/api/secretary/document-history', requireAdmin, async(req,res)=>{
+ try{const r=await pool.query("SELECT id, data, status, created_by, created_at FROM nsf_secretary_records WHERE category='membership_document' ORDER BY created_at DESC LIMIT 500");res.json(r.rows);}
+ catch(e){console.error('SECRETARY DOCUMENT HISTORY ERROR',e);res.status(500).json({error:'Document history could not be loaded'});}
+});
+app.post('/api/secretary/document-version', requireAdmin, async(req,res)=>{
+ try{const recordId=Number(req.body?.document_record_id);if(!Number.isInteger(recordId)||recordId<=0)return res.status(400).json({error:'Valid document record ID required'});
+ const cfg=req.body?.document_config||{};const q=await pool.query('SELECT id,data FROM nsf_secretary_records WHERE id=$1 AND category=$2',[recordId,'membership_document']);if(!q.rowCount)return res.status(404).json({error:'Document record not found'});
+ const latest=await pool.query('SELECT COALESCE(MAX(version_number),0) v FROM nsf_membership_document_versions WHERE document_record_id=$1',[recordId]);const v=Number(latest.rows[0].v)+1;
+ const saved=await pool.query('INSERT INTO nsf_membership_document_versions(document_record_id,version_number,document_config,generated_by) VALUES($1,$2,$3::jsonb,$4) RETURNING *',[recordId,v,JSON.stringify(cfg),req.userRole||'secretary']);
+ await pool.query('INSERT INTO nsf_membership_document_audit(document_record_id,member_id,action,performed_by,metadata) VALUES($1,$2,$3,$4,$5::jsonb)',[recordId,String(cfg.memberId||''),'version_created',req.userRole||'secretary',JSON.stringify({version:v})]);res.json(saved.rows[0]);}
+ catch(e){console.error('SECRETARY DOCUMENT VERSION ERROR',e);res.status(500).json({error:'Document version could not be saved'});}
+});
 app.post('/api/secretary/membership-documents', requireAdmin, async (req,res)=>{
  try{
   await secretaryTableReady; const b=req.body||{};
   const name=String(b.name||'').trim().slice(0,140), memberId=String(b.memberId||'').trim().slice(0,100), documentType=String(b.documentType||'').trim().slice(0,80);
   if(!name||!memberId||!documentType)return res.status(400).json({error:'Name, member ID and document type are required.'});
-  const data={documentType,theme:String(b.theme||'').slice(0,120),name,memberId,designation:String(b.designation||'').slice(0,160),validity:String(b.validity||'').slice(0,120),mobile:String(b.mobile||'').slice(0,30),email:String(b.email||'').slice(0,180),amountPaymentMode:String(b.amountPaymentMode||'').slice(0,120),extraDetails:String(b.extraDetails||'').slice(0,1500),photoUrl:String(b.photoUrl||'').slice(0,1000),createdAt:new Date().toISOString()};
+  const data={documentType,theme:String(b.theme||'').slice(0,120),name,memberId,designation:String(b.designation||'').slice(0,160),validity:String(b.validity||'').slice(0,120),mobile:String(b.mobile||'').slice(0,30),email:String(b.email||'').slice(0,180),amountPaymentMode:String(b.amountPaymentMode||'').slice(0,120),extraDetails:String(b.extraDetails||'').slice(0,1500),photoUrl:String(b.photoUrl||'').slice(0,1000),verificationToken:crypto.randomUUID(),revoked:false,createdAt:new Date().toISOString()};
   const result=await pool.query(`INSERT INTO nsf_secretary_records(category,data,status,created_by) VALUES('membership_document',$1::jsonb,'issued',$2) RETURNING id,created_at`,[JSON.stringify(data),req.userRole||'secretary']);
-  res.status(201).json({ok:true,id:result.rows[0].id,createdAt:result.rows[0].created_at});
+  res.status(201).json({ok:true,id:result.rows[0].id,verificationToken:data.verificationToken,createdAt:result.rows[0].created_at});
  }catch(e){console.error('SECRETARY MEMBERSHIP DOCUMENT SAVE ERROR',e);res.status(500).json({error:'Membership document record could not be saved.'});}
+});
+
+// Secure document verification (tokenized URL; public response exposes only minimal status/details).
+app.get('/api/public/secretary-document/:token', async(req,res)=>{
+ try{const token=String(req.params.token||'');if(!/^[a-f0-9-]{36}$/i.test(token))return res.status(404).json({valid:false});
+ const q=await pool.query("SELECT id,data,status,created_at FROM nsf_secretary_records WHERE category='membership_document' AND data->>'verificationToken'=$1 LIMIT 1",[token]);if(!q.rowCount)return res.status(404).json({valid:false});const d=q.rows[0].data||{};res.json({valid:d.revoked!==true,status:d.revoked?'revoked':'issued',documentType:d.documentType||'',memberName:d.name||'',memberId:d.memberId||'',issuedAt:q.rows[0].created_at});
+ }catch(e){console.error('PUBLIC DOCUMENT VERIFY ERROR',e);res.status(500).json({error:'Verification service unavailable'});}
+});
+app.post('/api/secretary/document-revoke',requireAdmin,async(req,res)=>{
+ try{const id=Number(req.body?.record_id);if(!Number.isInteger(id)||id<1)return res.status(400).json({error:'Valid record ID required'});const q=await pool.query("SELECT data FROM nsf_secretary_records WHERE id=$1 AND category='membership_document'",[id]);if(!q.rowCount)return res.status(404).json({error:'Document not found'});const d=q.rows[0].data||{};d.revoked=true;d.revokedAt=new Date().toISOString();d.revokedBy=req.userRole||'secretary';await pool.query("UPDATE nsf_secretary_records SET data=$2::jsonb,status='revoked',updated_at=NOW() WHERE id=$1",[id,JSON.stringify(d)]);await pool.query('INSERT INTO nsf_membership_document_audit(document_record_id,member_id,action,performed_by,metadata) VALUES($1,$2,$3,$4,$5::jsonb)',[id,String(d.memberId||''),'document_revoked',req.userRole||'secretary',JSON.stringify({reason:String(req.body?.reason||'')})]);res.json({ok:true,revoked:true});}
+ catch(e){console.error('DOCUMENT REVOKE ERROR',e);res.status(500).json({error:'Revocation failed'});}
+});
+app.post('/api/secretary/receipt-validation',requireAdmin,async(req,res)=>{
+ try{const b=req.body||{},name=String(b.name||'').trim(),memberId=String(b.memberId||'').trim(),reference=String(b.reference||'').trim(),note=String(b.note||'').trim();if(b.confirmed!==true)return res.status(400).json({error:'Confirm that payment was checked in the bank/payment gateway dashboard.'});if(!name||!memberId||!reference||!note)return res.status(400).json({error:'Member, payment reference and verification note are required'});if(reference.length>180||note.length>1000)return res.status(400).json({error:'Input too long'});const data={documentType:'Membership Receipt Payment Verification',name,memberId,amount:String(b.amount||''),paymentReference:reference,verificationNote:note,verificationMethod:'manual_dashboard_check',manuallyVerified:true,verifiedBy:req.userRole||'secretary',verifiedAt:new Date().toISOString()};const r=await pool.query("INSERT INTO nsf_secretary_records(category,data,status,created_by) VALUES('receipt_validation',$1::jsonb,'manually_verified',$2) RETURNING id,created_at",[JSON.stringify(data),req.userRole||'secretary']);res.status(201).json({ok:true,id:r.rows[0].id,createdAt:r.rows[0].created_at,manual:true});}
+ catch(e){console.error('RECEIPT VALIDATION ERROR',e);res.status(500).json({error:'Validation record could not be saved'});}
 });
 
 app.post('/api/secretary/documents', requireAdmin, secretaryDocumentUpload.single('file'), async (req,res) => {
