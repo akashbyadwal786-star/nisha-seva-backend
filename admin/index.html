@@ -4876,9 +4876,8 @@ const NSF_LETTERPAD_DATA="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA+EAAAV8
 })();
 
 </script>
-</body>
-</html>
 
+<!-- Relocated appended UI styles/scripts into document body -->
 <style id="nsf-secretary-tailored-mobile-v3">
 .nsf-secretary-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .nsf-secretary-form h3,.nsf-secretary-form button,.nsf-secretary-form #secretaryRecordMsg{grid-column:1/-1}
@@ -4936,3 +4935,5 @@ const NSF_LETTERPAD_DATA="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA+EAAAV8
 
 // Gateway verification utility and bulk-job retry control (Secretary Studio).
 (function(){if(window.nsfStudioEnhancementControls)return;window.nsfStudioEnhancementControls=true;const inject=()=>{const host=document.querySelector('.nsf-doc-studio');if(!host||document.getElementById('nsfGatewayVerifyUI'))return;const box=document.createElement('section');box.id='nsfGatewayVerifyUI';box.innerHTML='<hr><h3>Cashfree Gateway Verification</h3><label class="secretary-field">Donation Order ID<input id="nsfCfOrderId" placeholder="NSFDON_..." /></label><button class="success" id="nsfCfVerifyBtn">Verify directly with Cashfree</button><div id="nsfCfVerifyMsg" role="status"></div>';host.append(box);document.getElementById('nsfCfVerifyBtn').onclick=async()=>{const orderId=document.getElementById('nsfCfOrderId').value.trim(),msg=document.getElementById('nsfCfVerifyMsg');msg.textContent='Verifying…';try{const r=await api('/api/secretary/cashfree-verify-donation',{method:'POST',body:JSON.stringify({orderId})});msg.textContent='Verified PAID · Receipt '+r.receiptNo+' · ₹'+r.amount;}catch(e){msg.textContent='Verification failed: '+(e.message||'gateway error');}};};document.addEventListener('DOMContentLoaded',inject);setTimeout(inject,1500);})();
+</body>
+</html>
